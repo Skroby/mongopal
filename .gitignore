@@ -1,0 +1,47 @@
+# Build outputs
+build/bin/
+build/darwin/
+frontend/dist/
+frontend/*.md5
+
+# Dependencies
+frontend/node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Wails
+wails.json.bak
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
+*.coverprofile
+
+# Wails generated bindings (regenerated via `make generate`)
+frontend/wailsjs/

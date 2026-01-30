@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MongoPal</title>
+    <style>
+      /* Prevent text selection during drag operations */
+      .no-select {
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      /* macOS title bar drag region */
+      .titlebar-drag {
+        -webkit-app-region: drag;
+      }
+      .titlebar-no-drag {
+        -webkit-app-region: no-drag;
+      }
+    </style>
+  </head>
+  <body class="bg-surface text-zinc-100">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

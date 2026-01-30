@@ -1,0 +1,15 @@
+#!/bin/sh
+# Pre-commit hook: run tests before allowing commit
+
+echo "Running frontend tests..."
+cd frontend && npm test
+
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "❌ Tests failed. Commit aborted."
+  echo "Fix the failing tests and try again."
+  exit 1
+fi
+
+echo "✓ All tests passed."
+exit 0
