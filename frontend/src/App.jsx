@@ -8,6 +8,8 @@ import ConnectionForm from './components/ConnectionForm'
 import Settings from './components/Settings'
 import ExportDatabasesModal from './components/ExportDatabasesModal'
 import ImportDatabasesModal from './components/ImportDatabasesModal'
+import ExportCollectionsModal from './components/ExportCollectionsModal'
+import ImportCollectionsModal from './components/ImportCollectionsModal'
 import ConfirmDialog from './components/ConfirmDialog'
 import { useNotification } from './components/NotificationContext'
 
@@ -39,6 +41,8 @@ function App() {
   const [connectingId, setConnectingId] = useState(null) // Currently connecting
   const [exportModal, setExportModal] = useState(null) // { connectionId, connectionName }
   const [importModal, setImportModal] = useState(null) // { connectionId, connectionName }
+  const [exportCollectionsModal, setExportCollectionsModal] = useState(null) // { connectionId, connectionName, databaseName }
+  const [importCollectionsModal, setImportCollectionsModal] = useState(null) // { connectionId, connectionName, databaseName }
   const [confirmDialog, setConfirmDialog] = useState(null) // { title, message, onConfirm, danger }
 
   // Get current tab data (must be before useEffects that reference it)
@@ -478,6 +482,8 @@ function App() {
             onViewSchema={openSchemaTab}
             onExportDatabases={(connId, connName) => setExportModal({ connectionId: connId, connectionName: connName })}
             onImportDatabases={(connId, connName) => setImportModal({ connectionId: connId, connectionName: connName })}
+            onExportCollections={(connId, connName, dbName) => setExportCollectionsModal({ connectionId: connId, connectionName: connName, databaseName: dbName })}
+            onImportCollections={(connId, connName, dbName) => setImportCollectionsModal({ connectionId: connId, connectionName: connName, databaseName: dbName })}
           />
         </div>
 
@@ -622,6 +628,32 @@ function App() {
             // Optionally refresh the connection tree after import
             if (go?.ListDatabases) {
               go.ListDatabases(importModal.connectionId).catch(console.error)
+            }
+          }}
+        />
+      )}
+
+      {/* Export collections modal */}
+      {exportCollectionsModal && (
+        <ExportCollectionsModal
+          connectionId={exportCollectionsModal.connectionId}
+          connectionName={exportCollectionsModal.connectionName}
+          databaseName={exportCollectionsModal.databaseName}
+          onClose={() => setExportCollectionsModal(null)}
+        />
+      )}
+
+      {/* Import collections modal */}
+      {importCollectionsModal && (
+        <ImportCollectionsModal
+          connectionId={importCollectionsModal.connectionId}
+          connectionName={importCollectionsModal.connectionName}
+          databaseName={importCollectionsModal.databaseName}
+          onClose={() => setImportCollectionsModal(null)}
+          onComplete={() => {
+            // Optionally refresh the database's collections after import
+            if (go?.ListCollections) {
+              go.ListCollections(importCollectionsModal.connectionId, importCollectionsModal.databaseName).catch(console.error)
             }
           }}
         />

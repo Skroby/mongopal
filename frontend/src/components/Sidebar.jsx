@@ -271,6 +271,8 @@ function ConnectionNode({
   onViewSchema,
   onExportDatabases,
   onImportDatabases,
+  onExportCollections,
+  onImportCollections,
   onError,
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -393,6 +395,9 @@ function ConnectionNode({
         loadCollections(dbName, true) // Force refresh
       }},
       { type: 'separator' },
+      { label: 'Export Collections...', onClick: () => onExportCollections?.(dbName) },
+      { label: 'Import Collections...', onClick: () => onImportCollections?.(dbName) },
+      { type: 'separator' },
       { label: 'Drop Database...', onClick: () => onDropDatabase(connection.id, dbName, removeDatabase), danger: true },
     ])
   }
@@ -501,6 +506,8 @@ export default function Sidebar({
   onViewSchema,
   onExportDatabases,
   onImportDatabases,
+  onExportCollections,
+  onImportCollections,
 }) {
   const { notify } = useNotification()
   const [searchQuery, setSearchQuery] = useState('')
@@ -662,6 +669,8 @@ export default function Sidebar({
       onViewSchema={onViewSchema}
       onExportDatabases={() => onExportDatabases?.(conn.id, conn.name)}
       onImportDatabases={() => onImportDatabases?.(conn.id, conn.name)}
+      onExportCollections={(dbName) => onExportCollections?.(conn.id, conn.name, dbName)}
+      onImportCollections={(dbName) => onImportCollections?.(conn.id, conn.name, dbName)}
       onError={(msg) => notify.error(msg)}
     />
   )
