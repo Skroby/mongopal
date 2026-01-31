@@ -11,9 +11,11 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -55,6 +57,7 @@ func setupTestContainer(t *testing.T) *testContext {
 	app := NewApp()
 	app.ctx = ctx
 	app.configDir = t.TempDir()
+	app.disableEvents = true // Disable Wails event emission in tests
 
 	// Save a test connection
 	connID := "test-conn-1"
@@ -851,4 +854,193 @@ func BenchmarkIntegration_FindDocuments(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		app.FindDocuments("bench", "benchdb", "docs", "{}", QueryOptions{Limit: 50})
 	}
+}
+
+// =============================================================================
+// Export/Import Integration Tests
+// =============================================================================
+
+func TestIntegration_ExportImport_RoundTrip(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Connect via app
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Seed test data
+	tc.seedTestData(t, "exportdb", "users", []bson.M{
+		{"_id": primitive.NewObjectID(), "name": "Alice", "age": 30},
+		{"_id": primitive.NewObjectID(), "name": "Bob", "age": 25},
+	})
+	tc.seedTestData(t, "exportdb", "orders", []bson.M{
+		{"_id": primitive.NewObjectID(), "item": "Widget", "qty": 10},
+	})
+
+	// Create temp file for export
+	tmpDir := t.TempDir()
+	exportPath := tmpDir + "/test_export.zip"
+
+	// We can't fully test ExportDatabases because it opens a file dialog,
+	// but we can test the internal export logic by creating the zip manually
+	// For now, test PreviewImportFile and DryRunImport with a pre-created zip
+
+	t.Run("GetDatabasesForExport returns databases", func(t *testing.T) {
+		dbs, err := tc.app.GetDatabasesForExport(tc.connID)
+		require.NoError(t, err)
+
+		// Find our test database
+		var found bool
+		for _, db := range dbs {
+			if db.Name == "exportdb" {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "Should find exportdb in list")
+	})
+
+	// Test creating an export manually (simulating what ExportDatabases does)
+	t.Run("Manual export creates valid zip", func(t *testing.T) {
+		ctx := context.Background()
+
+		// Create zip file manually
+		zipFile, err := os.Create(exportPath)
+		require.NoError(t, err)
+
+		zipWriter := zip.NewWriter(zipFile)
+
+		// Create manifest
+		manifest := ExportManifest{
+			Version:    "1.0",
+			ExportedAt: time.Now(),
+			Databases: []ExportManifestDatabase{
+				{
+					Name: "exportdb",
+					Collections: []ExportManifestCollection{
+						{Name: "users", DocCount: 2, IndexCount: 0},
+						{Name: "orders", DocCount: 1, IndexCount: 0},
+					},
+				},
+			},
+		}
+
+		// Write manifest
+		manifestWriter, err := zipWriter.Create("manifest.json")
+		require.NoError(t, err)
+		json.NewEncoder(manifestWriter).Encode(manifest)
+
+		// Export users collection
+		usersWriter, err := zipWriter.Create("exportdb/users/documents.ndjson")
+		require.NoError(t, err)
+		cursor, _ := tc.client.Database("exportdb").Collection("users").Find(ctx, bson.M{})
+		for cursor.Next(ctx) {
+			jsonBytes, _ := bson.MarshalExtJSON(cursor.Current, true, false)
+			usersWriter.Write(jsonBytes)
+			usersWriter.Write([]byte("\n"))
+		}
+
+		// Export orders collection
+		ordersWriter, err := zipWriter.Create("exportdb/orders/documents.ndjson")
+		require.NoError(t, err)
+		cursor, _ = tc.client.Database("exportdb").Collection("orders").Find(ctx, bson.M{})
+		for cursor.Next(ctx) {
+			jsonBytes, _ := bson.MarshalExtJSON(cursor.Current, true, false)
+			ordersWriter.Write(jsonBytes)
+			ordersWriter.Write([]byte("\n"))
+		}
+
+		zipWriter.Close()
+		zipFile.Close()
+
+		// Verify file exists
+		_, err = os.Stat(exportPath)
+		assert.NoError(t, err, "Export file should exist")
+	})
+
+	t.Run("DryRunImport with skip mode shows correct counts and does NOT modify data", func(t *testing.T) {
+		// Count docs before dry run
+		usersBefore, _ := tc.client.Database("exportdb").Collection("users").CountDocuments(context.Background(), bson.M{})
+		ordersBefore, _ := tc.client.Database("exportdb").Collection("orders").CountDocuments(context.Background(), bson.M{})
+
+		result, err := tc.app.DryRunImport(tc.connID, ImportOptions{
+			FilePath:  exportPath,
+			Databases: []string{"exportdb"},
+			Mode:      "skip",
+		})
+		require.NoError(t, err)
+
+		// All documents already exist, so all should be skipped
+		assert.Equal(t, int64(0), result.DocumentsInserted, "No new documents to insert")
+		assert.Equal(t, int64(3), result.DocumentsSkipped, "All 3 docs should be skipped")
+
+		// CRITICAL: Verify data was NOT modified
+		usersAfter, _ := tc.client.Database("exportdb").Collection("users").CountDocuments(context.Background(), bson.M{})
+		ordersAfter, _ := tc.client.Database("exportdb").Collection("orders").CountDocuments(context.Background(), bson.M{})
+		assert.Equal(t, usersBefore, usersAfter, "DryRun should NOT modify users collection")
+		assert.Equal(t, ordersBefore, ordersAfter, "DryRun should NOT modify orders collection")
+	})
+
+	t.Run("DryRunImport with override mode shows what will be dropped and does NOT modify data", func(t *testing.T) {
+		// Count docs before dry run
+		usersBefore, _ := tc.client.Database("exportdb").Collection("users").CountDocuments(context.Background(), bson.M{})
+		ordersBefore, _ := tc.client.Database("exportdb").Collection("orders").CountDocuments(context.Background(), bson.M{})
+
+		result, err := tc.app.DryRunImport(tc.connID, ImportOptions{
+			FilePath:  exportPath,
+			Databases: []string{"exportdb"},
+			Mode:      "override",
+		})
+		require.NoError(t, err)
+
+		// Override means all will be inserted (db dropped first)
+		assert.Equal(t, int64(3), result.DocumentsInserted, "All 3 docs will be inserted")
+		assert.Equal(t, int64(3), result.DocumentsDropped, "Current 3 docs will be dropped")
+
+		// CRITICAL: Verify data was NOT modified (dry run should NOT drop anything)
+		usersAfter, _ := tc.client.Database("exportdb").Collection("users").CountDocuments(context.Background(), bson.M{})
+		ordersAfter, _ := tc.client.Database("exportdb").Collection("orders").CountDocuments(context.Background(), bson.M{})
+		assert.Equal(t, usersBefore, usersAfter, "DryRun should NOT drop users collection")
+		assert.Equal(t, ordersBefore, ordersAfter, "DryRun should NOT drop orders collection")
+	})
+
+	t.Run("ImportDatabases with skip mode skips existing", func(t *testing.T) {
+		result, err := tc.app.ImportDatabases(tc.connID, ImportOptions{
+			FilePath:  exportPath,
+			Databases: []string{"exportdb"},
+			Mode:      "skip",
+		})
+		require.NoError(t, err)
+
+		// All docs exist, should be skipped
+		assert.Equal(t, int64(0), result.DocumentsInserted)
+		assert.Equal(t, int64(3), result.DocumentsSkipped)
+	})
+
+	t.Run("ImportDatabases with override mode replaces data", func(t *testing.T) {
+		// First, add an extra document that should be removed
+		tc.client.Database("exportdb").Collection("users").InsertOne(
+			context.Background(),
+			bson.M{"_id": primitive.NewObjectID(), "name": "Extra", "age": 99},
+		)
+
+		// Verify we now have 3 users
+		count, _ := tc.client.Database("exportdb").Collection("users").CountDocuments(context.Background(), bson.M{})
+		assert.Equal(t, int64(3), count, "Should have 3 users before override")
+
+		result, err := tc.app.ImportDatabases(tc.connID, ImportOptions{
+			FilePath:  exportPath,
+			Databases: []string{"exportdb"},
+			Mode:      "override",
+		})
+		require.NoError(t, err)
+
+		// All docs should be inserted (db was dropped)
+		assert.Equal(t, int64(3), result.DocumentsInserted)
+		assert.Equal(t, int64(0), result.DocumentsSkipped)
+
+		// Verify only 2 users remain (the extra one is gone)
+		count, _ = tc.client.Database("exportdb").Collection("users").CountDocuments(context.Background(), bson.M{})
+		assert.Equal(t, int64(2), count, "Should have 2 users after override")
+	})
 }

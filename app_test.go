@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"testing"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -710,5 +711,193 @@ func BenchmarkInjectPasswordIntoURI(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		app.injectPasswordIntoURI(uri, password)
+	}
+}
+
+// =============================================================================
+// Export/Import Tests
+// =============================================================================
+
+func TestBuildExportFilename(t *testing.T) {
+	app := newTestApp()
+
+	tests := []struct {
+		name     string
+		connName string
+		dbCount  int
+		wantPfx  string // Expected prefix (before timestamp)
+	}{
+		{
+			name:     "Simple connection name",
+			connName: "MyConnection",
+			dbCount:  3,
+			wantPfx:  "MyConnection_3db_",
+		},
+		{
+			name:     "Connection name with spaces",
+			connName: "My Local Dev",
+			dbCount:  1,
+			wantPfx:  "My_Local_Dev_1db_",
+		},
+		{
+			name:     "Connection name with special chars",
+			connName: "Dev@Server#1!",
+			dbCount:  5,
+			wantPfx:  "DevServer1_5db_",
+		},
+		{
+			name:     "Very long connection name (truncated)",
+			connName: "ThisIsAVeryLongConnectionNameThatShouldBeTruncatedToFortyCharacters",
+			dbCount:  2,
+			wantPfx:  "ThisIsAVeryLongConnectionNameThatShouldB_2db_",
+		},
+		{
+			name:     "Empty connection name",
+			connName: "",
+			dbCount:  1,
+			wantPfx:  "_1db_",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := app.buildExportFilename(tt.connName, tt.dbCount)
+
+			// Check prefix
+			if len(result) < len(tt.wantPfx) {
+				t.Errorf("Result too short: got %s", result)
+				return
+			}
+			gotPfx := result[:len(tt.wantPfx)]
+			if gotPfx != tt.wantPfx {
+				t.Errorf("Prefix mismatch: got %s, want %s", gotPfx, tt.wantPfx)
+			}
+
+			// Check suffix
+			if !stringEndsWith(result, ".zip") {
+				t.Errorf("Expected .zip suffix, got: %s", result)
+			}
+
+			// Check timestamp format (YYYY-MM-DD_HHMMSS)
+			// The format should be like: prefix_2026-01-31_153045.zip
+			timestampPart := result[len(tt.wantPfx) : len(result)-4] // Remove .zip
+			if len(timestampPart) != 17 { // 2026-01-31_153045
+				t.Errorf("Unexpected timestamp length: got %s (len=%d)", timestampPart, len(timestampPart))
+			}
+		})
+	}
+}
+
+func stringEndsWith(s, suffix string) bool {
+	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
+}
+
+func TestExportManifestJSON(t *testing.T) {
+	// Test that ExportManifest serializes correctly
+	manifest := ExportManifest{
+		Version: "1.0",
+		Databases: []ExportManifestDatabase{
+			{
+				Name: "testdb",
+				Collections: []ExportManifestCollection{
+					{Name: "users", DocCount: 100, IndexCount: 2},
+					{Name: "orders", DocCount: 500, IndexCount: 1},
+				},
+			},
+		},
+	}
+
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("Failed to marshal manifest: %v", err)
+	}
+
+	// Unmarshal and verify
+	var parsed ExportManifest
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Failed to unmarshal manifest: %v", err)
+	}
+
+	if parsed.Version != "1.0" {
+		t.Errorf("Version mismatch: got %s", parsed.Version)
+	}
+	if len(parsed.Databases) != 1 {
+		t.Errorf("Database count mismatch: got %d", len(parsed.Databases))
+	}
+	if parsed.Databases[0].Name != "testdb" {
+		t.Errorf("Database name mismatch: got %s", parsed.Databases[0].Name)
+	}
+	if len(parsed.Databases[0].Collections) != 2 {
+		t.Errorf("Collection count mismatch: got %d", len(parsed.Databases[0].Collections))
+	}
+}
+
+func TestImportResultJSON(t *testing.T) {
+	// Test ImportResult with all fields
+	result := ImportResult{
+		Databases: []DatabaseImportResult{
+			{
+				Name:         "mydb",
+				CurrentCount: 50,
+				Collections: []CollectionImportResult{
+					{Name: "users", DocumentsInserted: 10, DocumentsSkipped: 5, CurrentCount: 15},
+				},
+			},
+		},
+		DocumentsInserted: 10,
+		DocumentsSkipped:  5,
+		DocumentsDropped:  50,
+		Errors:            []string{"error1"},
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("Failed to marshal result: %v", err)
+	}
+
+	var parsed ImportResult
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Failed to unmarshal result: %v", err)
+	}
+
+	if parsed.DocumentsInserted != 10 {
+		t.Errorf("DocumentsInserted mismatch: got %d", parsed.DocumentsInserted)
+	}
+	if parsed.DocumentsDropped != 50 {
+		t.Errorf("DocumentsDropped mismatch: got %d", parsed.DocumentsDropped)
+	}
+	if len(parsed.Databases) != 1 {
+		t.Errorf("Databases count mismatch: got %d", len(parsed.Databases))
+	}
+	if parsed.Databases[0].CurrentCount != 50 {
+		t.Errorf("Database CurrentCount mismatch: got %d", parsed.Databases[0].CurrentCount)
+	}
+}
+
+func TestImportOptionsJSON(t *testing.T) {
+	opts := ImportOptions{
+		FilePath:  "/path/to/file.zip",
+		Databases: []string{"db1", "db2"},
+		Mode:      "skip",
+	}
+
+	data, err := json.Marshal(opts)
+	if err != nil {
+		t.Fatalf("Failed to marshal options: %v", err)
+	}
+
+	var parsed ImportOptions
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Failed to unmarshal options: %v", err)
+	}
+
+	if parsed.FilePath != "/path/to/file.zip" {
+		t.Errorf("FilePath mismatch: got %s", parsed.FilePath)
+	}
+	if parsed.Mode != "skip" {
+		t.Errorf("Mode mismatch: got %s", parsed.Mode)
+	}
+	if len(parsed.Databases) != 2 {
+		t.Errorf("Databases count mismatch: got %d", len(parsed.Databases))
 	}
 }

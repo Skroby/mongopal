@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -36,6 +37,9 @@ type App struct {
 	folders          []Folder                 // Connection folders
 	configDir        string                   // Config directory path
 	mu               sync.RWMutex
+	exportCancel     context.CancelFunc       // Cancel function for ongoing export
+	importCancel     context.CancelFunc       // Cancel function for ongoing import
+	disableEvents    bool                     // Disable event emission (for tests)
 }
 
 // NewApp creates a new App instance
@@ -51,6 +55,15 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.initConfigDir()
 	a.loadConnections()
+}
+
+// emitEvent safely emits an event, handling non-Wails contexts gracefully
+func (a *App) emitEvent(eventName string, data interface{}) {
+	// Skip event emission if disabled (for tests) or context is nil
+	if a.disableEvents || a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, eventName, data)
 }
 
 // initConfigDir sets up the config directory
@@ -1573,6 +1586,1007 @@ func (a *App) ExportSchemaAsJSON(jsonContent, defaultFilename string) error {
 	}
 
 	return nil
+}
+
+// =============================================================================
+// Database Export/Import Methods
+// =============================================================================
+
+// ExportProgress represents the progress of an export/import operation
+type ExportProgress struct {
+	Phase         string `json:"phase"`         // "exporting" | "importing"
+	Database      string `json:"database"`
+	Collection    string `json:"collection"`
+	Current       int64  `json:"current"`
+	Total         int64  `json:"total"`
+	DatabaseIndex int    `json:"databaseIndex"` // Current database (1-indexed)
+	DatabaseTotal int    `json:"databaseTotal"` // Total databases
+}
+
+// ImportOptions specifies how to handle existing documents during import
+type ImportOptions struct {
+	FilePath     string   `json:"filePath"`     // Path to the zip file
+	Databases    []string `json:"databases"`    // Databases to import (empty = all)
+	Mode         string   `json:"mode"`         // "skip" | "override"
+}
+
+// ImportPreview contains info about an import file for user selection
+type ImportPreview struct {
+	FilePath   string                     `json:"filePath"`
+	ExportedAt string                     `json:"exportedAt"`
+	Databases  []ImportPreviewDatabase    `json:"databases"`
+}
+
+// ImportPreviewDatabase contains info about a database in the import file
+type ImportPreviewDatabase struct {
+	Name            string `json:"name"`
+	CollectionCount int    `json:"collectionCount"`
+	DocumentCount   int64  `json:"documentCount"`
+}
+
+// CollectionImportResult contains import results for a single collection
+type CollectionImportResult struct {
+	Name              string `json:"name"`
+	DocumentsInserted int64  `json:"documentsInserted"`
+	DocumentsSkipped  int64  `json:"documentsSkipped"`
+	CurrentCount      int64  `json:"currentCount,omitempty"` // For dry-run: docs currently in target
+}
+
+// DatabaseImportResult contains import results for a single database
+type DatabaseImportResult struct {
+	Name         string                   `json:"name"`
+	Collections  []CollectionImportResult `json:"collections"`
+	CurrentCount int64                    `json:"currentCount,omitempty"` // For dry-run: total docs currently in target
+}
+
+// ImportResult contains the result of an import operation
+type ImportResult struct {
+	Databases         []DatabaseImportResult `json:"databases"`
+	DocumentsInserted int64                  `json:"documentsInserted"`
+	DocumentsSkipped  int64                  `json:"documentsSkipped"`
+	DocumentsDropped  int64                  `json:"documentsDropped,omitempty"` // For dry-run override: docs that will be dropped
+	Errors            []string               `json:"errors"`
+}
+
+// ExportManifest contains metadata about an exported archive
+type ExportManifest struct {
+	Version      string                     `json:"version"`
+	ExportedAt   time.Time                  `json:"exportedAt"`
+	Databases    []ExportManifestDatabase   `json:"databases"`
+}
+
+// ExportManifestDatabase contains info about an exported database
+type ExportManifestDatabase struct {
+	Name        string                       `json:"name"`
+	Collections []ExportManifestCollection   `json:"collections"`
+}
+
+// ExportManifestCollection contains info about an exported collection
+type ExportManifestCollection struct {
+	Name       string `json:"name"`
+	DocCount   int64  `json:"docCount"`
+	IndexCount int    `json:"indexCount"`
+}
+
+// GetDatabasesForExport returns databases with their sizes for export selection
+func (a *App) GetDatabasesForExport(connID string) ([]DatabaseInfo, error) {
+	return a.ListDatabases(connID)
+}
+
+// buildExportFilename creates a filename from connection name, db count and timestamp
+func (a *App) buildExportFilename(connName string, dbCount int) string {
+	// Sanitize connection name for use in filename
+	var sanitized strings.Builder
+	for _, r := range connName {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			sanitized.WriteRune(r)
+		} else if r == ' ' {
+			sanitized.WriteRune('_')
+		}
+	}
+	name := sanitized.String()
+
+	// Truncate if too long
+	if len(name) > 40 {
+		name = name[:40]
+	}
+
+	// Add timestamp: YYYY-MM-DD_HHMMSS
+	timestamp := time.Now().Format("2006-01-02_150405")
+
+	return fmt.Sprintf("%s_%ddb_%s.zip", name, dbCount, timestamp)
+}
+
+// ExportDatabases exports selected databases to a zip file
+func (a *App) ExportDatabases(connID string, dbNames []string) error {
+	if len(dbNames) == 0 {
+		return fmt.Errorf("no databases selected for export")
+	}
+
+	client, err := a.getClient(connID)
+	if err != nil {
+		return err
+	}
+
+	// Get connection name for filename
+	connName := "export"
+	if conn, err := a.GetSavedConnection(connID); err == nil {
+		connName = conn.Name
+	}
+
+	// Build default filename with connection name, db count and timestamp
+	defaultFilename := a.buildExportFilename(connName, len(dbNames))
+	filePath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		DefaultFilename: defaultFilename,
+		Title:           "Export Databases",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Zip Files (*.zip)", Pattern: "*.zip"},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to open save dialog: %w", err)
+	}
+	if filePath == "" {
+		return nil // User cancelled
+	}
+
+	// Ensure .zip extension
+	if !strings.HasSuffix(strings.ToLower(filePath), ".zip") {
+		filePath += ".zip"
+	}
+
+	// Create cancellable context for the export operation
+	exportCtx, exportCancel := context.WithCancel(context.Background())
+	a.exportCancel = exportCancel
+	defer func() {
+		a.exportCancel = nil
+	}()
+
+	// Create zip file
+	zipFile, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer zipFile.Close()
+
+	zipWriter := zip.NewWriter(zipFile)
+	defer zipWriter.Close()
+
+	manifest := ExportManifest{
+		Version:    "1.0",
+		ExportedAt: time.Now(),
+		Databases:  []ExportManifestDatabase{},
+	}
+
+	totalDatabases := len(dbNames)
+
+	// Export each database
+	for dbIdx, dbName := range dbNames {
+		// Check for cancellation
+		select {
+		case <-exportCtx.Done():
+			a.emitEvent("export:cancelled", nil)
+			// Clean up partial file
+			zipWriter.Close()
+			zipFile.Close()
+			os.Remove(filePath)
+			return fmt.Errorf("export cancelled")
+		default:
+		}
+		dbManifest := ExportManifestDatabase{
+			Name:        dbName,
+			Collections: []ExportManifestCollection{},
+		}
+
+		// Get collections
+		ctx, cancel := a.contextWithTimeout()
+		db := client.Database(dbName)
+		cursor, err := db.ListCollections(ctx, bson.D{})
+		if err != nil {
+			cancel()
+			continue
+		}
+
+		var collInfos []struct {
+			Name string `bson:"name"`
+			Type string `bson:"type"`
+		}
+		if err := cursor.All(ctx, &collInfos); err != nil {
+			cursor.Close(ctx)
+			cancel()
+			continue
+		}
+		cursor.Close(ctx)
+		cancel()
+
+		for _, collInfo := range collInfos {
+			if collInfo.Type == "view" {
+				continue // Skip views
+			}
+
+			collName := collInfo.Name
+			coll := db.Collection(collName)
+
+			// Get estimated document count for progress
+			ctx, cancel := a.contextWithTimeout()
+			estimatedCount, _ := coll.EstimatedDocumentCount(ctx)
+			cancel()
+
+			// Emit progress
+			a.emitEvent("export:progress", ExportProgress{
+				Phase:         "exporting",
+				Database:      dbName,
+				Collection:    collName,
+				Current:       0,
+				Total:         estimatedCount,
+				DatabaseIndex: dbIdx + 1,
+				DatabaseTotal: totalDatabases,
+			})
+
+			// Export documents as NDJSON
+			ctx, cancel = context.WithTimeout(context.Background(), 5*time.Minute)
+			docCursor, err := coll.Find(ctx, bson.D{})
+			if err != nil {
+				cancel()
+				continue
+			}
+
+			ndjsonPath := fmt.Sprintf("%s/%s/documents.ndjson", dbName, collName)
+			ndjsonWriter, err := zipWriter.Create(ndjsonPath)
+			if err != nil {
+				docCursor.Close(ctx)
+				cancel()
+				continue
+			}
+
+			var docCount int64
+			cancelled := false
+			for docCursor.Next(ctx) {
+				// Check for cancellation periodically
+				if docCount%100 == 0 {
+					select {
+					case <-exportCtx.Done():
+						cancelled = true
+						break
+					default:
+					}
+				}
+				if cancelled {
+					break
+				}
+
+				var doc bson.M
+				if err := docCursor.Decode(&doc); err != nil {
+					continue
+				}
+				jsonBytes, err := bson.MarshalExtJSON(doc, true, false)
+				if err != nil {
+					continue
+				}
+				ndjsonWriter.Write(jsonBytes)
+				ndjsonWriter.Write([]byte("\n"))
+				docCount++
+
+				// Emit progress periodically
+				if docCount%1000 == 0 {
+					a.emitEvent("export:progress", ExportProgress{
+						Phase:         "exporting",
+						Database:      dbName,
+						Collection:    collName,
+						Current:       docCount,
+						Total:         estimatedCount,
+						DatabaseIndex: dbIdx + 1,
+						DatabaseTotal: totalDatabases,
+					})
+				}
+			}
+			if cancelled {
+				docCursor.Close(ctx)
+				cancel()
+				a.emitEvent("export:cancelled", nil)
+				zipWriter.Close()
+				zipFile.Close()
+				os.Remove(filePath)
+				return fmt.Errorf("export cancelled")
+			}
+			docCursor.Close(ctx)
+			cancel()
+
+			// Export indexes
+			ctx2, cancel2 := a.contextWithTimeout()
+			indexCursor, err := coll.Indexes().List(ctx2)
+			if err != nil {
+				cancel2()
+				continue
+			}
+
+			var indexes []bson.M
+			for indexCursor.Next(ctx2) {
+				var idx bson.M
+				if err := indexCursor.Decode(&idx); err != nil {
+					continue
+				}
+				// Skip the _id index (auto-created)
+				if name, ok := idx["name"].(string); ok && name == "_id_" {
+					continue
+				}
+				indexes = append(indexes, idx)
+			}
+			indexCursor.Close(ctx2)
+			cancel2()
+
+			// Write indexes.json
+			indexPath := fmt.Sprintf("%s/%s/indexes.json", dbName, collName)
+			indexWriter, err := zipWriter.Create(indexPath)
+			if err != nil {
+				continue
+			}
+			indexData, _ := json.MarshalIndent(indexes, "", "  ")
+			indexWriter.Write(indexData)
+
+			dbManifest.Collections = append(dbManifest.Collections, ExportManifestCollection{
+				Name:       collName,
+				DocCount:   docCount,
+				IndexCount: len(indexes),
+			})
+		}
+
+		manifest.Databases = append(manifest.Databases, dbManifest)
+	}
+
+	// Write manifest
+	manifestWriter, err := zipWriter.Create("manifest.json")
+	if err != nil {
+		return fmt.Errorf("failed to create manifest: %w", err)
+	}
+	manifestData, _ := json.MarshalIndent(manifest, "", "  ")
+	manifestWriter.Write(manifestData)
+
+	a.emitEvent("export:complete", nil)
+	return nil
+}
+
+// CancelExport cancels an ongoing export operation
+func (a *App) CancelExport() {
+	if a.exportCancel != nil {
+		a.exportCancel()
+	}
+}
+
+// PreviewImportFile opens a file dialog and returns info about the databases in the zip
+func (a *App) PreviewImportFile() (*ImportPreview, error) {
+	// Open file dialog
+	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Import File",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Zip Files (*.zip)", Pattern: "*.zip"},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file dialog: %w", err)
+	}
+	if filePath == "" {
+		return nil, nil // User cancelled
+	}
+
+	// Open zip file
+	zipReader, err := zip.OpenReader(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open zip file: %w", err)
+	}
+	defer zipReader.Close()
+
+	// Read manifest
+	var manifest ExportManifest
+	for _, f := range zipReader.File {
+		if f.Name == "manifest.json" {
+			rc, err := f.Open()
+			if err != nil {
+				return nil, fmt.Errorf("failed to open manifest: %w", err)
+			}
+			if err := json.NewDecoder(rc).Decode(&manifest); err != nil {
+				rc.Close()
+				return nil, fmt.Errorf("failed to parse manifest: %w", err)
+			}
+			rc.Close()
+			break
+		}
+	}
+
+	if len(manifest.Databases) == 0 {
+		return nil, fmt.Errorf("no databases found in archive")
+	}
+
+	// Build preview
+	preview := &ImportPreview{
+		FilePath:   filePath,
+		ExportedAt: manifest.ExportedAt.Format("2006-01-02 15:04:05"),
+		Databases:  make([]ImportPreviewDatabase, 0, len(manifest.Databases)),
+	}
+
+	for _, db := range manifest.Databases {
+		var docCount int64
+		for _, coll := range db.Collections {
+			docCount += coll.DocCount
+		}
+		preview.Databases = append(preview.Databases, ImportPreviewDatabase{
+			Name:            db.Name,
+			CollectionCount: len(db.Collections),
+			DocumentCount:   docCount,
+		})
+	}
+
+	return preview, nil
+}
+
+// DryRunImport previews what an import would do without making changes
+func (a *App) DryRunImport(connID string, opts ImportOptions) (*ImportResult, error) {
+	if opts.FilePath == "" {
+		return nil, fmt.Errorf("no file path specified")
+	}
+
+	client, err := a.getClient(connID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Open zip file
+	zipReader, err := zip.OpenReader(opts.FilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open zip file: %w", err)
+	}
+	defer zipReader.Close()
+
+	// Read manifest
+	var manifest ExportManifest
+	for _, f := range zipReader.File {
+		if f.Name == "manifest.json" {
+			rc, err := f.Open()
+			if err != nil {
+				return nil, fmt.Errorf("failed to open manifest: %w", err)
+			}
+			if err := json.NewDecoder(rc).Decode(&manifest); err != nil {
+				rc.Close()
+				return nil, fmt.Errorf("failed to parse manifest: %w", err)
+			}
+			rc.Close()
+			break
+		}
+	}
+
+	// Build selected databases set
+	selectedDbs := make(map[string]bool)
+	for _, db := range opts.Databases {
+		selectedDbs[db] = true
+	}
+
+	// Filter manifest databases
+	var databasesToCheck []ExportManifestDatabase
+	for _, db := range manifest.Databases {
+		if len(selectedDbs) == 0 || selectedDbs[db.Name] {
+			databasesToCheck = append(databasesToCheck, db)
+		}
+	}
+
+	if len(databasesToCheck) == 0 {
+		return nil, fmt.Errorf("no databases selected for import")
+	}
+
+	result := &ImportResult{
+		Databases: []DatabaseImportResult{},
+		Errors:    []string{},
+	}
+
+	// Build a map for quick file lookup
+	fileMap := make(map[string]*zip.File)
+	for _, f := range zipReader.File {
+		fileMap[f.Name] = f
+	}
+
+	totalDatabases := len(databasesToCheck)
+
+	// Check each database
+	for dbIdx, dbManifest := range databasesToCheck {
+		dbName := dbManifest.Name
+		db := client.Database(dbName)
+
+		dbResult := DatabaseImportResult{
+			Name:        dbName,
+			Collections: []CollectionImportResult{},
+		}
+
+		// Emit progress
+		a.emitEvent("dryrun:progress", ExportProgress{
+			Phase:         "analyzing",
+			Database:      dbName,
+			DatabaseIndex: dbIdx + 1,
+			DatabaseTotal: totalDatabases,
+		})
+
+		// Override mode: count what currently exists (will be dropped)
+		if opts.Mode == "override" {
+			// Get list of collections currently in this database
+			ctx, cancel := a.contextWithTimeout()
+			collNames, err := db.ListCollectionNames(ctx, bson.M{})
+			cancel()
+			if err != nil {
+				collNames = []string{}
+			}
+
+			// Count documents in each current collection
+			var dbCurrentTotal int64
+			for _, collName := range collNames {
+				// Skip system collections
+				if strings.HasPrefix(collName, "system.") {
+					continue
+				}
+				ctx, cancel := a.contextWithTimeout()
+				count, err := db.Collection(collName).CountDocuments(ctx, bson.M{})
+				cancel()
+				if err == nil {
+					dbCurrentTotal += count
+				}
+			}
+			dbResult.CurrentCount = dbCurrentTotal
+			result.DocumentsDropped += dbCurrentTotal
+
+			// Now add the collections from the archive (what will be inserted)
+			for _, collManifest := range dbManifest.Collections {
+				// Check if this collection currently exists and get its count
+				var currentCount int64
+				for _, existingColl := range collNames {
+					if existingColl == collManifest.Name {
+						ctx, cancel := a.contextWithTimeout()
+						count, err := db.Collection(collManifest.Name).CountDocuments(ctx, bson.M{})
+						cancel()
+						if err == nil {
+							currentCount = count
+						}
+						break
+					}
+				}
+
+				collResult := CollectionImportResult{
+					Name:              collManifest.Name,
+					DocumentsInserted: collManifest.DocCount,
+					DocumentsSkipped:  0,
+					CurrentCount:      currentCount,
+				}
+				dbResult.Collections = append(dbResult.Collections, collResult)
+				result.DocumentsInserted += collManifest.DocCount
+			}
+			result.Databases = append(result.Databases, dbResult)
+			continue
+		}
+
+		// Skip mode: check which documents exist
+		for _, collManifest := range dbManifest.Collections {
+			collName := collManifest.Name
+			coll := db.Collection(collName)
+
+			collResult := CollectionImportResult{
+				Name: collName,
+			}
+
+			a.emitEvent("dryrun:progress", ExportProgress{
+				Phase:         "analyzing",
+				Database:      dbName,
+				Collection:    collName,
+				Current:       0,
+				Total:         collManifest.DocCount,
+				DatabaseIndex: dbIdx + 1,
+				DatabaseTotal: totalDatabases,
+			})
+
+			// Read documents from NDJSON
+			ndjsonPath := fmt.Sprintf("%s/%s/documents.ndjson", dbName, collName)
+			ndjsonFile := fileMap[ndjsonPath]
+			if ndjsonFile == nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("missing documents file for %s.%s", dbName, collName))
+				dbResult.Collections = append(dbResult.Collections, collResult)
+				continue
+			}
+
+			rc, err := ndjsonFile.Open()
+			if err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("failed to open documents for %s.%s: %v", dbName, collName, err))
+				dbResult.Collections = append(dbResult.Collections, collResult)
+				continue
+			}
+
+			scanner := bufio.NewScanner(rc)
+			const maxScanTokenSize = 16 * 1024 * 1024
+			buf := make([]byte, maxScanTokenSize)
+			scanner.Buffer(buf, maxScanTokenSize)
+
+			// Collect IDs in batches to check existence
+			var ids []interface{}
+			var current int64
+			const batchSize = 500
+
+			for scanner.Scan() {
+				line := scanner.Bytes()
+				if len(line) == 0 {
+					continue
+				}
+
+				var doc bson.M
+				if err := bson.UnmarshalExtJSON(line, true, &doc); err != nil {
+					continue
+				}
+
+				if id, ok := doc["_id"]; ok {
+					ids = append(ids, id)
+				}
+
+				current++
+
+				// Check batch
+				if len(ids) >= batchSize {
+					existing := a.countExistingIds(coll, ids)
+					collResult.DocumentsSkipped += existing
+					collResult.DocumentsInserted += int64(len(ids)) - existing
+					ids = ids[:0]
+				}
+
+				if current%1000 == 0 {
+					a.emitEvent("dryrun:progress", ExportProgress{
+						Phase:         "analyzing",
+						Database:      dbName,
+						Collection:    collName,
+						Current:       current,
+						Total:         collManifest.DocCount,
+						DatabaseIndex: dbIdx + 1,
+						DatabaseTotal: totalDatabases,
+					})
+				}
+			}
+			rc.Close()
+
+			// Check remaining IDs
+			if len(ids) > 0 {
+				existing := a.countExistingIds(coll, ids)
+				collResult.DocumentsSkipped += existing
+				collResult.DocumentsInserted += int64(len(ids)) - existing
+			}
+
+			result.DocumentsInserted += collResult.DocumentsInserted
+			result.DocumentsSkipped += collResult.DocumentsSkipped
+			dbResult.Collections = append(dbResult.Collections, collResult)
+		}
+
+		result.Databases = append(result.Databases, dbResult)
+	}
+
+	a.emitEvent("dryrun:complete", result)
+	return result, nil
+}
+
+// countExistingIds counts how many of the given IDs exist in the collection
+func (a *App) countExistingIds(coll *mongo.Collection, ids []interface{}) int64 {
+	ctx, cancel := a.contextWithTimeout()
+	defer cancel()
+
+	count, err := coll.CountDocuments(ctx, bson.M{"_id": bson.M{"$in": ids}})
+	if err != nil {
+		return 0
+	}
+	return count
+}
+
+// ImportDatabases imports selected databases from a zip file
+func (a *App) ImportDatabases(connID string, opts ImportOptions) (*ImportResult, error) {
+	if opts.FilePath == "" {
+		return nil, fmt.Errorf("no file path specified")
+	}
+
+	client, err := a.getClient(connID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Open zip file
+	zipReader, err := zip.OpenReader(opts.FilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open zip file: %w", err)
+	}
+	defer zipReader.Close()
+
+	// Read manifest
+	var manifest ExportManifest
+	for _, f := range zipReader.File {
+		if f.Name == "manifest.json" {
+			rc, err := f.Open()
+			if err != nil {
+				return nil, fmt.Errorf("failed to open manifest: %w", err)
+			}
+			if err := json.NewDecoder(rc).Decode(&manifest); err != nil {
+				rc.Close()
+				return nil, fmt.Errorf("failed to parse manifest: %w", err)
+			}
+			rc.Close()
+			break
+		}
+	}
+
+	// Create cancellable context for the import operation
+	importCtx, importCancel := context.WithCancel(context.Background())
+	a.importCancel = importCancel
+	defer func() {
+		a.importCancel = nil
+	}()
+
+	// Filter databases if specified
+	selectedDbs := make(map[string]bool)
+	if len(opts.Databases) > 0 {
+		for _, db := range opts.Databases {
+			selectedDbs[db] = true
+		}
+	}
+
+	// Filter manifest databases
+	var databasesToImport []ExportManifestDatabase
+	for _, db := range manifest.Databases {
+		if len(selectedDbs) == 0 || selectedDbs[db.Name] {
+			databasesToImport = append(databasesToImport, db)
+		}
+	}
+
+	if len(databasesToImport) == 0 {
+		return nil, fmt.Errorf("no databases selected for import")
+	}
+
+	result := &ImportResult{
+		Databases: []DatabaseImportResult{},
+		Errors:    []string{},
+	}
+
+	// Build a map for quick file lookup
+	fileMap := make(map[string]*zip.File)
+	for _, f := range zipReader.File {
+		fileMap[f.Name] = f
+	}
+
+	totalDatabases := len(databasesToImport)
+
+	// Import each database
+	for dbIdx, dbManifest := range databasesToImport {
+		// Check for cancellation
+		select {
+		case <-importCtx.Done():
+			a.emitEvent("import:cancelled", result)
+			return result, nil
+		default:
+		}
+
+		dbName := dbManifest.Name
+		db := client.Database(dbName)
+
+		// Track per-database results
+		dbResult := DatabaseImportResult{
+			Name:        dbName,
+			Collections: []CollectionImportResult{},
+		}
+
+		// Override mode: drop the database first
+		if opts.Mode == "override" {
+			a.emitEvent("import:progress", ExportProgress{
+				Phase:         "dropping",
+				Database:      dbName,
+				Collection:    "",
+				Current:       0,
+				Total:         0,
+				DatabaseIndex: dbIdx + 1,
+				DatabaseTotal: totalDatabases,
+			})
+			ctx, cancel := a.contextWithTimeout()
+			if err := db.Drop(ctx); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("failed to drop database %s: %v", dbName, err))
+			}
+			cancel()
+		}
+
+		for _, collManifest := range dbManifest.Collections {
+			collName := collManifest.Name
+			coll := db.Collection(collName)
+
+			// Track per-collection results
+			collResult := CollectionImportResult{
+				Name: collName,
+			}
+
+			// Emit progress
+			a.emitEvent("import:progress", ExportProgress{
+				Phase:         "importing",
+				Database:      dbName,
+				Collection:    collName,
+				Current:       0,
+				Total:         collManifest.DocCount,
+				DatabaseIndex: dbIdx + 1,
+				DatabaseTotal: totalDatabases,
+			})
+
+			// Import documents
+			ndjsonPath := fmt.Sprintf("%s/%s/documents.ndjson", dbName, collName)
+			ndjsonFile := fileMap[ndjsonPath]
+			if ndjsonFile == nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("missing documents file for %s.%s", dbName, collName))
+				dbResult.Collections = append(dbResult.Collections, collResult)
+				continue
+			}
+
+			rc, err := ndjsonFile.Open()
+			if err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("failed to open documents for %s.%s: %v", dbName, collName, err))
+				dbResult.Collections = append(dbResult.Collections, collResult)
+				continue
+			}
+
+			// Process documents in batches using bufio.Scanner for NDJSON
+			scanner := bufio.NewScanner(rc)
+			// Increase buffer size for large documents
+			const maxScanTokenSize = 16 * 1024 * 1024 // 16MB
+			buf := make([]byte, maxScanTokenSize)
+			scanner.Buffer(buf, maxScanTokenSize)
+
+			var batch []interface{}
+			var current int64
+			const batchSize = 100
+
+			cancelled := false
+			for scanner.Scan() {
+				// Check for cancellation periodically
+				if current%100 == 0 {
+					select {
+					case <-importCtx.Done():
+						cancelled = true
+					default:
+					}
+				}
+				if cancelled {
+					break
+				}
+
+				line := scanner.Bytes()
+				if len(line) == 0 {
+					continue
+				}
+
+				var doc bson.M
+				if err := bson.UnmarshalExtJSON(line, true, &doc); err != nil {
+					continue
+				}
+
+				// Both modes now just batch insert (override already dropped db, skip uses unordered insert)
+				batch = append(batch, doc)
+				if len(batch) >= batchSize {
+					inserted, skipped := a.insertBatchSkipDuplicates(coll, batch)
+					collResult.DocumentsInserted += inserted
+					collResult.DocumentsSkipped += skipped
+					result.DocumentsInserted += inserted
+					result.DocumentsSkipped += skipped
+					batch = batch[:0]
+				}
+
+				current++
+				if current%1000 == 0 {
+					a.emitEvent("import:progress", ExportProgress{
+						Phase:         "importing",
+						Database:      dbName,
+						Collection:    collName,
+						Current:       current,
+						Total:         collManifest.DocCount,
+						DatabaseIndex: dbIdx + 1,
+						DatabaseTotal: totalDatabases,
+					})
+				}
+			}
+			rc.Close()
+
+			// Check if we were cancelled
+			if cancelled {
+				// Save partial collection result
+				dbResult.Collections = append(dbResult.Collections, collResult)
+				result.Databases = append(result.Databases, dbResult)
+				a.emitEvent("import:cancelled", result)
+				return result, nil
+			}
+
+			// Insert remaining batch
+			if len(batch) > 0 && opts.Mode != "upsert" {
+				inserted, skipped := a.insertBatchSkipDuplicates(coll, batch)
+				collResult.DocumentsInserted += inserted
+				collResult.DocumentsSkipped += skipped
+				result.DocumentsInserted += inserted
+				result.DocumentsSkipped += skipped
+			}
+
+			dbResult.Collections = append(dbResult.Collections, collResult)
+
+			// Import indexes
+			indexPath := fmt.Sprintf("%s/%s/indexes.json", dbName, collName)
+			indexFile := fileMap[indexPath]
+			if indexFile != nil {
+				rc, err := indexFile.Open()
+				if err == nil {
+					var indexes []bson.M
+					if err := json.NewDecoder(rc).Decode(&indexes); err == nil {
+						for _, idx := range indexes {
+							// Extract keys and options
+							keys, ok := idx["key"].(map[string]interface{})
+							if !ok {
+								continue
+							}
+
+							keyDoc := bson.D{}
+							for k, v := range keys {
+								keyDoc = append(keyDoc, bson.E{Key: k, Value: v})
+							}
+
+							indexOpts := options.Index()
+							if name, ok := idx["name"].(string); ok {
+								indexOpts.SetName(name)
+							}
+							if unique, ok := idx["unique"].(bool); ok && unique {
+								indexOpts.SetUnique(true)
+							}
+							if sparse, ok := idx["sparse"].(bool); ok && sparse {
+								indexOpts.SetSparse(true)
+							}
+
+							ctx, cancel := a.contextWithTimeout()
+							_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+								Keys:    keyDoc,
+								Options: indexOpts,
+							})
+							cancel()
+							if err != nil {
+								// Index might already exist, ignore error
+							}
+						}
+					}
+					rc.Close()
+				}
+			}
+		}
+
+		result.Databases = append(result.Databases, dbResult)
+	}
+
+	a.emitEvent("import:complete", result)
+	return result, nil
+}
+
+// CancelImport cancels an ongoing import operation
+func (a *App) CancelImport() {
+	if a.importCancel != nil {
+		a.importCancel()
+	}
+}
+
+// insertBatchSkipDuplicates inserts documents, skipping duplicates
+func (a *App) insertBatchSkipDuplicates(coll *mongo.Collection, batch []interface{}) (inserted, skipped int64) {
+	if len(batch) == 0 {
+		return 0, 0
+	}
+
+	ctx, cancel := a.contextWithTimeout()
+	defer cancel()
+
+	opts := options.InsertMany().SetOrdered(false)
+	result, err := coll.InsertMany(ctx, batch, opts)
+	if err != nil {
+		// Check for bulk write errors (duplicate key errors)
+		if bwe, ok := err.(mongo.BulkWriteException); ok {
+			inserted = int64(len(batch) - len(bwe.WriteErrors))
+			skipped = int64(len(bwe.WriteErrors))
+			return
+		}
+		// Other error, count all as skipped
+		return 0, int64(len(batch))
+	}
+
+	return int64(len(result.InsertedIDs)), 0
 }
 
 // =============================================================================

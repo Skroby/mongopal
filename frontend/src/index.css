@@ -95,6 +95,10 @@ select:focus-visible {
   @apply bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100;
 }
 
+.btn-danger {
+  @apply bg-red-600 text-white hover:bg-red-700;
+}
+
 /* Input styles */
 .input {
   @apply w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded;

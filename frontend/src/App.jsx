@@ -6,6 +6,9 @@ import DocumentEditView from './components/DocumentEditView'
 import SchemaView from './components/SchemaView'
 import ConnectionForm from './components/ConnectionForm'
 import Settings from './components/Settings'
+import ExportDatabasesModal from './components/ExportDatabasesModal'
+import ImportDatabasesModal from './components/ImportDatabasesModal'
+import ConfirmDialog from './components/ConfirmDialog'
 import { useNotification } from './components/NotificationContext'
 
 // Wails runtime bindings will be available at window.go
@@ -34,6 +37,9 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
   const [connectingId, setConnectingId] = useState(null) // Currently connecting
+  const [exportModal, setExportModal] = useState(null) // { connectionId, connectionName }
+  const [importModal, setImportModal] = useState(null) // { connectionId, connectionName }
+  const [confirmDialog, setConfirmDialog] = useState(null) // { title, message, onConfirm, danger }
 
   // Get current tab data (must be before useEffects that reference it)
   const currentTab = tabs.find(t => t.id === activeTab)
@@ -380,17 +386,29 @@ function App() {
     }
   }
 
-  const handleDeleteConnection = async (connId) => {
-    try {
-      if (go?.DeleteSavedConnection) {
-        await go.DeleteSavedConnection(connId)
-        await loadConnections()
-        notify.success('Connection deleted')
-      }
-    } catch (err) {
-      console.error('Failed to delete connection:', err)
-      notify.error(`Failed to delete connection: ${err.message || err}`)
-    }
+  const handleDeleteConnection = (connId) => {
+    const conn = connections.find(c => c.id === connId)
+    const connName = conn?.name || 'this connection'
+
+    setConfirmDialog({
+      title: 'Delete Connection',
+      message: `Delete "${connName}"?\n\nThis action cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        try {
+          if (go?.DeleteSavedConnection) {
+            await go.DeleteSavedConnection(connId)
+            await loadConnections()
+            notify.success('Connection deleted')
+          }
+        } catch (err) {
+          console.error('Failed to delete connection:', err)
+          notify.error(`Failed to delete connection: ${err.message || err}`)
+        }
+      },
+    })
   }
 
   const handleCreateFolder = async (name) => {
@@ -458,6 +476,8 @@ function App() {
             onDropCollection={handleDropCollection}
             onClearCollection={handleClearCollection}
             onViewSchema={openSchemaTab}
+            onExportDatabases={(connId, connName) => setExportModal({ connectionId: connId, connectionName: connName })}
+            onImportDatabases={(connId, connName) => setImportModal({ connectionId: connId, connectionName: connName })}
           />
         </div>
 
@@ -582,6 +602,41 @@ function App() {
       {showSettings && (
         <Settings onClose={() => setShowSettings(false)} />
       )}
+
+      {/* Export databases modal */}
+      {exportModal && (
+        <ExportDatabasesModal
+          connectionId={exportModal.connectionId}
+          connectionName={exportModal.connectionName}
+          onClose={() => setExportModal(null)}
+        />
+      )}
+
+      {/* Import databases modal */}
+      {importModal && (
+        <ImportDatabasesModal
+          connectionId={importModal.connectionId}
+          connectionName={importModal.connectionName}
+          onClose={() => setImportModal(null)}
+          onComplete={() => {
+            // Optionally refresh the connection tree after import
+            if (go?.ListDatabases) {
+              go.ListDatabases(importModal.connectionId).catch(console.error)
+            }
+          }}
+        />
+      )}
+
+      {/* Confirm dialog */}
+      <ConfirmDialog
+        open={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message}
+        confirmLabel={confirmDialog?.confirmLabel}
+        danger={confirmDialog?.danger}
+        onConfirm={confirmDialog?.onConfirm}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div>
   )
 }
