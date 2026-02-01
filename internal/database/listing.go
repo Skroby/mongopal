@@ -55,6 +55,10 @@ func (s *Service) ListDatabases(connID string) ([]types.DatabaseInfo, error) {
 
 // ListCollections returns all collections in a database.
 func (s *Service) ListCollections(connID, dbName string) ([]types.CollectionInfo, error) {
+	if err := ValidateDatabaseName(dbName); err != nil {
+		return nil, err
+	}
+
 	client, err := s.state.GetClient(connID)
 	if err != nil {
 		return nil, err
@@ -108,6 +112,10 @@ func (s *Service) ListCollections(connID, dbName string) ([]types.CollectionInfo
 
 // ListIndexes returns all indexes for a collection.
 func (s *Service) ListIndexes(connID, dbName, collName string) ([]types.IndexInfo, error) {
+	if err := ValidateDatabaseAndCollection(dbName, collName); err != nil {
+		return nil, err
+	}
+
 	client, err := s.state.GetClient(connID)
 	if err != nil {
 		return nil, err

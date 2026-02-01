@@ -101,13 +101,16 @@ func (s *Service) FindDocuments(connID, dbName, collName, query string, opts typ
 
 	// Collect results as Extended JSON
 	var documents []string
+	var decodeErrors, marshalErrors int
 	for cursor.Next(ctx) {
 		var doc bson.M
 		if err := cursor.Decode(&doc); err != nil {
+			decodeErrors++
 			continue
 		}
 		jsonBytes, err := bson.MarshalExtJSON(doc, true, false)
 		if err != nil {
+			marshalErrors++
 			continue
 		}
 		documents = append(documents, string(jsonBytes))
@@ -115,11 +118,21 @@ func (s *Service) FindDocuments(connID, dbName, collName, query string, opts typ
 
 	queryTime := time.Since(startTime).Milliseconds()
 
+	// Build warnings for any decode/marshal errors
+	var warnings []string
+	if decodeErrors > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d document(s) failed to decode", decodeErrors))
+	}
+	if marshalErrors > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d document(s) failed to marshal to JSON", marshalErrors))
+	}
+
 	return &types.QueryResult{
 		Documents:   documents,
 		Total:       total,
 		HasMore:     opts.Skip+int64(len(documents)) < total,
 		QueryTimeMs: queryTime,
+		Warnings:    warnings,
 	}, nil
 }
 

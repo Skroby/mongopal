@@ -1,9 +1,7 @@
 package storage
 
 import (
-	"fmt"
-	"time"
-
+	"github.com/google/uuid"
 	"github.com/peternagy/mongopal/internal/core"
 	"github.com/peternagy/mongopal/internal/types"
 )
@@ -25,7 +23,7 @@ func (s *FolderService) CreateFolder(name, parentID string) (types.Folder, error
 	defer s.state.Mu.Unlock()
 
 	folder := types.Folder{
-		ID:       fmt.Sprintf("%d", time.Now().UnixNano()),
+		ID:       uuid.New().String(),
 		Name:     name,
 		ParentID: parentID,
 	}

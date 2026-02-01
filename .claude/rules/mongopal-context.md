@@ -2,6 +2,8 @@
 
 Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing documents. Go+React via Wails framework.
 
+> **IMPORTANT**: When modifying project structure, adding packages, or changing documentation, update BOTH this file AND `README.md` to keep them in sync.
+
 ## Tech Stack
 - **Desktop**: Wails v2
 - **Backend**: Go 1.24+, mongo-go-driver v1.17
@@ -185,4 +187,4 @@ The backend uses a thin facade pattern:
 | Import | ImportDatabases, ImportCollections, PreviewImportFile | `internal/importer` |
 | Script | ExecuteScript, CheckMongoshAvailable | `internal/script` |
 
-> **Maintenance**: Update this file when codebase structure changes.
+> **Maintenance**: Update this file AND `README.md` when codebase structure changes.

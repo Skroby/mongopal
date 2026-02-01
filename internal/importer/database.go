@@ -546,7 +546,7 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 			}
 
 			// Insert remaining batch
-			if len(batch) > 0 && opts.Mode != "upsert" {
+			if len(batch) > 0 {
 				inserted, skipped := insertBatchSkipDuplicates(coll, batch)
 				collResult.DocumentsInserted += inserted
 				collResult.DocumentsSkipped += skipped
@@ -573,7 +573,12 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 
 							keyDoc := bson.D{}
 							for k, v := range keys {
-								keyDoc = append(keyDoc, bson.E{Key: k, Value: v})
+								// JSON numbers decode as float64, MongoDB expects int32 for sort direction
+								if f, ok := v.(float64); ok {
+									keyDoc = append(keyDoc, bson.E{Key: k, Value: int32(f)})
+								} else {
+									keyDoc = append(keyDoc, bson.E{Key: k, Value: v})
+								}
 							}
 
 							indexOpts := options.Index()

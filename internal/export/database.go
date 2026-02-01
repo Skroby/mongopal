@@ -141,6 +141,10 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 		cursor, err := db.ListCollections(ctx, bson.D{})
 		if err != nil {
 			cancel()
+			s.state.EmitEvent("export:warning", map[string]interface{}{
+				"database": dbName,
+				"error":    fmt.Sprintf("failed to list collections: %v", err),
+			})
 			continue
 		}
 
@@ -151,6 +155,10 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 		if err := cursor.All(ctx, &collInfos); err != nil {
 			cursor.Close(ctx)
 			cancel()
+			s.state.EmitEvent("export:warning", map[string]interface{}{
+				"database": dbName,
+				"error":    fmt.Sprintf("failed to read collection list: %v", err),
+			})
 			continue
 		}
 		cursor.Close(ctx)
@@ -185,6 +193,11 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 			docCursor, err := coll.Find(ctx, bson.D{})
 			if err != nil {
 				cancel()
+				s.state.EmitEvent("export:warning", map[string]interface{}{
+					"database":   dbName,
+					"collection": collName,
+					"error":      fmt.Sprintf("failed to query documents: %v", err),
+				})
 				continue
 			}
 
@@ -197,6 +210,7 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 			}
 
 			var docCount int64
+			var skippedDocs int64
 			cancelled := false
 			for docCursor.Next(ctx) {
 				// Check for cancellation periodically
@@ -213,10 +227,12 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 
 				var doc bson.M
 				if err := docCursor.Decode(&doc); err != nil {
+					skippedDocs++
 					continue
 				}
 				jsonBytes, err := bson.MarshalExtJSON(doc, true, false)
 				if err != nil {
+					skippedDocs++
 					continue
 				}
 				ndjsonWriter.Write(jsonBytes)
@@ -236,6 +252,16 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 					})
 				}
 			}
+
+			// Emit warning if documents were skipped
+			if skippedDocs > 0 {
+				s.state.EmitEvent("export:warning", map[string]interface{}{
+					"database":   dbName,
+					"collection": collName,
+					"skipped":    skippedDocs,
+					"error":      fmt.Sprintf("%d document(s) could not be exported", skippedDocs),
+				})
+			}
 			if cancelled {
 				docCursor.Close(ctx)
 				cancel()
@@ -249,36 +275,38 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 			cancel()
 
 			// Export indexes
+			var indexes []bson.M
 			ctx2, cancel2 := core.ContextWithTimeout()
 			indexCursor, err := coll.Indexes().List(ctx2)
 			if err != nil {
-				cancel2()
-				continue
-			}
-
-			var indexes []bson.M
-			for indexCursor.Next(ctx2) {
-				var idx bson.M
-				if err := indexCursor.Decode(&idx); err != nil {
-					continue
+				s.state.EmitEvent("export:warning", map[string]interface{}{
+					"database":   dbName,
+					"collection": collName,
+					"error":      fmt.Sprintf("failed to list indexes: %v", err),
+				})
+			} else {
+				for indexCursor.Next(ctx2) {
+					var idx bson.M
+					if err := indexCursor.Decode(&idx); err != nil {
+						continue
+					}
+					// Skip the _id index (auto-created)
+					if name, ok := idx["name"].(string); ok && name == "_id_" {
+						continue
+					}
+					indexes = append(indexes, idx)
 				}
-				// Skip the _id index (auto-created)
-				if name, ok := idx["name"].(string); ok && name == "_id_" {
-					continue
-				}
-				indexes = append(indexes, idx)
+				indexCursor.Close(ctx2)
 			}
-			indexCursor.Close(ctx2)
 			cancel2()
 
-			// Write indexes.json
+			// Write indexes.json (even if empty)
 			indexPath := fmt.Sprintf("%s/%s/indexes.json", dbName, collName)
 			indexWriter, err := zipWriter.Create(indexPath)
-			if err != nil {
-				continue
+			if err == nil {
+				indexData, _ := json.MarshalIndent(indexes, "", "  ")
+				indexWriter.Write(indexData)
 			}
-			indexData, _ := json.MarshalIndent(indexes, "", "  ")
-			indexWriter.Write(indexData)
 
 			dbManifest.Collections = append(dbManifest.Collections, types.ExportManifestCollection{
 				Name:       collName,

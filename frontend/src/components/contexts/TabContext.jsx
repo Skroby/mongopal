@@ -159,16 +159,18 @@ export function TabProvider({ children }) {
   const closeTab = useCallback((tabId) => {
     setTabs(prev => {
       const filtered = prev.filter(t => t.id !== tabId)
-      // If we're closing the active tab, select another
-      if (activeTab === tabId && filtered.length > 0) {
-        // Select the last tab or the one before the closed tab
-        setActiveTab(filtered[filtered.length - 1]?.id || null)
-      } else if (filtered.length === 0) {
-        setActiveTab(null)
-      }
+      // Use functional update for activeTab to avoid stale closure
+      setActiveTab(currentActiveTab => {
+        if (currentActiveTab === tabId && filtered.length > 0) {
+          return filtered[filtered.length - 1]?.id || null
+        } else if (filtered.length === 0) {
+          return null
+        }
+        return currentActiveTab
+      })
       return filtered
     })
-  }, [activeTab])
+  }, [])
 
   const pinTab = useCallback((tabId) => {
     setTabs(prev => prev.map(t =>

@@ -28,7 +28,7 @@ const ChevronDown = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
-// Map color names to Tailwind CSS classes
+// Map color names to Tailwind CSS classes (static for Tailwind purge)
 const typeColorMap = {
   'green': 'text-green-400',
   'blue': 'text-blue-400',
@@ -40,6 +40,15 @@ const typeColorMap = {
   'red': 'text-red-400',
   'zinc': 'text-zinc-500',
   'default': 'text-zinc-300',
+}
+
+// Map occurrence color values to Tailwind CSS classes (static for Tailwind purge)
+const occurrenceColorMap = {
+  'green-500': 'text-green-500',
+  'green-400': 'text-green-400',
+  'yellow-400': 'text-yellow-400',
+  'orange-400': 'text-orange-400',
+  'red-400': 'text-red-400',
 }
 
 // Recursive component to render schema fields as a tree
@@ -64,7 +73,7 @@ function SchemaFieldNode({ name, field, level = 0, defaultExpanded = true }) {
         )}
         <span className="font-mono text-sm text-zinc-200">{name}</span>
         <span className={`font-mono text-xs ${typeColorMap[getTypeColor(field.type)]}`}>{field.type}</span>
-        <span className={`text-xs ml-auto text-${getOccurrenceColor(field.occurrence)}`}>
+        <span className={`text-xs ml-auto ${occurrenceColorMap[getOccurrenceColor(field.occurrence)] || 'text-zinc-400'}`}>
           {field.occurrence.toFixed(0)}%
         </span>
       </div>

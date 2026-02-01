@@ -10,6 +10,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/peternagy/mongopal/internal/core"
@@ -422,23 +423,36 @@ func (s *Service) ImportCollections(connID, dbName string, opts types.ImportOpti
 				rc.Close()
 
 				for _, idx := range indexes {
-					keys, ok := idx["key"].(bson.M)
+					keys, ok := idx["key"].(map[string]interface{})
 					if !ok {
 						continue
 					}
-					indexModel := options.Index()
+					// Convert keys to bson.D with proper int32 values
+					keyDoc := bson.D{}
+					for k, v := range keys {
+						// JSON numbers decode as float64, MongoDB expects int32 for sort direction
+						if f, ok := v.(float64); ok {
+							keyDoc = append(keyDoc, bson.E{Key: k, Value: int32(f)})
+						} else {
+							keyDoc = append(keyDoc, bson.E{Key: k, Value: v})
+						}
+					}
+					indexOpts := options.Index()
 					// Add options if present
 					if name, ok := idx["name"].(string); ok {
-						indexModel.SetName(name)
+						indexOpts.SetName(name)
 					}
 					if unique, ok := idx["unique"].(bool); ok && unique {
-						indexModel.SetUnique(true)
+						indexOpts.SetUnique(true)
+					}
+					if sparse, ok := idx["sparse"].(bool); ok && sparse {
+						indexOpts.SetSparse(true)
 					}
 					ctx, cancel := core.ContextWithTimeout()
-					coll.Indexes().CreateOne(ctx, struct {
-						Keys    interface{}
-						Options *options.IndexOptions
-					}{Keys: keys, Options: indexModel})
+					coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+						Keys:    keyDoc,
+						Options: indexOpts,
+					})
 					cancel()
 				}
 			}

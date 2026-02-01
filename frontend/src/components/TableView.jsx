@@ -278,16 +278,17 @@ export default function TableView({
 
   return (
     <div className="overflow-auto">
-      <table className="text-sm table-fixed">
+      <table className="text-sm table-fixed" role="grid" aria-label="Documents table">
         <thead className="bg-surface-secondary sticky top-0">
-          <tr>
+          <tr role="row">
             {/* Checkbox column header */}
-            <th className="px-3 py-2 w-10 border-b border-border">
+            <th scope="col" className="px-3 py-2 w-10 border-b border-border">
               <input
                 ref={headerCheckboxRef}
                 type="checkbox"
                 checked={selectionState === 'all'}
                 onChange={toggleAllSelection}
+                aria-label={selectionState === 'all' ? 'Deselect all documents' : 'Select all documents'}
                 title={selectionState === 'all' ? 'Deselect all' : 'Select all'}
               />
             </th>
@@ -301,6 +302,7 @@ export default function TableView({
               return (
               <th
                 key={col}
+                scope="col"
                 className={`px-3 py-2 text-left font-medium text-zinc-400 border-b border-border whitespace-nowrap relative group ${isSub ? 'bg-zinc-800/30' : ''}`}
                 style={{ width: columnWidths[col] || 150, minWidth: 60 }}
               >
@@ -358,6 +360,7 @@ export default function TableView({
                     checked={isSelected}
                     onChange={() => docId && toggleSelection(docId)}
                     disabled={!docId}
+                    aria-label={`Select document ${docId || idx + 1}`}
                   />
                 </td>
                 {columns.map(col => {
@@ -384,6 +387,8 @@ export default function TableView({
       {contextMenu && (
         <div
           ref={menuRef}
+          role="menu"
+          aria-label="Document actions"
           className="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50 min-w-[160px]"
           style={{
             left: contextMenu.x,
@@ -392,6 +397,7 @@ export default function TableView({
         >
           {contextMenu.cellValue !== undefined && (
             <button
+              role="menuitem"
               className="w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
               onClick={handleCopyValue}
             >
@@ -400,6 +406,7 @@ export default function TableView({
             </button>
           )}
           <button
+            role="menuitem"
             className="w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
             onClick={handleEdit}
           >
@@ -407,6 +414,7 @@ export default function TableView({
             Edit document
           </button>
           <button
+            role="menuitem"
             className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-700 flex items-center gap-2"
             onClick={handleDelete}
           >

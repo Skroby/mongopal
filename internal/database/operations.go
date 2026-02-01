@@ -12,6 +12,10 @@ import (
 
 // DropDatabase drops an entire database.
 func (s *Service) DropDatabase(connID, dbName string) error {
+	if err := ValidateDatabaseName(dbName); err != nil {
+		return err
+	}
+
 	client, err := s.state.GetClient(connID)
 	if err != nil {
 		return err
@@ -30,6 +34,10 @@ func (s *Service) DropDatabase(connID, dbName string) error {
 
 // DropCollection drops a collection from a database.
 func (s *Service) DropCollection(connID, dbName, collName string) error {
+	if err := ValidateDatabaseAndCollection(dbName, collName); err != nil {
+		return err
+	}
+
 	client, err := s.state.GetClient(connID)
 	if err != nil {
 		return err
@@ -48,6 +56,10 @@ func (s *Service) DropCollection(connID, dbName, collName string) error {
 
 // ClearCollection deletes all documents from a collection but keeps the collection.
 func (s *Service) ClearCollection(connID, dbName, collName string) error {
+	if err := ValidateDatabaseAndCollection(dbName, collName); err != nil {
+		return err
+	}
+
 	client, err := s.state.GetClient(connID)
 	if err != nil {
 		return err

@@ -26,7 +26,7 @@ func InitConfigDir() string {
 		configDir = os.Getenv("HOME")
 	}
 	dir := filepath.Join(configDir, "mongopal")
-	os.MkdirAll(dir, 0755)
+	os.MkdirAll(dir, 0700)
 	return dir
 }
 
@@ -78,7 +78,7 @@ func (s *Service) PersistConnections(connections []types.SavedConnection) error 
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.ConnectionsFile(), data, 0644)
+	return os.WriteFile(s.ConnectionsFile(), data, 0600)
 }
 
 // PersistFolders saves folders to disk.
@@ -87,5 +87,5 @@ func (s *Service) PersistFolders(folders []types.Folder) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.FoldersFile(), data, 0644)
+	return os.WriteFile(s.FoldersFile(), data, 0600)
 }

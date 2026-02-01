@@ -19,7 +19,7 @@ A lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing do
 
 ## Technology Stack
 
-- **Backend**: Go 1.22+
+- **Backend**: Go 1.24+
 - **MongoDB Driver**: mongo-go-driver
 - **Frontend**: React 18 + Vite
 - **Styling**: TailwindCSS
@@ -27,7 +27,7 @@ A lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing do
 
 ## Prerequisites
 
-- Go 1.22 or later
+- Go 1.24 or later
 - Node.js 18 or later
 - Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
 
@@ -73,11 +73,24 @@ make build-linux
 ```
 mongopal/
 ├── main.go                 # Entry point, Wails app setup
-├── app.go                  # All backend methods (MongoDB ops, connections)
+├── app.go                  # Thin facade for Wails bindings
 ├── app_test.go             # Backend unit tests
 ├── integration_test.go     # Integration tests (requires Docker)
 ├── wails.json              # Wails configuration
 ├── Makefile                # Build automation
+│
+├── internal/               # Backend packages
+│   ├── core/               # App state and event emitter
+│   ├── types/              # Shared type definitions
+│   ├── credential/         # Password/keyring management
+│   ├── storage/            # Config file I/O, connections
+│   ├── connection/         # Connect, Disconnect, TestConnection
+│   ├── database/           # List databases/collections, drop ops
+│   ├── document/           # Document CRUD operations
+│   ├── schema/             # Schema inference and export
+│   ├── export/             # Database/collection export
+│   ├── importer/           # Database/collection import
+│   └── script/             # Mongosh script execution
 │
 ├── frontend/
 │   ├── src/
@@ -111,7 +124,7 @@ make test
 ```bash
 make test-frontend
 # or watch mode
-npm test -- --watch
+cd frontend && npm run test:watch
 ```
 
 ### Backend tests only
@@ -131,6 +144,12 @@ make test-integration
 | `Cmd+S` | Save document |
 | `Cmd+Enter` | Execute query |
 | `Escape` | Close panel / cancel edit |
+
+## Documentation
+
+For detailed project context and architecture, see `.claude/rules/mongopal-context.md`.
+
+> **Maintenance**: Update this file AND `.claude/rules/mongopal-context.md` when codebase structure changes.
 
 ## License
 

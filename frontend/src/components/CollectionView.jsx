@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import Editor from '@monaco-editor/react'
 import TableView from './TableView'
 import BulkActionBar from './BulkActionBar'
@@ -101,6 +101,9 @@ export default function CollectionView({ connectionId, database, collection }) {
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [bulkDeleteProgress, setBulkDeleteProgress] = useState({ done: 0, total: 0 })
   const [exporting, setExporting] = useState(false)
+
+  // Memoize JSON stringified documents for JSON view (expensive for large datasets)
+  const documentsJson = useMemo(() => JSON.stringify(documents, null, 2), [documents])
 
   // Close history dropdown on click outside
   useEffect(() => {
@@ -803,7 +806,7 @@ export default function CollectionView({ connectionId, database, collection }) {
             height="100%"
             language="json"
             theme="vs-dark"
-            value={JSON.stringify(documents, null, 2)}
+            value={documentsJson}
             options={{
               readOnly: true,
               minimap: { enabled: false },

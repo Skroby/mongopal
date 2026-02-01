@@ -142,6 +142,19 @@ test-integration: test-integration-frontend test-integration-go
 # Run all tests (unit + integration)
 test-all: test test-integration
 
+# Run Go tests with coverage
+test-coverage-go:
+	go test -v -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
+
+# Run frontend tests with coverage
+test-coverage-frontend: generate
+	cd frontend && npm run test:coverage
+
+# Run all tests with coverage
+test-coverage: test-coverage-go test-coverage-frontend
+
 # ===========================================
 # Utilities
 # ===========================================

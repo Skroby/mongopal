@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/peternagy/mongopal/internal/core"
 	"github.com/peternagy/mongopal/internal/credential"
 	"github.com/peternagy/mongopal/internal/types"
@@ -139,7 +140,7 @@ func (s *ConnectionService) DuplicateConnection(connID, newName string) (types.S
 	}
 
 	newConn := types.SavedConnection{
-		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		ID:        uuid.New().String(),
 		Name:      newName,
 		FolderID:  original.FolderID,
 		URI:       original.URI,
@@ -197,7 +198,7 @@ func (s *ConnectionService) ImportConnections(jsonStr string) error {
 
 	// Add imported connections with new IDs
 	for _, c := range conns {
-		c.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+		c.ID = uuid.New().String()
 		c.CreatedAt = time.Now()
 		s.state.SavedConnections = append(s.state.SavedConnections, c)
 	}
@@ -238,7 +239,7 @@ func (s *ConnectionService) ConnectionFromURI(uri string) (types.SavedConnection
 	}
 
 	return types.SavedConnection{
-		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		ID:        uuid.New().String(),
 		Name:      name,
 		URI:       uri,
 		Color:     "#4CC38A",

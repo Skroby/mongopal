@@ -86,10 +86,11 @@ type QueryOptions struct {
 
 // QueryResult contains the result of a document query.
 type QueryResult struct {
-	Documents   []string `json:"documents"` // Extended JSON strings
+	Documents   []string `json:"documents"`           // Extended JSON strings
 	Total       int64    `json:"total"`
 	HasMore     bool     `json:"hasMore"`
 	QueryTimeMs int64    `json:"queryTimeMs"`
+	Warnings    []string `json:"warnings,omitempty"` // Non-fatal errors during query
 }
 
 // =============================================================================

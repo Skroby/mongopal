@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import Editor from '@monaco-editor/react'
 import { useNotification } from './NotificationContext'
 import ConfirmDialog from './ConfirmDialog'
+import MonacoErrorBoundary from './MonacoErrorBoundary'
 
 const go = window.go?.main?.App
 
@@ -324,27 +325,29 @@ export default function DocumentEditView({
 
       {/* Monaco Editor */}
       <div className="flex-1 overflow-hidden">
-        <Editor
-          height="100%"
-          language="json"
-          theme="vs-dark"
-          value={content}
-          onChange={(value) => setContent(value || '')}
-          onMount={handleEditorDidMount}
-          options={{
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            fontSize: 13,
-            lineNumbers: 'on',
-            folding: true,
-            renderWhitespace: 'selection',
-            wordWrap: 'on',
-            automaticLayout: true,
-            tabSize: 2,
-            insertSpaces: true,
-            formatOnPaste: true,
-          }}
-        />
+        <MonacoErrorBoundary value={content} onChange={(value) => setContent(value || '')} readOnly={isInsertMode && saving}>
+          <Editor
+            height="100%"
+            language="json"
+            theme="vs-dark"
+            value={content}
+            onChange={(value) => setContent(value || '')}
+            onMount={handleEditorDidMount}
+            options={{
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              fontSize: 13,
+              lineNumbers: 'on',
+              folding: true,
+              renderWhitespace: 'selection',
+              wordWrap: 'on',
+              automaticLayout: true,
+              tabSize: 2,
+              insertSpaces: true,
+              formatOnPaste: true,
+            }}
+          />
+        </MonacoErrorBoundary>
       </div>
 
       {/* Refresh confirmation dialog */}

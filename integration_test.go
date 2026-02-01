@@ -1078,3 +1078,464 @@ func TestIntegration_ExportImport_RoundTrip(t *testing.T) {
 		assert.Equal(t, int64(2), count, "Should have 2 users after override")
 	})
 }
+
+// =============================================================================
+// Priority 3.1: Extended CRUD Tests - Large Documents & Special Characters
+// =============================================================================
+
+func TestIntegration_LargeDocument(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Connect
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Create a document with a large string field (1MB of data)
+	largeString := make([]byte, 1024*1024) // 1MB
+	for i := range largeString {
+		largeString[i] = byte('a' + (i % 26))
+	}
+
+	docJSON := fmt.Sprintf(`{"name": "LargeDoc", "data": "%s"}`, string(largeString))
+
+	// Insert large document
+	insertedID, err := tc.app.InsertDocument(tc.connID, "testdb", "largedocs", docJSON)
+	require.NoError(t, err)
+	assert.NotEmpty(t, insertedID)
+
+	// Retrieve and verify
+	result, err := tc.app.FindDocuments(tc.connID, "testdb", "largedocs", "{}", types.QueryOptions{Limit: 1})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), result.Total)
+
+	// Verify we can get the document by ID
+	doc, err := tc.app.GetDocument(tc.connID, "testdb", "largedocs", insertedID)
+	require.NoError(t, err)
+	assert.Contains(t, doc, "LargeDoc")
+}
+
+func TestIntegration_SpecialCharactersInFieldNames(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Insert documents with special characters in field names
+	ctx := context.Background()
+	coll := tc.client.Database("testdb").Collection("specialchars")
+
+	// MongoDB allows many special characters in field names (except . and $)
+	_, err := coll.InsertOne(ctx, bson.M{
+		"normal_field":     "value1",
+		"field with space": "value2",
+		"field-with-dash":  "value3",
+		"field_with_unicode_日本語": "value4",
+		"field@with#special!chars": "value5",
+		"nested": bson.M{
+			"inner field": "inner value",
+		},
+	})
+	require.NoError(t, err)
+
+	// Connect via app
+	err = tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Find the document
+	result, err := tc.app.FindDocuments(tc.connID, "testdb", "specialchars", "{}", types.QueryOptions{Limit: 1})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), result.Total)
+
+	// Verify the document contains all fields
+	var doc map[string]interface{}
+	err = json.Unmarshal([]byte(result.Documents[0]), &doc)
+	require.NoError(t, err)
+
+	assert.Equal(t, "value1", doc["normal_field"])
+	assert.Equal(t, "value2", doc["field with space"])
+	assert.Equal(t, "value3", doc["field-with-dash"])
+	assert.Equal(t, "value4", doc["field_with_unicode_日本語"])
+	assert.Equal(t, "value5", doc["field@with#special!chars"])
+}
+
+func TestIntegration_BinaryDataTypes(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Insert document with various binary subtypes
+	ctx := context.Background()
+	coll := tc.client.Database("testdb").Collection("binarydata")
+
+	oid := primitive.NewObjectID()
+	uuid := primitive.Binary{
+		Subtype: 0x04, // UUID subtype
+		Data:    []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10},
+	}
+
+	_, err := coll.InsertOne(ctx, bson.M{
+		"_id":           oid,
+		"generic_binary": primitive.Binary{Subtype: 0x00, Data: []byte("generic binary data")},
+		"uuid_binary":    uuid,
+		"md5_binary":     primitive.Binary{Subtype: 0x05, Data: []byte{0xd4, 0x1d, 0x8c, 0xd9, 0x8f, 0x00, 0xb2, 0x04, 0xe9, 0x80, 0x09, 0x98, 0xec, 0xf8, 0x42, 0x7e}},
+	})
+	require.NoError(t, err)
+
+	// Connect via app
+	err = tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Get the document
+	docJSON, err := tc.app.GetDocument(tc.connID, "testdb", "binarydata", oid.Hex())
+	require.NoError(t, err)
+
+	var doc map[string]interface{}
+	err = json.Unmarshal([]byte(docJSON), &doc)
+	require.NoError(t, err)
+
+	// Verify binary fields are in Extended JSON format
+	assert.Contains(t, doc["generic_binary"], "$binary")
+	assert.Contains(t, doc["uuid_binary"], "$binary")
+	assert.Contains(t, doc["md5_binary"], "$binary")
+}
+
+func TestIntegration_DeepNesting(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Create a deeply nested document (10 levels)
+	nested := bson.M{"value": "deepest"}
+	for i := 0; i < 10; i++ {
+		nested = bson.M{fmt.Sprintf("level%d", 10-i): nested}
+	}
+
+	ctx := context.Background()
+	coll := tc.client.Database("testdb").Collection("nested")
+	_, err := coll.InsertOne(ctx, nested)
+	require.NoError(t, err)
+
+	// Connect via app
+	err = tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Find and verify
+	result, err := tc.app.FindDocuments(tc.connID, "testdb", "nested", "{}", types.QueryOptions{Limit: 1})
+	require.NoError(t, err)
+
+	// Verify the deepest value is accessible
+	assert.Contains(t, result.Documents[0], "deepest")
+}
+
+// =============================================================================
+// Priority 3.2: Error Scenario Tests
+// =============================================================================
+
+func TestIntegration_AuthenticationFailure(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Try to connect with wrong credentials
+	// Note: Default testcontainer doesn't have auth, so we test with a bad URI
+	err := tc.app.TestConnection("mongodb://wronguser:wrongpass@localhost:99999")
+	assert.Error(t, err, "Should fail with bad credentials/host")
+}
+
+func TestIntegration_InvalidDatabaseName(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Connect
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Try to list collections with invalid database names
+	_, err = tc.app.ListCollections(tc.connID, "")
+	assert.Error(t, err, "Should reject empty database name")
+
+	_, err = tc.app.ListCollections(tc.connID, "db/with/slashes")
+	assert.Error(t, err, "Should reject database name with slashes")
+
+	_, err = tc.app.ListCollections(tc.connID, "db.with.dots")
+	assert.Error(t, err, "Should reject database name with dots")
+}
+
+func TestIntegration_InvalidCollectionName(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Connect
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Try operations with invalid collection names
+	_, err = tc.app.ListIndexes(tc.connID, "testdb", "")
+	assert.Error(t, err, "Should reject empty collection name")
+
+	_, err = tc.app.ListIndexes(tc.connID, "testdb", "$invalid")
+	assert.Error(t, err, "Should reject collection name starting with $")
+}
+
+func TestIntegration_DocumentNotFound(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Seed some data
+	tc.seedTestData(t, "testdb", "users", []bson.M{{"name": "Alice"}})
+
+	// Connect
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Try to get a non-existent document
+	_, err = tc.app.GetDocument(tc.connID, "testdb", "users", "000000000000000000000000")
+	assert.Error(t, err, "Should error when document not found")
+	assert.Contains(t, err.Error(), "not found")
+
+	// Try to update a non-existent document
+	err = tc.app.UpdateDocument(tc.connID, "testdb", "users", "000000000000000000000000", `{"name": "Updated"}`)
+	assert.Error(t, err, "Should error when updating non-existent document")
+
+	// Try to delete a non-existent document
+	err = tc.app.DeleteDocument(tc.connID, "testdb", "users", "000000000000000000000000")
+	assert.Error(t, err, "Should error when deleting non-existent document")
+}
+
+func TestIntegration_DuplicateKeyError(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Create unique index
+	ctx := context.Background()
+	coll := tc.client.Database("testdb").Collection("unique")
+	_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "email", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	require.NoError(t, err)
+
+	// Connect
+	err = tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Insert first document
+	_, err = tc.app.InsertDocument(tc.connID, "testdb", "unique", `{"email": "test@test.com", "name": "First"}`)
+	require.NoError(t, err)
+
+	// Try to insert duplicate
+	_, err = tc.app.InsertDocument(tc.connID, "testdb", "unique", `{"email": "test@test.com", "name": "Second"}`)
+	assert.Error(t, err, "Should error on duplicate key")
+	assert.Contains(t, err.Error(), "duplicate", "Error should mention duplicate")
+}
+
+func TestIntegration_MalformedDocument(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Connect
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Try to insert malformed JSON
+	_, err = tc.app.InsertDocument(tc.connID, "testdb", "docs", `{not valid json}`)
+	assert.Error(t, err, "Should error on malformed JSON")
+
+	// Try to insert with invalid BSON types
+	_, err = tc.app.InsertDocument(tc.connID, "testdb", "docs", `{"_id": {"$oid": "not-a-valid-oid"}}`)
+	assert.Error(t, err, "Should error on invalid ObjectId format")
+}
+
+// =============================================================================
+// Priority 3.3: Export/Import Error Handling Tests
+// =============================================================================
+
+func TestIntegration_ImportCorruptedZip(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Connect
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Create a corrupted zip file
+	tmpDir := t.TempDir()
+	corruptedPath := tmpDir + "/corrupted.zip"
+	err = os.WriteFile(corruptedPath, []byte("not a valid zip file"), 0644)
+	require.NoError(t, err)
+
+	// Try to import
+	_, err = tc.app.DryRunImport(tc.connID, types.ImportOptions{
+		FilePath:  corruptedPath,
+		Databases: []string{"testdb"},
+		Mode:      "skip",
+	})
+	assert.Error(t, err, "Should error on corrupted zip")
+}
+
+func TestIntegration_ImportMissingManifest(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Connect
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Create a valid zip without manifest
+	tmpDir := t.TempDir()
+	noManifestPath := tmpDir + "/no_manifest.zip"
+	zipFile, err := os.Create(noManifestPath)
+	require.NoError(t, err)
+
+	zipWriter := zip.NewWriter(zipFile)
+	// Write some data but no manifest.json
+	w, _ := zipWriter.Create("somedb/somecoll/documents.ndjson")
+	w.Write([]byte(`{"name": "test"}`))
+	zipWriter.Close()
+	zipFile.Close()
+
+	// Try to import
+	_, err = tc.app.DryRunImport(tc.connID, types.ImportOptions{
+		FilePath:  noManifestPath,
+		Databases: []string{"somedb"},
+		Mode:      "skip",
+	})
+	assert.Error(t, err, "Should error when manifest is missing")
+}
+
+func TestIntegration_ImportInvalidNDJSON(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Connect
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Create a zip with invalid NDJSON
+	tmpDir := t.TempDir()
+	invalidNDJSONPath := tmpDir + "/invalid_ndjson.zip"
+	zipFile, err := os.Create(invalidNDJSONPath)
+	require.NoError(t, err)
+
+	zipWriter := zip.NewWriter(zipFile)
+
+	// Write manifest
+	manifestWriter, _ := zipWriter.Create("manifest.json")
+	manifest := types.ExportManifest{
+		Version:    "1.0",
+		ExportedAt: time.Now(),
+		Databases: []types.ExportManifestDatabase{
+			{
+				Name: "testdb",
+				Collections: []types.ExportManifestCollection{
+					{Name: "baddata", DocCount: 3},
+				},
+			},
+		},
+	}
+	json.NewEncoder(manifestWriter).Encode(manifest)
+
+	// Write invalid NDJSON
+	ndjsonWriter, _ := zipWriter.Create("testdb/baddata/documents.ndjson")
+	ndjsonWriter.Write([]byte(`{"valid": "doc", "_id": {"$oid": "507f1f77bcf86cd799439011"}}` + "\n"))
+	ndjsonWriter.Write([]byte(`{not valid json}` + "\n"))
+	ndjsonWriter.Write([]byte(`{"another": "valid", "_id": {"$oid": "507f1f77bcf86cd799439012"}}` + "\n"))
+
+	zipWriter.Close()
+	zipFile.Close()
+
+	// Import should succeed but track parse errors
+	result, err := tc.app.ImportDatabases(tc.connID, types.ImportOptions{
+		FilePath:  invalidNDJSONPath,
+		Databases: []string{"testdb"},
+		Mode:      "skip",
+	})
+	require.NoError(t, err, "Import should succeed overall")
+
+	// Should have 2 successful inserts and 1 parse error
+	assert.Equal(t, int64(2), result.DocumentsInserted, "Should insert 2 valid documents")
+	assert.Equal(t, int64(1), result.DocumentsParseError, "Should have 1 parse error")
+	assert.True(t, len(result.Errors) > 0, "Should report parse errors")
+}
+
+func TestIntegration_ImportEmptyArchive(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Connect
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Create a zip with manifest but no databases selected
+	tmpDir := t.TempDir()
+	emptyPath := tmpDir + "/empty.zip"
+	zipFile, err := os.Create(emptyPath)
+	require.NoError(t, err)
+
+	zipWriter := zip.NewWriter(zipFile)
+
+	// Write manifest with empty databases
+	manifestWriter, _ := zipWriter.Create("manifest.json")
+	manifest := types.ExportManifest{
+		Version:    "1.0",
+		ExportedAt: time.Now(),
+		Databases:  []types.ExportManifestDatabase{},
+	}
+	json.NewEncoder(manifestWriter).Encode(manifest)
+	zipWriter.Close()
+	zipFile.Close()
+
+	// Import should fail with no databases
+	_, err = tc.app.DryRunImport(tc.connID, types.ImportOptions{
+		FilePath:  emptyPath,
+		Databases: []string{},
+		Mode:      "skip",
+	})
+	assert.Error(t, err, "Should error when no databases to import")
+}
+
+// =============================================================================
+// Priority 3.3: Schema Inference Edge Cases
+// =============================================================================
+
+func TestIntegration_SchemaWithEmptyCollection(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Create empty collection
+	ctx := context.Background()
+	tc.client.Database("testdb").CreateCollection(ctx, "empty")
+
+	// Connect
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Infer schema on empty collection
+	schema, err := tc.app.InferCollectionSchema(tc.connID, "testdb", "empty", 100)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(0), schema.TotalDocs)
+	assert.Empty(t, schema.Fields, "Should have no fields for empty collection")
+}
+
+func TestIntegration_SchemaWithPolymorphicField(t *testing.T) {
+	tc := setupTestContainer(t)
+	defer tc.teardown(t)
+
+	// Seed documents with same field having different types
+	tc.seedTestData(t, "testdb", "polymorphic", []bson.M{
+		{"value": "string value"},
+		{"value": 42},
+		{"value": true},
+		{"value": []string{"array", "value"}},
+		{"value": bson.M{"nested": "object"}},
+	})
+
+	// Connect
+	err := tc.app.Connect(tc.connID)
+	require.NoError(t, err)
+
+	// Infer schema
+	schema, err := tc.app.InferCollectionSchema(tc.connID, "testdb", "polymorphic", 100)
+	require.NoError(t, err)
+
+	// The "value" field should show multiple types
+	valueField := schema.Fields["value"]
+	assert.NotEmpty(t, valueField.Type, "Should detect type for polymorphic field")
+}
