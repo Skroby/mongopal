@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { NotificationProvider } from './components/NotificationContext'
+import { ConnectionProvider, TabProvider } from './components/contexts'
 import './index.css'
 
 const container = document.getElementById('root')
@@ -12,7 +13,11 @@ root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <NotificationProvider>
-        <App />
+        <ConnectionProvider>
+          <TabProvider>
+            <App />
+          </TabProvider>
+        </ConnectionProvider>
       </NotificationProvider>
     </ErrorBoundary>
   </React.StrictMode>

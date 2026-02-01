@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Editor from '@monaco-editor/react'
 import { useNotification } from './NotificationContext'
+import ConfirmDialog from './ConfirmDialog'
 
 const go = window.go?.main?.App
 
@@ -72,6 +73,7 @@ export default function DocumentEditView({
   const [refreshing, setRefreshing] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const [originalContent, setOriginalContent] = useState('')
+  const [showRefreshConfirm, setShowRefreshConfirm] = useState(false)
 
   // Format the document ID for display
   const displayId = isInsertMode ? 'New Document' : formatDocId(documentId)
@@ -147,7 +149,7 @@ export default function DocumentEditView({
         if (onSave) onSave()
       }
     } catch (err) {
-      notify.error(`Failed to save: ${err.message || err}`)
+      notify.error(`Failed to save: ${err?.message || String(err)}`)
     } finally {
       setSaving(false)
     }
@@ -177,7 +179,7 @@ export default function DocumentEditView({
         }
       }
     } catch (err) {
-      notify.error(`Failed to insert: ${err.message || err}`)
+      notify.error(`Failed to insert: ${err?.message || String(err)}`)
     } finally {
       setInserting(false)
     }
@@ -195,12 +197,7 @@ export default function DocumentEditView({
     }
   }
 
-  const handleRefresh = async () => {
-    if (hasChanges) {
-      const confirmed = window.confirm('You have unsaved changes. Refresh will discard them. Continue?')
-      if (!confirmed) return
-    }
-
+  const doRefresh = async () => {
     setRefreshing(true)
     try {
       if (go?.GetDocument) {
@@ -213,9 +210,17 @@ export default function DocumentEditView({
         notify.success('Document refreshed')
       }
     } catch (err) {
-      notify.error(`Failed to refresh: ${err.message || err}`)
+      notify.error(`Failed to refresh: ${err?.message || String(err)}`)
     } finally {
       setRefreshing(false)
+    }
+  }
+
+  const handleRefresh = () => {
+    if (hasChanges) {
+      setShowRefreshConfirm(true)
+    } else {
+      doRefresh()
     }
   }
 
@@ -341,6 +346,21 @@ export default function DocumentEditView({
           }}
         />
       </div>
+
+      {/* Refresh confirmation dialog */}
+      <ConfirmDialog
+        open={showRefreshConfirm}
+        title="Discard Changes?"
+        message="You have unsaved changes. Refreshing will discard them."
+        confirmLabel="Refresh"
+        cancelLabel="Cancel"
+        danger={true}
+        onConfirm={() => {
+          setShowRefreshConfirm(false)
+          doRefresh()
+        }}
+        onCancel={() => setShowRefreshConfirm(false)}
+      />
     </div>
   )
 }

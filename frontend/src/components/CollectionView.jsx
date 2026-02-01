@@ -3,6 +3,7 @@ import Editor from '@monaco-editor/react'
 import TableView from './TableView'
 import BulkActionBar from './BulkActionBar'
 import { useNotification } from './NotificationContext'
+import { useTab } from './contexts/TabContext'
 import { parseFilterFromQuery, parseProjectionFromQuery, buildFullQuery, isSimpleFindQuery, wrapScriptForOutput } from '../utils/queryParser'
 import { parseMongoshOutput } from '../utils/mongoshParser'
 
@@ -49,6 +50,14 @@ function saveQueryHistory(history) {
   }
 }
 
+// Add query to history, removing duplicates and limiting size
+function addToQueryHistory(currentHistory, query, database, collection) {
+  return [
+    { query, collection: `${database}.${collection}`, timestamp: Date.now() },
+    ...currentHistory.filter(h => h.query !== query)
+  ].slice(0, MAX_HISTORY_ITEMS)
+}
+
 const PlusIcon = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -67,8 +76,9 @@ const CollapseIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
-export default function CollectionView({ connectionId, database, collection, onEditDocument, onInsertDocument }) {
+export default function CollectionView({ connectionId, database, collection }) {
   const { notify } = useNotification()
+  const { openDocumentTab, openInsertTab } = useTab()
   const [query, setQuery] = useState(() => buildFullQuery(collection, '{}'))
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(false)
@@ -126,13 +136,18 @@ export default function CollectionView({ connectionId, database, collection, onE
     setSelectedIds(new Set())
   }, [connectionId, database, collection, skip, limit, query])
 
+  // Helper to open insert tab
+  const handleInsertDocument = () => {
+    openInsertTab(connectionId, database, collection)
+  }
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Cmd+N: Open insert tab
       if (e.key === 'n' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
-        if (onInsertDocument) onInsertDocument()
+        handleInsertDocument()
       }
       // Escape: Close modals
       if (e.key === 'Escape') {
@@ -146,7 +161,7 @@ export default function CollectionView({ connectionId, database, collection, onE
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [showBulkDeleteModal, bulkDeleting, deleteDoc, deleting, onInsertDocument])
+  }, [showBulkDeleteModal, bulkDeleting, deleteDoc, deleting, connectionId, database, collection])
 
   const cancelQuery = () => {
     queryIdRef.current++ // Invalidate current query
@@ -186,10 +201,7 @@ export default function CollectionView({ connectionId, database, collection, onE
 
           // Add to query history (if not default and not duplicate)
           if (filter !== '{}' && filter.trim() !== '') {
-            const newHistory = [
-              { query, collection: `${database}.${collection}`, timestamp: Date.now() },
-              ...queryHistory.filter(h => h.query !== query)
-            ].slice(0, MAX_HISTORY_ITEMS)
+            const newHistory = addToQueryHistory(queryHistory, query, database, collection)
             setQueryHistory(newHistory)
             saveQueryHistory(newHistory)
           }
@@ -226,10 +238,7 @@ export default function CollectionView({ connectionId, database, collection, onE
           setQueryTime(null)
 
           // Add to history
-          const newHistory = [
-            { query, collection: `${database}.${collection}`, timestamp: Date.now() },
-            ...queryHistory.filter(h => h.query !== query)
-          ].slice(0, MAX_HISTORY_ITEMS)
+          const newHistory = addToQueryHistory(queryHistory, query, database, collection)
           setQueryHistory(newHistory)
           saveQueryHistory(newHistory)
         } else if (go?.CheckMongoshAvailable) {
@@ -268,10 +277,8 @@ export default function CollectionView({ connectionId, database, collection, onE
 
   // Open document in a new tab
   const handleEdit = (doc) => {
-    if (onEditDocument) {
-      const docId = getDocIdForApi(doc)
-      onEditDocument(connectionId, database, collection, doc, docId)
-    }
+    const docId = getDocIdForApi(doc)
+    openDocumentTab(connectionId, database, collection, doc, docId)
   }
 
   // Open delete confirmation
@@ -339,7 +346,7 @@ export default function CollectionView({ connectionId, database, collection, onE
         executeQuery() // Refresh the list
       }
     } catch (err) {
-      notify.error(`Failed to delete: ${err.message || err}`)
+      notify.error(`Failed to delete: ${err?.message || String(err)}`)
     } finally {
       setDeleting(false)
     }
@@ -419,7 +426,7 @@ export default function CollectionView({ connectionId, database, collection, onE
         notify.success(`Exported ${entries.length} document${entries.length !== 1 ? 's' : ''}`)
       }
     } catch (err) {
-      notify.error(`Export failed: ${err.message || err}`)
+      notify.error(`Export failed: ${err?.message || String(err)}`)
     } finally {
       setExporting(false)
     }
@@ -463,7 +470,7 @@ export default function CollectionView({ connectionId, database, collection, onE
                 )}
                 <button
                   className="btn btn-secondary flex items-center gap-1.5"
-                  onClick={onInsertDocument}
+                  onClick={handleInsertDocument}
                   title="Insert new document (Cmd+N)"
                 >
                   <PlusIcon className="w-4 h-4" />
@@ -633,7 +640,7 @@ export default function CollectionView({ connectionId, database, collection, onE
             )}
             <button
               className="btn btn-secondary flex items-center gap-1.5"
-              onClick={onInsertDocument}
+              onClick={handleInsertDocument}
               title="Insert new document (Cmd+N)"
             >
               <PlusIcon className="w-4 h-4" />

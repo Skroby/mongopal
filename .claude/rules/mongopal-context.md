@@ -4,18 +4,36 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 
 ## Tech Stack
 - **Desktop**: Wails v2
-- **Backend**: Go 1.22+, mongo-go-driver
+- **Backend**: Go 1.24+, mongo-go-driver v1.17
 - **Frontend**: React 18, Vite, TailwindCSS
 - **Credentials**: OS Keyring (go-keyring) with encrypted file fallback
+- **Testing**: Vitest (frontend), Go testing + testcontainers (backend)
 
 ## Quick File Reference
 
 ### Backend Core
 | Purpose | File |
 |---------|------|
-| All Wails bindings + MongoDB ops | `app.go` |
+| Thin facade for Wails bindings | `app.go` |
 | App entry point | `main.go` |
 | Wails config | `wails.json` |
+| Unit tests | `app_test.go` |
+| Integration tests (requires Docker) | `integration_test.go` |
+
+### Internal Packages
+| Package | Purpose | Key Files |
+|---------|---------|-----------|
+| `internal/types` | All shared type definitions | `types.go` |
+| `internal/core` | App state and event emitter | `state.go`, `events.go` |
+| `internal/credential` | Password/keyring management | `keyring.go`, `uri.go` |
+| `internal/storage` | Config file I/O, connections, folders | `persistence.go`, `connections.go`, `folders.go` |
+| `internal/connection` | Connect, Disconnect, TestConnection | `service.go` |
+| `internal/database` | List databases/collections, drop operations | `listing.go`, `operations.go` |
+| `internal/document` | Document CRUD operations | `crud.go`, `parser.go` |
+| `internal/schema` | Schema inference and export | `inference.go`, `export.go` |
+| `internal/export` | Database/collection export | `database.go`, `collection.go`, `documents.go` |
+| `internal/importer` | Database/collection import | `database.go`, `collection.go`, `helpers.go` |
+| `internal/script` | Mongosh script execution | `mongosh.go` |
 
 ### Frontend Core
 | Purpose | File |
@@ -28,13 +46,29 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | Purpose | File |
 |---------|------|
 | Left sidebar tree | `frontend/src/components/Sidebar.jsx` |
-| Tab bar | `frontend/src/components/TabBar.jsx` |
-| Collection data view | `frontend/src/components/CollectionView.jsx` |
-| Document table | `frontend/src/components/TableView.jsx` |
+| Tab bar with drag-reorder | `frontend/src/components/TabBar.jsx` |
+| Collection data view with filters | `frontend/src/components/CollectionView.jsx` |
+| Document table display | `frontend/src/components/TableView.jsx` |
 | Document editor (Monaco) | `frontend/src/components/DocumentEditView.jsx` |
+| Collection schema analysis | `frontend/src/components/SchemaView.jsx` |
 | Bulk action bar | `frontend/src/components/BulkActionBar.jsx` |
 | Connection form modal | `frontend/src/components/ConnectionForm.jsx` |
-| Notifications | `frontend/src/components/NotificationContext.jsx` |
+| Application settings | `frontend/src/components/Settings.jsx` |
+| Toast notifications | `frontend/src/components/NotificationContext.jsx` |
+| Confirmation dialogs | `frontend/src/components/ConfirmDialog.jsx` |
+| Error boundary wrapper | `frontend/src/components/ErrorBoundary.jsx` |
+| Database export modal | `frontend/src/components/ExportDatabasesModal.jsx` |
+| Database import modal | `frontend/src/components/ImportDatabasesModal.jsx` |
+| Collection export modal | `frontend/src/components/ExportCollectionsModal.jsx` |
+| Collection import modal | `frontend/src/components/ImportCollectionsModal.jsx` |
+
+### Utilities
+| Purpose | File |
+|---------|------|
+| MongoDB query parsing | `frontend/src/utils/queryParser.js` |
+| Mongosh script parsing | `frontend/src/utils/mongoshParser.js` |
+| Schema analysis helpers | `frontend/src/utils/schemaUtils.js` |
+| Table formatting utils | `frontend/src/utils/tableViewUtils.js` |
 
 ## Key Patterns
 
@@ -58,19 +92,45 @@ All document data uses MongoDB Extended JSON format for round-trip fidelity:
 - Numbers: `{ "$numberLong": "123" }`, `{ "$numberInt": "42" }`
 - Use `bson.MarshalExtJSON` / `bson.UnmarshalExtJSON` in Go
 
+### Export/Import Operations
+Both database-level and collection-level operations:
+- **Export**: Creates JSON file with manifest metadata
+- **Import**: Supports conflict resolution (skip/overwrite/reject), dry-run preview
+- **Progress tracking**: Real-time events via Wails runtime for UI updates
+- **Cancellation**: Long-running operations can be interrupted
+
+### Schema Analysis
+- Samples documents from collection (configurable count)
+- Analyzes field distribution and types
+- Identifies nested structures with frequency stats
+- Exports schema as JSON
+
 ## Build Commands
 ```bash
-wails dev         # Development with hot-reload
-wails build       # Build for current platform
-make build        # Cross-platform builds (if Makefile exists)
+make dev              # Development with hot-reload
+make build            # Build for current platform
+make build-prod       # Production optimized build
+make build-darwin     # macOS universal binary
+make build-linux      # Linux amd64
+make build-windows    # Windows amd64
+make test             # Run all unit tests
+make test-integration # Integration tests (requires Docker)
+make generate         # Regenerate Wails bindings
+make fmt              # Format code
+make lint             # Lint code
 ```
 
 ## Adding Features
 
 ### New Backend Method
-1. Add method to `App` struct in `app.go`
-2. Run `wails generate module` to update bindings
-3. Call via `window.go.main.App.MethodName()` in frontend
+1. Implement logic in the appropriate `internal/` package
+2. Add a delegation method to `App` struct in `app.go`
+3. Run `make generate` to update bindings
+4. Call via `window.go.main.App.MethodName()` in frontend
+
+### New Type
+1. Add type definition to `internal/types/types.go`
+2. Add type re-export in `app.go` for Wails binding generation
 
 ### New Component
 1. Create in `frontend/src/components/`
@@ -82,5 +142,47 @@ make build        # Cross-platform builds (if Makefile exists)
 - **React**: Functional components with hooks, no class components
 - **CSS**: TailwindCSS utilities, custom classes in `index.css`
 - **Colors**: Dark theme with zinc palette, accent `#4CC38A`
+
+## Testing
+
+### Frontend Tests
+Run with `make test-frontend`:
+- All utility functions have comprehensive test coverage
+- Test files located alongside source: `*.test.js`
+- Uses Vitest with jsdom environment
+- Watch mode: `make test-watch`
+
+### Backend Tests
+Run with `make test-go`:
+- Unit tests in `app_test.go` for URI parsing, document IDs
+- Integration tests in `integration_test.go` require Docker (testcontainers)
+
+### Integration Tests
+Run with `make test-integration`:
+- Full MongoDB operations against real container
+- 5-minute timeout for longer operations
+- Covers connection, CRUD, export/import flows
+
+### All Tests
+Run with `make test-all` for unit + integration tests.
+
+## Backend Architecture
+
+The backend uses a thin facade pattern:
+- `app.go` contains the `App` struct which is the Wails binding surface
+- All methods delegate to specialized services in `internal/` packages
+- State is managed centrally via `internal/core/AppState`
+
+### Method Categories (in App facade)
+| Category | Methods | Internal Package |
+|----------|---------|------------------|
+| Connection | Connect, Disconnect, TestConnection | `internal/connection` |
+| Storage | SaveConnection, ListSavedConnections, CreateFolder, etc. | `internal/storage` |
+| Database | ListDatabases, ListCollections, DropDatabase, DropCollection | `internal/database` |
+| Document | FindDocuments, GetDocument, InsertDocument, UpdateDocument, DeleteDocument | `internal/document` |
+| Schema | InferCollectionSchema, ExportSchemaAsJSON | `internal/schema` |
+| Export | ExportDatabases, ExportCollections, ExportDocumentsAsZip | `internal/export` |
+| Import | ImportDatabases, ImportCollections, PreviewImportFile | `internal/importer` |
+| Script | ExecuteScript, CheckMongoshAvailable | `internal/script` |
 
 > **Maintenance**: Update this file when codebase structure changes.

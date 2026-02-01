@@ -1,0 +1,259 @@
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { useNotification } from '../NotificationContext'
+
+const ConnectionContext = createContext(null)
+
+const go = window.go?.main?.App
+
+export function ConnectionProvider({ children }) {
+  const { notify } = useNotification()
+
+  // Connection state
+  const [connections, setConnections] = useState([])
+  const [folders, setFolders] = useState([])
+  const [activeConnections, setActiveConnections] = useState([])
+
+  // Navigation state
+  const [selectedConnection, setSelectedConnection] = useState(null)
+  const [selectedDatabase, setSelectedDatabase] = useState(null)
+  const [selectedCollection, setSelectedCollection] = useState(null)
+
+  // UI state
+  const [connectingId, setConnectingId] = useState(null)
+
+  // Load saved connections on mount
+  useEffect(() => {
+    loadConnections()
+  }, [])
+
+  const loadConnections = useCallback(async () => {
+    try {
+      if (go?.ListSavedConnections) {
+        const saved = await go.ListSavedConnections()
+        setConnections(saved || [])
+      }
+      if (go?.ListFolders) {
+        const savedFolders = await go.ListFolders()
+        setFolders(savedFolders || [])
+      }
+    } catch (err) {
+      console.error('Failed to load connections:', err)
+    }
+  }, [])
+
+  const connect = useCallback(async (connId) => {
+    if (connectingId) return // Already connecting
+    setConnectingId(connId)
+    try {
+      if (go?.Connect) {
+        await go.Connect(connId)
+        setActiveConnections(prev => [...prev, connId])
+        notify.success('Connected successfully')
+      }
+    } catch (err) {
+      console.error('Failed to connect:', err)
+      notify.error(`Connection failed: ${err?.message || String(err)}`)
+    } finally {
+      setConnectingId(null)
+    }
+  }, [connectingId, notify])
+
+  const disconnect = useCallback(async (connId, onTabsClose) => {
+    try {
+      if (go?.Disconnect) {
+        await go.Disconnect(connId)
+        setActiveConnections(prev => prev.filter(id => id !== connId))
+        onTabsClose?.(connId)
+      }
+    } catch (err) {
+      console.error('Failed to disconnect:', err)
+      notify.error(`Failed to disconnect: ${err?.message || String(err)}`)
+    }
+  }, [notify])
+
+  const disconnectAll = useCallback(async (onAllTabsClose) => {
+    try {
+      if (go?.DisconnectAll) {
+        await go.DisconnectAll()
+      }
+      setActiveConnections([])
+      onAllTabsClose?.()
+    } catch (err) {
+      console.error('Failed to disconnect all:', err)
+      notify.error(`Failed to disconnect all: ${err?.message || String(err)}`)
+    }
+  }, [notify])
+
+  const disconnectOthers = useCallback(async (keepConnId, onOtherTabsClose) => {
+    try {
+      for (const connId of activeConnections) {
+        if (connId !== keepConnId && go?.Disconnect) {
+          await go.Disconnect(connId)
+        }
+      }
+      setActiveConnections([keepConnId])
+      onOtherTabsClose?.(keepConnId)
+      notify.success('Other connections disconnected')
+    } catch (err) {
+      console.error('Failed to disconnect others:', err)
+      notify.error(`Failed to disconnect others: ${err?.message || String(err)}`)
+    }
+  }, [activeConnections, notify])
+
+  const saveConnection = useCallback(async (conn, password) => {
+    try {
+      if (go?.SaveConnection) {
+        await go.SaveConnection(conn, password)
+        await loadConnections()
+        notify.success('Connection saved')
+        return true
+      }
+    } catch (err) {
+      console.error('Failed to save connection:', err)
+      notify.error(`Failed to save connection: ${err?.message || String(err)}`)
+    }
+    return false
+  }, [loadConnections, notify])
+
+  const deleteConnection = useCallback(async (connId) => {
+    try {
+      if (go?.DeleteSavedConnection) {
+        await go.DeleteSavedConnection(connId)
+        await loadConnections()
+        notify.success('Connection deleted')
+        return true
+      }
+    } catch (err) {
+      console.error('Failed to delete connection:', err)
+      notify.error(`Failed to delete connection: ${err?.message || String(err)}`)
+    }
+    return false
+  }, [loadConnections, notify])
+
+  const duplicateConnection = useCallback(async (connId) => {
+    try {
+      const conn = connections.find(c => c.id === connId)
+      if (conn && go?.DuplicateConnection) {
+        await go.DuplicateConnection(connId, `${conn.name} (copy)`)
+        await loadConnections()
+        notify.success('Connection duplicated')
+      }
+    } catch (err) {
+      console.error('Failed to duplicate connection:', err)
+      notify.error(`Failed to duplicate connection: ${err?.message || String(err)}`)
+    }
+  }, [connections, loadConnections, notify])
+
+  const refreshConnection = useCallback(async (connId) => {
+    if (go?.ListDatabases) {
+      try {
+        await go.ListDatabases(connId)
+        notify.info('Connection refreshed')
+      } catch (err) {
+        console.error('Failed to refresh:', err)
+        notify.error(`Failed to refresh: ${err?.message || String(err)}`)
+      }
+    }
+  }, [notify])
+
+  const dropDatabase = useCallback(async (connId, dbName) => {
+    if (go?.DropDatabase) {
+      await go.DropDatabase(connId, dbName)
+    }
+  }, [])
+
+  const dropCollection = useCallback(async (connId, dbName, collName) => {
+    if (go?.DropCollection) {
+      await go.DropCollection(connId, dbName, collName)
+    }
+  }, [])
+
+  const clearCollection = useCallback(async (connId, dbName, collName) => {
+    if (go?.ClearCollection) {
+      await go.ClearCollection(connId, dbName, collName)
+    }
+  }, [])
+
+  const createFolder = useCallback(async (name) => {
+    try {
+      if (go?.CreateFolder) {
+        await go.CreateFolder(name, '')
+        await loadConnections()
+      }
+    } catch (err) {
+      console.error('Failed to create folder:', err)
+      throw err
+    }
+  }, [loadConnections])
+
+  const deleteFolder = useCallback(async (folderId) => {
+    try {
+      if (go?.DeleteFolder) {
+        await go.DeleteFolder(folderId)
+        await loadConnections()
+      }
+    } catch (err) {
+      console.error('Failed to delete folder:', err)
+      throw err
+    }
+  }, [loadConnections])
+
+  const getConnectionById = useCallback((connId) => {
+    return connections.find(c => c.id === connId)
+  }, [connections])
+
+  const value = {
+    // State
+    connections,
+    folders,
+    activeConnections,
+    connectingId,
+    selectedConnection,
+    selectedDatabase,
+    selectedCollection,
+
+    // Selection setters
+    setSelectedConnection,
+    setSelectedDatabase,
+    setSelectedCollection,
+
+    // Connection actions
+    connect,
+    disconnect,
+    disconnectAll,
+    disconnectOthers,
+    saveConnection,
+    deleteConnection,
+    duplicateConnection,
+    refreshConnection,
+
+    // Database/collection actions
+    dropDatabase,
+    dropCollection,
+    clearCollection,
+
+    // Folder actions
+    createFolder,
+    deleteFolder,
+
+    // Helpers
+    getConnectionById,
+    loadConnections,
+  }
+
+  return (
+    <ConnectionContext.Provider value={value}>
+      {children}
+    </ConnectionContext.Provider>
+  )
+}
+
+export function useConnection() {
+  const context = useContext(ConnectionContext)
+  if (!context) {
+    throw new Error('useConnection must be used within ConnectionProvider')
+  }
+  return context
+}
+
+export default ConnectionContext

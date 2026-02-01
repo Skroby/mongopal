@@ -19,6 +19,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/peternagy/mongopal/internal/connection"
+	"github.com/peternagy/mongopal/internal/core"
+	"github.com/peternagy/mongopal/internal/database"
+	"github.com/peternagy/mongopal/internal/document"
+	"github.com/peternagy/mongopal/internal/export"
+	"github.com/peternagy/mongopal/internal/importer"
+	"github.com/peternagy/mongopal/internal/schema"
+	"github.com/peternagy/mongopal/internal/script"
+	"github.com/peternagy/mongopal/internal/storage"
+	"github.com/peternagy/mongopal/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/mongodb"
@@ -55,13 +65,13 @@ func setupTestContainer(t *testing.T) *testContext {
 
 	// Create app instance
 	app := NewApp()
-	app.ctx = ctx
-	app.configDir = t.TempDir()
-	app.disableEvents = true // Disable Wails event emission in tests
+	app.state.Ctx = ctx
+	app.state.ConfigDir = t.TempDir()
+	app.state.Emitter = &core.NoopEventEmitter{} // Disable Wails event emission in tests
 
 	// Save a test connection
 	connID := "test-conn-1"
-	app.savedConnections = []SavedConnection{
+	app.state.SavedConnections = []types.SavedConnection{
 		{
 			ID:        connID,
 			Name:      "Test Connection",
@@ -69,6 +79,17 @@ func setupTestContainer(t *testing.T) *testContext {
 			CreatedAt: time.Now(),
 		},
 	}
+
+	// Initialize services (normally done in startup)
+	app.connStore = storage.NewConnectionService(app.state, app.storage, app.credential)
+	app.folderSvc = storage.NewFolderService(app.state, app.storage)
+	app.connection = connection.NewService(app.state, app.connStore)
+	app.database = database.NewService(app.state)
+	app.document = document.NewService(app.state)
+	app.schema = schema.NewService(app.state)
+	app.export = export.NewService(app.state, app.connStore)
+	app.importer = importer.NewService(app.state, app.connStore)
+	app.script = script.NewService(app.connStore)
 
 	return &testContext{
 		container: container,
@@ -843,9 +864,22 @@ func BenchmarkIntegration_FindDocuments(b *testing.B) {
 
 	// Create app
 	app := NewApp()
-	app.ctx = ctx
-	app.configDir = b.TempDir()
-	app.savedConnections = []SavedConnection{{ID: "bench", Name: "Bench", URI: uri}}
+	app.state.Ctx = ctx
+	app.state.ConfigDir = b.TempDir()
+	app.state.Emitter = &core.NoopEventEmitter{}
+	app.state.SavedConnections = []types.SavedConnection{{ID: "bench", Name: "Bench", URI: uri}}
+
+	// Initialize services
+	app.connStore = storage.NewConnectionService(app.state, app.storage, app.credential)
+	app.folderSvc = storage.NewFolderService(app.state, app.storage)
+	app.connection = connection.NewService(app.state, app.connStore)
+	app.database = database.NewService(app.state)
+	app.document = document.NewService(app.state)
+	app.schema = schema.NewService(app.state)
+	app.export = export.NewService(app.state, app.connStore)
+	app.importer = importer.NewService(app.state, app.connStore)
+	app.script = script.NewService(app.connStore)
+
 	app.Connect("bench")
 	defer app.Disconnect("bench")
 

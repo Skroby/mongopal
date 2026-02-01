@@ -1,5 +1,6 @@
 # Build outputs
 build/bin/
+mongopal
 build/darwin/
 frontend/dist/
 frontend/*.md5

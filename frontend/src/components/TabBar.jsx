@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTab } from './contexts/TabContext'
 
 const CloseIcon = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -36,16 +37,18 @@ const SchemaIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
-export default function TabBar({
-  tabs,
-  activeTab,
-  onSelectTab,
-  onCloseTab,
-  onAddTab,
-  onPinTab,
-  onRenameTab,
-  onReorderTabs
-}) {
+export default function TabBar() {
+  const {
+    tabs,
+    activeTab,
+    setActiveTab,
+    closeTab,
+    openNewQueryTab,
+    pinTab,
+    renameTab,
+    reorderTabs,
+  } = useTab()
+
   const [draggedTab, setDraggedTab] = useState(null)
   const [dragOverTab, setDragOverTab] = useState(null)
   const [editingTabId, setEditingTabId] = useState(null)
@@ -126,9 +129,9 @@ export default function TabBar({
 
   const handleDrop = (e, targetTab) => {
     e.preventDefault()
-    if (draggedTab && draggedTab.id !== targetTab.id && onReorderTabs) {
+    if (draggedTab && draggedTab.id !== targetTab.id && reorderTabs) {
       if (draggedTab.pinned === targetTab.pinned) {
-        onReorderTabs(draggedTab.id, targetTab.id)
+        reorderTabs(draggedTab.id, targetTab.id)
       }
     }
     setDraggedTab(null)
@@ -156,8 +159,8 @@ export default function TabBar({
   }
 
   const handleEditSubmit = (tabId) => {
-    if (editValue.trim() && onRenameTab) {
-      onRenameTab(tabId, editValue.trim())
+    if (editValue.trim() && renameTab) {
+      renameTab(tabId, editValue.trim())
     }
     setEditingTabId(null)
     setEditValue('')
@@ -181,7 +184,7 @@ export default function TabBar({
           className={`tab ${activeTab === tab.id ? 'active' : ''} group ${
             dragOverTab === tab.id ? 'ring-2 ring-accent ring-inset' : ''
           } ${draggedTab?.id === tab.id ? 'opacity-50' : ''}`}
-          onClick={() => onSelectTab(tab.id)}
+          onClick={() => setActiveTab(tab.id)}
           onContextMenu={(e) => handleContextMenu(e, tab)}
           onDoubleClick={() => handleDoubleClick(tab)}
           draggable={editingTabId !== tab.id}
@@ -229,7 +232,7 @@ export default function TabBar({
               className="p-0.5 rounded hover:bg-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={(e) => {
                 e.stopPropagation()
-                onCloseTab(tab.id)
+                closeTab(tab.id)
               }}
             >
               <CloseIcon className="w-3 h-3" />
@@ -241,7 +244,7 @@ export default function TabBar({
       {/* Add tab button */}
       <button
         className="p-1.5 mx-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
-        onClick={onAddTab}
+        onClick={openNewQueryTab}
         title="New Query Tab"
       >
         <PlusIcon className="w-4 h-4" />
@@ -266,7 +269,7 @@ export default function TabBar({
           <button
             className="w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-700"
             onClick={() => {
-              if (onPinTab) onPinTab(contextMenu.tabId)
+              if (pinTab) pinTab(contextMenu.tabId)
               setContextMenu(null)
             }}
           >
@@ -276,7 +279,7 @@ export default function TabBar({
           <button
             className="w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-zinc-700"
             onClick={() => {
-              onCloseTab(contextMenu.tabId)
+              closeTab(contextMenu.tabId)
               setContextMenu(null)
             }}
           >

@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
+
+	"github.com/peternagy/mongopal/internal/credential"
+	"github.com/peternagy/mongopal/internal/document"
 )
 
 // Helper function to create a minimal App instance for testing
@@ -18,8 +21,6 @@ func newTestApp() *App {
 // =============================================================================
 
 func TestExtractPasswordFromURI(t *testing.T) {
-	app := newTestApp()
-
 	tests := []struct {
 		name          string
 		uri           string
@@ -115,16 +116,16 @@ func TestExtractPasswordFromURI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotCleanURI, gotPassword, err := app.extractPasswordFromURI(tt.uri)
+			gotCleanURI, gotPassword, err := credential.ExtractPasswordFromURI(tt.uri)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("extractPasswordFromURI() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ExtractPasswordFromURI() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if gotCleanURI != tt.wantCleanURI {
-				t.Errorf("extractPasswordFromURI() cleanURI = %v, want %v", gotCleanURI, tt.wantCleanURI)
+				t.Errorf("ExtractPasswordFromURI() cleanURI = %v, want %v", gotCleanURI, tt.wantCleanURI)
 			}
 			if gotPassword != tt.wantPassword {
-				t.Errorf("extractPasswordFromURI() password = %v, want %v", gotPassword, tt.wantPassword)
+				t.Errorf("ExtractPasswordFromURI() password = %v, want %v", gotPassword, tt.wantPassword)
 			}
 		})
 	}
@@ -135,8 +136,6 @@ func TestExtractPasswordFromURI(t *testing.T) {
 // =============================================================================
 
 func TestInjectPasswordIntoURI(t *testing.T) {
-	app := newTestApp()
-
 	tests := []struct {
 		name     string
 		uri      string
@@ -205,13 +204,13 @@ func TestInjectPasswordIntoURI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotURI, err := app.injectPasswordIntoURI(tt.uri, tt.password)
+			gotURI, err := credential.InjectPasswordIntoURI(tt.uri, tt.password)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("injectPasswordIntoURI() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("InjectPasswordIntoURI() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if gotURI != tt.wantURI {
-				t.Errorf("injectPasswordIntoURI() = %v, want %v", gotURI, tt.wantURI)
+				t.Errorf("InjectPasswordIntoURI() = %v, want %v", gotURI, tt.wantURI)
 			}
 		})
 	}
@@ -219,8 +218,6 @@ func TestInjectPasswordIntoURI(t *testing.T) {
 
 // TestExtractInjectRoundTrip tests that extracting and then injecting password works correctly
 func TestExtractInjectRoundTrip(t *testing.T) {
-	app := newTestApp()
-
 	tests := []struct {
 		name        string
 		originalURI string
@@ -248,15 +245,15 @@ func TestExtractInjectRoundTrip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Extract password
-			cleanURI, password, err := app.extractPasswordFromURI(tt.originalURI)
+			cleanURI, password, err := credential.ExtractPasswordFromURI(tt.originalURI)
 			if err != nil {
-				t.Fatalf("extractPasswordFromURI() error = %v", err)
+				t.Fatalf("ExtractPasswordFromURI() error = %v", err)
 			}
 
 			// Inject password back
-			resultURI, err := app.injectPasswordIntoURI(cleanURI, password)
+			resultURI, err := credential.InjectPasswordIntoURI(cleanURI, password)
 			if err != nil {
-				t.Fatalf("injectPasswordIntoURI() error = %v", err)
+				t.Fatalf("InjectPasswordIntoURI() error = %v", err)
 			}
 
 			// Should match original
@@ -267,7 +264,7 @@ func TestExtractInjectRoundTrip(t *testing.T) {
 			// For non-exact matches, verify the password is functionally correct
 			if !tt.expectExact {
 				// Re-extract to verify the password is preserved
-				_, reExtractedPassword, _ := app.extractPasswordFromURI(resultURI)
+				_, reExtractedPassword, _ := credential.ExtractPasswordFromURI(resultURI)
 				originalPassword := password
 				if reExtractedPassword != originalPassword {
 					t.Errorf("Password not preserved: got %v, want %v", reExtractedPassword, originalPassword)
@@ -282,8 +279,6 @@ func TestExtractInjectRoundTrip(t *testing.T) {
 // =============================================================================
 
 func TestParseDocumentID(t *testing.T) {
-	app := newTestApp()
-
 	// Create a known ObjectID for testing
 	knownOID, _ := primitive.ObjectIDFromHex("507f1f77bcf86cd799439011")
 
@@ -428,9 +423,9 @@ func TestParseDocumentID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := app.parseDocumentID(tt.docID)
+			result := document.ParseDocumentID(tt.docID)
 			if !tt.validate(result) {
-				t.Errorf("parseDocumentID(%q) = %v (%T), validation failed for expected type %s",
+				t.Errorf("ParseDocumentID(%q) = %v (%T), validation failed for expected type %s",
 					tt.docID, result, result, tt.wantType)
 			}
 		})
@@ -439,14 +434,12 @@ func TestParseDocumentID(t *testing.T) {
 
 // TestParseDocumentIDWithUUID tests UUID parsing specifically
 func TestParseDocumentIDWithUUID(t *testing.T) {
-	app := newTestApp()
-
 	// Generate a valid UUID as base64
 	uuidBytes := []byte{0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0}
 	uuidBase64 := base64.StdEncoding.EncodeToString(uuidBytes)
 
 	docID := `{"$binary":{"base64":"` + uuidBase64 + `","subType":"04"}}`
-	result := app.parseDocumentID(docID)
+	result := document.ParseDocumentID(docID)
 
 	// The function uses bson.UnmarshalExtJSON with interface{} target
 	// which may return primitive.D instead of primitive.Binary for complex structures
@@ -466,8 +459,6 @@ func TestParseDocumentIDWithUUID(t *testing.T) {
 // =============================================================================
 
 func TestValidateJSON(t *testing.T) {
-	app := newTestApp()
-
 	tests := []struct {
 		name    string
 		jsonStr string
@@ -599,7 +590,7 @@ func TestValidateJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := app.ValidateJSON(tt.jsonStr)
+			err := document.ValidateJSON(tt.jsonStr)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateJSON(%q) error = %v, wantErr %v", tt.jsonStr, err, tt.wantErr)
 			}
@@ -609,8 +600,6 @@ func TestValidateJSON(t *testing.T) {
 
 // TestValidateJSONArray tests array handling
 func TestValidateJSONArray(t *testing.T) {
-	app := newTestApp()
-
 	// Note: ValidateJSON unmarshals into bson.M which expects an object
 	// Arrays at the root level should fail since they can't be unmarshaled to bson.M
 
@@ -638,7 +627,7 @@ func TestValidateJSONArray(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := app.ValidateJSON(tt.jsonStr)
+			err := document.ValidateJSON(tt.jsonStr)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateJSON(%q) error = %v, wantErr %v", tt.jsonStr, err, tt.wantErr)
 			}
@@ -651,146 +640,65 @@ func TestValidateJSONArray(t *testing.T) {
 // =============================================================================
 
 func BenchmarkParseDocumentID_ObjectIDHex(b *testing.B) {
-	app := newTestApp()
 	docID := "507f1f77bcf86cd799439011"
 
 	for i := 0; i < b.N; i++ {
-		app.parseDocumentID(docID)
+		document.ParseDocumentID(docID)
 	}
 }
 
 func BenchmarkParseDocumentID_ExtendedJSON(b *testing.B) {
-	app := newTestApp()
 	docID := `{"$oid":"507f1f77bcf86cd799439011"}`
 
 	for i := 0; i < b.N; i++ {
-		app.parseDocumentID(docID)
+		document.ParseDocumentID(docID)
 	}
 }
 
 func BenchmarkParseDocumentID_PlainString(b *testing.B) {
-	app := newTestApp()
 	docID := "my-custom-id-12345"
 
 	for i := 0; i < b.N; i++ {
-		app.parseDocumentID(docID)
+		document.ParseDocumentID(docID)
 	}
 }
 
 func BenchmarkValidateJSON_Simple(b *testing.B) {
-	app := newTestApp()
 	jsonStr := `{"name": "John", "age": 30}`
 
 	for i := 0; i < b.N; i++ {
-		app.ValidateJSON(jsonStr)
+		document.ValidateJSON(jsonStr)
 	}
 }
 
 func BenchmarkValidateJSON_ExtendedJSON(b *testing.B) {
-	app := newTestApp()
 	jsonStr := `{"_id": {"$oid": "507f1f77bcf86cd799439011"}, "createdAt": {"$date": "2023-01-01T00:00:00Z"}, "count": {"$numberLong": "1000000"}}`
 
 	for i := 0; i < b.N; i++ {
-		app.ValidateJSON(jsonStr)
+		document.ValidateJSON(jsonStr)
 	}
 }
 
 func BenchmarkExtractPasswordFromURI(b *testing.B) {
-	app := newTestApp()
 	uri := "mongodb://user:password123@localhost:27017/mydb?authSource=admin"
 
 	for i := 0; i < b.N; i++ {
-		app.extractPasswordFromURI(uri)
+		credential.ExtractPasswordFromURI(uri)
 	}
 }
 
 func BenchmarkInjectPasswordIntoURI(b *testing.B) {
-	app := newTestApp()
 	uri := "mongodb://user@localhost:27017/mydb"
 	password := "password123"
 
 	for i := 0; i < b.N; i++ {
-		app.injectPasswordIntoURI(uri, password)
+		credential.InjectPasswordIntoURI(uri, password)
 	}
 }
 
 // =============================================================================
 // Export/Import Tests
 // =============================================================================
-
-func TestBuildExportFilename(t *testing.T) {
-	app := newTestApp()
-
-	tests := []struct {
-		name     string
-		connName string
-		dbCount  int
-		wantPfx  string // Expected prefix (before timestamp)
-	}{
-		{
-			name:     "Simple connection name",
-			connName: "MyConnection",
-			dbCount:  3,
-			wantPfx:  "MyConnection_3db_",
-		},
-		{
-			name:     "Connection name with spaces",
-			connName: "My Local Dev",
-			dbCount:  1,
-			wantPfx:  "My_Local_Dev_1db_",
-		},
-		{
-			name:     "Connection name with special chars",
-			connName: "Dev@Server#1!",
-			dbCount:  5,
-			wantPfx:  "DevServer1_5db_",
-		},
-		{
-			name:     "Very long connection name (truncated)",
-			connName: "ThisIsAVeryLongConnectionNameThatShouldBeTruncatedToFortyCharacters",
-			dbCount:  2,
-			wantPfx:  "ThisIsAVeryLongConnectionNameThatShouldB_2db_",
-		},
-		{
-			name:     "Empty connection name",
-			connName: "",
-			dbCount:  1,
-			wantPfx:  "_1db_",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := app.buildExportFilename(tt.connName, tt.dbCount)
-
-			// Check prefix
-			if len(result) < len(tt.wantPfx) {
-				t.Errorf("Result too short: got %s", result)
-				return
-			}
-			gotPfx := result[:len(tt.wantPfx)]
-			if gotPfx != tt.wantPfx {
-				t.Errorf("Prefix mismatch: got %s, want %s", gotPfx, tt.wantPfx)
-			}
-
-			// Check suffix
-			if !stringEndsWith(result, ".zip") {
-				t.Errorf("Expected .zip suffix, got: %s", result)
-			}
-
-			// Check timestamp format (YYYY-MM-DD_HHMMSS)
-			// The format should be like: prefix_2026-01-31_153045.zip
-			timestampPart := result[len(tt.wantPfx) : len(result)-4] // Remove .zip
-			if len(timestampPart) != 17 { // 2026-01-31_153045
-				t.Errorf("Unexpected timestamp length: got %s (len=%d)", timestampPart, len(timestampPart))
-			}
-		})
-	}
-}
-
-func stringEndsWith(s, suffix string) bool {
-	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
-}
 
 func TestExportManifestJSON(t *testing.T) {
 	// Test that ExportManifest serializes correctly

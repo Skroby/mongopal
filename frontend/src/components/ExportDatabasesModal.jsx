@@ -59,7 +59,7 @@ export default function ExportDatabasesModal({ connectionId, connectionName, onC
       }
     } catch (err) {
       console.error('Failed to load databases:', err)
-      notify.error(`Failed to load databases: ${err.message || err}`)
+      notify.error(`Failed to load databases: ${err?.message || String(err)}`)
     } finally {
       setLoading(false)
     }
@@ -97,7 +97,7 @@ export default function ExportDatabasesModal({ connectionId, connectionName, onC
       await go?.ExportDatabases(connectionId, Array.from(selectedDbs))
     } catch (err) {
       console.error('Export failed:', err)
-      notify.error(`Export failed: ${err.message || err}`)
+      notify.error(`Export failed: ${err?.message || String(err)}`)
       setExporting(false)
       setProgress(null)
     }

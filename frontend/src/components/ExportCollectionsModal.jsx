@@ -65,7 +65,7 @@ export default function ExportCollectionsModal({ connectionId, connectionName, d
       }
     } catch (err) {
       console.error('Failed to load collections:', err)
-      notify.error(`Failed to load collections: ${err.message || err}`)
+      notify.error(`Failed to load collections: ${err?.message || String(err)}`)
     } finally {
       setLoading(false)
     }
@@ -103,7 +103,7 @@ export default function ExportCollectionsModal({ connectionId, connectionName, d
       await go?.ExportCollections(connectionId, databaseName, Array.from(selectedColls))
     } catch (err) {
       console.error('Export failed:', err)
-      notify.error(`Export failed: ${err.message || err}`)
+      notify.error(`Export failed: ${err?.message || String(err)}`)
       setExporting(false)
       setProgress(null)
     }

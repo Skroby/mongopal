@@ -124,7 +124,7 @@ export default function SchemaView({ connectionId, database, collection }) {
       }
     } catch (err) {
       setError(err.message || 'Failed to infer schema')
-      notify.error(`Failed to infer schema: ${err.message || err}`)
+      notify.error(`Failed to infer schema: ${err?.message || String(err)}`)
     } finally {
       setLoading(false)
     }
@@ -157,7 +157,7 @@ export default function SchemaView({ connectionId, database, collection }) {
         notify.success('Schema exported')
       }
     } catch (err) {
-      notify.error(`Export failed: ${err.message || err}`)
+      notify.error(`Export failed: ${err?.message || String(err)}`)
     }
   }
 

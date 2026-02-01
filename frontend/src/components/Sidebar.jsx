@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNotification } from './NotificationContext'
+import { useConnection } from './contexts/ConnectionContext'
+import { useTab } from './contexts/TabContext'
 
 const go = window.go?.main?.App
 
@@ -320,7 +322,7 @@ function ConnectionNode({
       await go.ListDatabases(connection.id)
     } catch (err) {
       console.error('Failed to load databases:', err)
-      onError?.(`Failed to load databases: ${err.message || err}`)
+      onError?.(`Failed to load databases: ${err?.message || String(err)}`)
     } finally {
       setLoading(false)
     }
@@ -337,7 +339,7 @@ function ConnectionNode({
       }))
     } catch (err) {
       console.error('Failed to load collections:', err)
-      onError?.(`Failed to load collections: ${err.message || err}`)
+      onError?.(`Failed to load collections: ${err?.message || String(err)}`)
     }
   }
 
@@ -479,37 +481,45 @@ function ConnectionNode({
 }
 
 export default function Sidebar({
-  connections,
-  folders = [],
-  activeConnections,
-  connectingId,
-  selectedConnection,
-  selectedDatabase,
-  selectedCollection,
-  onConnect,
-  onDisconnect,
-  onDisconnectAll,
-  onDisconnectOthers,
-  onSelectConnection,
-  onSelectDatabase,
-  onSelectCollection,
   onAddConnection,
   onEditConnection,
   onDeleteConnection,
-  onDuplicateConnection,
-  onRefreshConnection,
-  onCreateFolder,
-  onDeleteFolder,
-  onDropDatabase,
-  onDropCollection,
-  onClearCollection,
-  onViewSchema,
   onExportDatabases,
   onImportDatabases,
   onExportCollections,
   onImportCollections,
 }) {
   const { notify } = useNotification()
+  const {
+    connections,
+    folders,
+    activeConnections,
+    connectingId,
+    connect,
+    disconnect,
+    disconnectAll,
+    disconnectOthers,
+    setSelectedDatabase,
+    setSelectedCollection,
+    duplicateConnection,
+    refreshConnection,
+    dropDatabase,
+    dropCollection,
+    clearCollection,
+    createFolder,
+    deleteFolder,
+  } = useConnection()
+
+  const {
+    openTab,
+    openSchemaTab,
+    closeTabsForConnection,
+    closeTabsForDatabase,
+    closeTabsForCollection,
+    closeAllTabs,
+    keepOnlyConnectionTabs,
+  } = useTab()
+
   const [searchQuery, setSearchQuery] = useState('')
   const [databases, setDatabases] = useState({})
   const [contextMenu, setContextMenu] = useState(null)
@@ -551,21 +561,21 @@ export default function Sidebar({
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return
     try {
-      await onCreateFolder?.(newFolderName.trim())
+      await createFolder(newFolderName.trim())
       setNewFolderName('')
       setShowNewFolderInput(false)
       notify.success('Folder created')
     } catch (err) {
-      notify.error(`Failed to create folder: ${err.message || err}`)
+      notify.error(`Failed to create folder: ${err?.message || String(err)}`)
     }
   }
 
   const handleDeleteFolder = async (folderId) => {
     try {
-      await onDeleteFolder?.(folderId)
+      await deleteFolder(folderId)
       notify.success('Folder deleted')
     } catch (err) {
-      notify.error(`Failed to delete folder: ${err.message || err}`)
+      notify.error(`Failed to delete folder: ${err?.message || String(err)}`)
     }
   }
 
@@ -583,6 +593,18 @@ export default function Sidebar({
     }
   }
 
+  const handleDisconnect = async (connId) => {
+    await disconnect(connId, closeTabsForConnection)
+  }
+
+  const handleDisconnectAll = async () => {
+    await disconnectAll(closeAllTabs)
+  }
+
+  const handleDisconnectOthers = async (keepConnId) => {
+    await disconnectOthers(keepConnId, keepOnlyConnectionTabs)
+  }
+
   const handleDropDatabase = (connId, dbName, removeFromState) => {
     setConfirmDialog({
       title: `Drop Database "${dbName}"?`,
@@ -591,7 +613,8 @@ export default function Sidebar({
       confirmStyle: 'danger',
       onConfirm: async () => {
         try {
-          await onDropDatabase?.(connId, dbName)
+          await dropDatabase(connId, dbName)
+          closeTabsForDatabase(connId, dbName)
           removeFromState?.(dbName) // Remove from ConnectionNode local state
           // Also remove from Sidebar's databases state
           setDatabases(prev => ({
@@ -601,7 +624,7 @@ export default function Sidebar({
           notify.success(`Database "${dbName}" dropped`)
           setConfirmDialog(null)
         } catch (err) {
-          notify.error(`Failed to drop database: ${err.message || err}`)
+          notify.error(`Failed to drop database: ${err?.message || String(err)}`)
         }
       },
     })
@@ -615,12 +638,13 @@ export default function Sidebar({
       confirmStyle: 'danger',
       onConfirm: async () => {
         try {
-          await onDropCollection?.(connId, dbName, collName)
+          await dropCollection(connId, dbName, collName)
+          closeTabsForCollection(connId, dbName, collName)
           removeFromState?.(dbName, collName) // Remove from UI
           notify.success(`Collection "${collName}" dropped`)
           setConfirmDialog(null)
         } catch (err) {
-          notify.error(`Failed to drop collection: ${err.message || err}`)
+          notify.error(`Failed to drop collection: ${err?.message || String(err)}`)
         }
       },
     })
@@ -634,14 +658,19 @@ export default function Sidebar({
       confirmStyle: 'danger',
       onConfirm: async () => {
         try {
-          await onClearCollection?.(connId, dbName, collName)
+          await clearCollection(connId, dbName, collName)
           notify.success(`Collection "${collName}" cleared`)
           setConfirmDialog(null)
         } catch (err) {
-          notify.error(`Failed to clear collection: ${err.message || err}`)
+          notify.error(`Failed to clear collection: ${err?.message || String(err)}`)
         }
       },
     })
+  }
+
+  const handleSelectCollection = (connId, dbName, collName) => {
+    setSelectedCollection(collName)
+    openTab(connId, dbName, collName)
   }
 
   const renderConnectionNode = (conn) => (
@@ -652,21 +681,21 @@ export default function Sidebar({
       isConnecting={connectingId === conn.id}
       databases={databases[conn.id] || []}
       activeConnections={activeConnections}
-      onConnect={onConnect}
-      onDisconnect={onDisconnect}
-      onDisconnectOthers={onDisconnectOthers}
-      onSelectDatabase={onSelectDatabase}
-      onSelectCollection={onSelectCollection}
+      onConnect={connect}
+      onDisconnect={handleDisconnect}
+      onDisconnectOthers={handleDisconnectOthers}
+      onSelectDatabase={setSelectedDatabase}
+      onSelectCollection={handleSelectCollection}
       onEdit={() => onEditConnection(conn)}
       onDelete={() => onDeleteConnection(conn.id)}
-      onDuplicate={() => onDuplicateConnection(conn.id)}
+      onDuplicate={() => duplicateConnection(conn.id)}
       onCopyURI={() => handleCopyURI(conn)}
-      onRefresh={() => onRefreshConnection?.(conn.id)}
+      onRefresh={() => refreshConnection(conn.id)}
       onShowContextMenu={showContextMenu}
       onDropDatabase={handleDropDatabase}
       onDropCollection={handleDropCollection}
       onClearCollection={handleClearCollection}
-      onViewSchema={onViewSchema}
+      onViewSchema={openSchemaTab}
       onExportDatabases={() => onExportDatabases?.(conn.id, conn.name)}
       onImportDatabases={() => onImportDatabases?.(conn.id, conn.name)}
       onExportCollections={(dbName) => onExportCollections?.(conn.id, conn.name, dbName)}
@@ -711,7 +740,7 @@ export default function Sidebar({
         {activeConnections.length > 0 && (
           <button
             className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ml-auto"
-            onClick={onDisconnectAll}
+            onClick={handleDisconnectAll}
             title={`Disconnect All (${activeConnections.length})`}
           >
             <DisconnectIcon className="w-4 h-4" />

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime'
 import Sidebar from './components/Sidebar'
 import TabBar from './components/TabBar'
 import CollectionView from './components/CollectionView'
@@ -12,6 +13,14 @@ import ExportCollectionsModal from './components/ExportCollectionsModal'
 import ImportCollectionsModal from './components/ImportCollectionsModal'
 import ConfirmDialog from './components/ConfirmDialog'
 import { useNotification } from './components/NotificationContext'
+import { useConnection } from './components/contexts/ConnectionContext'
+import { useTab } from './components/contexts/TabContext'
+
+// Constants
+const DEFAULT_SIDEBAR_WIDTH = 260
+const MIN_SIDEBAR_WIDTH = 200
+const MAX_SIDEBAR_WIDTH = 500
+const BINDINGS_CHECK_DELAY = 2000 // ms to wait before showing bindings error
 
 // Wails runtime bindings will be available at window.go
 const go = window.go?.main?.App
@@ -19,39 +28,70 @@ const go = window.go?.main?.App
 function App() {
   const { notify } = useNotification()
 
-  // Connection state
-  const [connections, setConnections] = useState([])
-  const [folders, setFolders] = useState([])
-  const [activeConnections, setActiveConnections] = useState([]) // Connected connection IDs
+  const {
+    connections,
+    folders,
+    activeConnections,
+    deleteConnection,
+    saveConnection,
+  } = useConnection()
 
-  // Navigation state
-  const [selectedConnection, setSelectedConnection] = useState(null)
-  const [selectedDatabase, setSelectedDatabase] = useState(null)
-  const [selectedCollection, setSelectedCollection] = useState(null)
+  const {
+    currentTab,
+    convertInsertToDocumentTab,
+    openDocumentTab,
+    openInsertTab,
+  } = useTab()
 
-  // Tab state
-  const [tabs, setTabs] = useState([])
-  const [activeTab, setActiveTab] = useState(null)
+  // Wails bindings state
+  const [bindingsReady, setBindingsReady] = useState(!!go)
+  const [bindingsError, setBindingsError] = useState(false)
 
   // UI state
   const [showConnectionForm, setShowConnectionForm] = useState(false)
   const [editingConnection, setEditingConnection] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
-  const [sidebarWidth, setSidebarWidth] = useState(260)
-  const [connectingId, setConnectingId] = useState(null) // Currently connecting
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [exportModal, setExportModal] = useState(null) // { connectionId, connectionName }
   const [importModal, setImportModal] = useState(null) // { connectionId, connectionName }
   const [exportCollectionsModal, setExportCollectionsModal] = useState(null) // { connectionId, connectionName, databaseName }
   const [importCollectionsModal, setImportCollectionsModal] = useState(null) // { connectionId, connectionName, databaseName }
   const [confirmDialog, setConfirmDialog] = useState(null) // { title, message, onConfirm, danger }
 
-  // Get current tab data (must be before useEffects that reference it)
-  const currentTab = tabs.find(t => t.id === activeTab)
-
-  // Load saved connections on mount
+  // Check for Wails bindings availability
   useEffect(() => {
-    loadConnections()
+    // If bindings are already available, we're good
+    if (window.go?.main?.App) {
+      setBindingsReady(true)
+      return
+    }
+
+    // Check again after a short delay (bindings might load async)
+    const checkBindings = () => {
+      if (window.go?.main?.App) {
+        setBindingsReady(true)
+        setBindingsError(false)
+      } else {
+        setBindingsError(true)
+      }
+    }
+
+    // Wait 2 seconds before showing error (give bindings time to load)
+    const timer = setTimeout(checkBindings, BINDINGS_CHECK_DELAY)
+    return () => clearTimeout(timer)
   }, [])
+
+  // Listen for app warnings (e.g., keyring errors)
+  useEffect(() => {
+    const unsubscribe = EventsOn('app:warning', (data) => {
+      if (data?.message) {
+        notify.warning(data.message)
+      }
+    })
+    return () => {
+      EventsOff('app:warning')
+    }
+  }, [notify])
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -67,304 +107,6 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [currentTab])
 
-  const loadConnections = async () => {
-    try {
-      if (go?.ListSavedConnections) {
-        const saved = await go.ListSavedConnections()
-        setConnections(saved || [])
-      }
-      if (go?.ListFolders) {
-        const savedFolders = await go.ListFolders()
-        setFolders(savedFolders || [])
-      }
-    } catch (err) {
-      console.error('Failed to load connections:', err)
-    }
-  }
-
-  // Connection actions
-  const handleConnect = async (connId) => {
-    if (connectingId) return // Already connecting
-    setConnectingId(connId)
-    try {
-      if (go?.Connect) {
-        await go.Connect(connId)
-        setActiveConnections(prev => [...prev, connId])
-        notify.success('Connected successfully')
-      }
-    } catch (err) {
-      console.error('Failed to connect:', err)
-      notify.error(`Connection failed: ${err.message || err}`)
-    } finally {
-      setConnectingId(null)
-    }
-  }
-
-  const handleDisconnect = async (connId) => {
-    try {
-      if (go?.Disconnect) {
-        await go.Disconnect(connId)
-        setActiveConnections(prev => prev.filter(id => id !== connId))
-        // Close any tabs for this connection
-        setTabs(prev => prev.filter(t => t.connectionId !== connId))
-      }
-    } catch (err) {
-      console.error('Failed to disconnect:', err)
-      notify.error(`Failed to disconnect: ${err.message || err}`)
-    }
-  }
-
-  const handleDisconnectAll = async () => {
-    try {
-      if (go?.DisconnectAll) {
-        await go.DisconnectAll()
-      }
-      setActiveConnections([])
-      setTabs([])
-      setActiveTab(null)
-    } catch (err) {
-      console.error('Failed to disconnect all:', err)
-      notify.error(`Failed to disconnect all: ${err.message || err}`)
-    }
-  }
-
-  const handleDisconnectOthers = async (keepConnId) => {
-    try {
-      for (const connId of activeConnections) {
-        if (connId !== keepConnId && go?.Disconnect) {
-          await go.Disconnect(connId)
-        }
-      }
-      setActiveConnections([keepConnId])
-      setTabs(prev => prev.filter(t => t.connectionId === keepConnId))
-      notify.success('Other connections disconnected')
-    } catch (err) {
-      console.error('Failed to disconnect others:', err)
-      notify.error(`Failed to disconnect others: ${err.message || err}`)
-    }
-  }
-
-  const handleDropDatabase = async (connId, dbName) => {
-    if (go?.DropDatabase) {
-      await go.DropDatabase(connId, dbName)
-      // Close any tabs for this database
-      setTabs(prev => prev.filter(t => !(t.connectionId === connId && t.database === dbName)))
-    }
-  }
-
-  const handleDropCollection = async (connId, dbName, collName) => {
-    if (go?.DropCollection) {
-      await go.DropCollection(connId, dbName, collName)
-      // Close any tabs for this collection
-      setTabs(prev => prev.filter(t => !(t.connectionId === connId && t.database === dbName && t.collection === collName)))
-    }
-  }
-
-  const handleClearCollection = async (connId, dbName, collName) => {
-    if (go?.ClearCollection) {
-      await go.ClearCollection(connId, dbName, collName)
-    }
-  }
-
-  const handleDuplicateConnection = async (connId) => {
-    try {
-      const conn = connections.find(c => c.id === connId)
-      if (conn && go?.DuplicateConnection) {
-        await go.DuplicateConnection(connId, `${conn.name} (copy)`)
-        await loadConnections()
-        notify.success('Connection duplicated')
-      }
-    } catch (err) {
-      console.error('Failed to duplicate connection:', err)
-      notify.error(`Failed to duplicate connection: ${err.message || err}`)
-    }
-  }
-
-  const handleRefreshConnection = async (connId) => {
-    // Force reload databases for this connection
-    if (go?.ListDatabases) {
-      try {
-        await go.ListDatabases(connId)
-        notify.info('Connection refreshed')
-      } catch (err) {
-        console.error('Failed to refresh:', err)
-        notify.error(`Failed to refresh: ${err.message || err}`)
-      }
-    }
-  }
-
-  // Tab management
-  const openTab = (connectionId, database, collection) => {
-    const tabId = `${connectionId}.${database}.${collection}`
-    const existingTab = tabs.find(t => t.id === tabId)
-
-    if (existingTab) {
-      setActiveTab(tabId)
-    } else {
-      const conn = connections.find(c => c.id === connectionId)
-      const newTab = {
-        id: tabId,
-        type: 'collection',
-        connectionId,
-        database,
-        collection,
-        label: database,
-        color: conn?.color || '#4CC38A',
-        pinned: false,
-      }
-      setTabs(prev => [...prev, newTab])
-      setActiveTab(tabId)
-    }
-  }
-
-  // Open a new query tab (for + button)
-  const openNewQueryTab = () => {
-    if (!currentTab || currentTab.type === 'document') return
-
-    const { connectionId, database, collection } = currentTab
-    const conn = connections.find(c => c.id === connectionId)
-    const tabId = `${connectionId}.${database}.${collection}.${Date.now()}`
-
-    const newTab = {
-      id: tabId,
-      type: 'collection',
-      connectionId,
-      database,
-      collection,
-      label: database,
-      color: conn?.color || '#4CC38A',
-      pinned: false,
-    }
-    setTabs(prev => [...prev, newTab])
-    setActiveTab(tabId)
-  }
-
-  // Open document in a new tab
-  const openDocumentTab = (connectionId, database, collection, document, documentId) => {
-    const shortId = typeof documentId === 'string' ? documentId.slice(0, 8) : String(documentId).slice(0, 8)
-    const tabId = `doc:${connectionId}.${database}.${collection}.${documentId}`
-    const existingTab = tabs.find(t => t.id === tabId)
-
-    if (existingTab) {
-      setActiveTab(tabId)
-    } else {
-      const conn = connections.find(c => c.id === connectionId)
-      const newTab = {
-        id: tabId,
-        type: 'document',
-        connectionId,
-        database,
-        collection,
-        document,
-        documentId,
-        label: `${shortId}...`,
-        color: conn?.color || '#4CC38A',
-        pinned: false,
-      }
-      setTabs(prev => [...prev, newTab])
-      setActiveTab(tabId)
-    }
-  }
-
-  // Open insert tab for new document
-  const openInsertTab = (connectionId, database, collection) => {
-    const conn = connections.find(c => c.id === connectionId)
-    const tabId = `insert:${connectionId}.${database}.${collection}.${Date.now()}`
-
-    const newTab = {
-      id: tabId,
-      type: 'insert',
-      connectionId,
-      database,
-      collection,
-      label: 'New Document',
-      color: conn?.color || '#4CC38A',
-      pinned: false,
-    }
-    setTabs(prev => [...prev, newTab])
-    setActiveTab(tabId)
-  }
-
-  // Open schema view tab
-  const openSchemaTab = (connectionId, database, collection) => {
-    const tabId = `schema:${connectionId}.${database}.${collection}`
-    const existingTab = tabs.find(t => t.id === tabId)
-
-    if (existingTab) {
-      setActiveTab(tabId)
-    } else {
-      const conn = connections.find(c => c.id === connectionId)
-      const newTab = {
-        id: tabId,
-        type: 'schema',
-        connectionId,
-        database,
-        collection,
-        label: `Schema: ${collection}`,
-        color: conn?.color || '#4CC38A',
-        pinned: false,
-      }
-      setTabs(prev => [...prev, newTab])
-      setActiveTab(tabId)
-    }
-  }
-
-  // Convert insert tab to document tab after successful insert
-  const convertInsertToDocumentTab = (tabId, document, documentId) => {
-    const tab = tabs.find(t => t.id === tabId)
-    if (!tab) return
-
-    const shortId = typeof documentId === 'string' ? documentId.slice(0, 8) : String(documentId).slice(0, 8)
-    const newTabId = `doc:${tab.connectionId}.${tab.database}.${tab.collection}.${documentId}`
-
-    setTabs(prev => prev.map(t => {
-      if (t.id === tabId) {
-        return {
-          ...t,
-          id: newTabId,
-          type: 'document',
-          document,
-          documentId,
-          label: `${shortId}...`,
-        }
-      }
-      return t
-    }))
-    setActiveTab(newTabId)
-  }
-
-  const closeTab = (tabId) => {
-    setTabs(prev => prev.filter(t => t.id !== tabId))
-    if (activeTab === tabId) {
-      setActiveTab(tabs.length > 1 ? tabs[tabs.length - 2]?.id : null)
-    }
-  }
-
-  const pinTab = (tabId) => {
-    setTabs(prev => prev.map(t =>
-      t.id === tabId ? { ...t, pinned: !t.pinned } : t
-    ))
-  }
-
-  const renameTab = (tabId, newLabel) => {
-    setTabs(prev => prev.map(t =>
-      t.id === tabId ? { ...t, label: newLabel } : t
-    ))
-  }
-
-  const reorderTabs = (draggedId, targetId) => {
-    setTabs(prev => {
-      const newTabs = [...prev]
-      const draggedIndex = newTabs.findIndex(t => t.id === draggedId)
-      const targetIndex = newTabs.findIndex(t => t.id === targetId)
-      if (draggedIndex === -1 || targetIndex === -1) return prev
-
-      const [dragged] = newTabs.splice(draggedIndex, 1)
-      newTabs.splice(targetIndex, 0, dragged)
-      return newTabs
-    })
-  }
-
   // Connection form actions
   const handleAddConnection = () => {
     setEditingConnection(null)
@@ -377,16 +119,9 @@ function App() {
   }
 
   const handleSaveConnection = async (conn, password) => {
-    try {
-      if (go?.SaveConnection) {
-        await go.SaveConnection(conn, password)
-        await loadConnections()
-        notify.success('Connection saved')
-      }
+    const success = await saveConnection(conn, password)
+    if (success) {
       setShowConnectionForm(false)
-    } catch (err) {
-      console.error('Failed to save connection:', err)
-      notify.error(`Failed to save connection: ${err.message || err}`)
     }
   }
 
@@ -401,42 +136,33 @@ function App() {
       danger: true,
       onConfirm: async () => {
         setConfirmDialog(null)
-        try {
-          if (go?.DeleteSavedConnection) {
-            await go.DeleteSavedConnection(connId)
-            await loadConnections()
-            notify.success('Connection deleted')
-          }
-        } catch (err) {
-          console.error('Failed to delete connection:', err)
-          notify.error(`Failed to delete connection: ${err.message || err}`)
-        }
+        await deleteConnection(connId)
       },
     })
   }
 
-  const handleCreateFolder = async (name) => {
-    try {
-      if (go?.CreateFolder) {
-        await go.CreateFolder(name, '')
-        await loadConnections()
-      }
-    } catch (err) {
-      console.error('Failed to create folder:', err)
-      throw err
-    }
-  }
-
-  const handleDeleteFolder = async (folderId) => {
-    try {
-      if (go?.DeleteFolder) {
-        await go.DeleteFolder(folderId)
-        await loadConnections()
-      }
-    } catch (err) {
-      console.error('Failed to delete folder:', err)
-      throw err
-    }
+  // Show error if Wails bindings failed to load
+  if (bindingsError) {
+    return (
+      <div className="h-screen flex flex-col bg-surface">
+        <div className="h-7 bg-surface-secondary titlebar-drag flex-shrink-0" />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center p-8 max-w-md">
+            <div className="text-red-500 text-4xl mb-4">⚠</div>
+            <h1 className="text-xl font-semibold text-primary mb-2">
+              Failed to Initialize
+            </h1>
+            <p className="text-secondary mb-4">
+              The application backend failed to load. This usually means the Wails runtime
+              didn't initialize properly.
+            </p>
+            <p className="text-tertiary text-sm">
+              Try restarting the application. If the problem persists, check the console for errors.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -452,34 +178,9 @@ function App() {
           style={{ width: sidebarWidth }}
         >
           <Sidebar
-            connections={connections}
-            folders={folders}
-            activeConnections={activeConnections}
-            connectingId={connectingId}
-            selectedConnection={selectedConnection}
-            selectedDatabase={selectedDatabase}
-            selectedCollection={selectedCollection}
-            onConnect={handleConnect}
-            onDisconnect={handleDisconnect}
-            onDisconnectAll={handleDisconnectAll}
-            onDisconnectOthers={handleDisconnectOthers}
-            onSelectConnection={setSelectedConnection}
-            onSelectDatabase={setSelectedDatabase}
-            onSelectCollection={(connId, db, coll) => {
-              setSelectedCollection(coll)
-              openTab(connId, db, coll)
-            }}
             onAddConnection={handleAddConnection}
             onEditConnection={handleEditConnection}
             onDeleteConnection={handleDeleteConnection}
-            onDuplicateConnection={handleDuplicateConnection}
-            onRefreshConnection={handleRefreshConnection}
-            onCreateFolder={handleCreateFolder}
-            onDeleteFolder={handleDeleteFolder}
-            onDropDatabase={handleDropDatabase}
-            onDropCollection={handleDropCollection}
-            onClearCollection={handleClearCollection}
-            onViewSchema={openSchemaTab}
             onExportDatabases={(connId, connName) => setExportModal({ connectionId: connId, connectionName: connName })}
             onImportDatabases={(connId, connName) => setImportModal({ connectionId: connId, connectionName: connName })}
             onExportCollections={(connId, connName, dbName) => setExportCollectionsModal({ connectionId: connId, connectionName: connName, databaseName: dbName })}
@@ -495,7 +196,7 @@ function App() {
             const startWidth = sidebarWidth
             const onMove = (e) => {
               const newWidth = startWidth + (e.clientX - startX)
-              setSidebarWidth(Math.max(200, Math.min(500, newWidth)))
+              setSidebarWidth(Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, newWidth)))
             }
             const onUp = () => {
               document.removeEventListener('mousemove', onMove)
@@ -509,16 +210,7 @@ function App() {
         {/* Main area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Tab bar */}
-          <TabBar
-            tabs={tabs}
-            activeTab={activeTab}
-            onSelectTab={setActiveTab}
-            onCloseTab={closeTab}
-            onAddTab={openNewQueryTab}
-            onPinTab={pinTab}
-            onRenameTab={renameTab}
-            onReorderTabs={reorderTabs}
-          />
+          <TabBar />
 
           {/* Content area */}
           <div className="flex-1 overflow-hidden">
@@ -556,8 +248,6 @@ function App() {
                 connectionId={currentTab.connectionId}
                 database={currentTab.database}
                 collection={currentTab.collection}
-                onEditDocument={openDocumentTab}
-                onInsertDocument={() => openInsertTab(currentTab.connectionId, currentTab.database, currentTab.collection)}
               />
             ) : (
               <div className="h-full flex items-center justify-center text-zinc-500">

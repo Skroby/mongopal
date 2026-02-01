@@ -5,10 +5,16 @@ A lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing do
 ## Features
 
 - Connect to MongoDB instances via connection URI
-- Browse databases and collections
-- View documents in Table, Tree, or JSON format
-- Edit documents with syntax highlighting
+- Browse databases and collections in tree view
+- View documents in Table or JSON format with pagination
+- Edit documents with Monaco editor (syntax highlighting, formatting)
+- Insert new documents with JSON validation
+- Bulk operations (select, delete multiple documents)
+- Collection schema analysis with field type distribution
+- Export/import databases and collections (JSON format)
+- Query filtering and sorting with mongosh script support
 - Secure credential storage (OS keyring with encrypted fallback)
+- Multi-tab interface with pinning, renaming, drag-reorder
 - Dark theme optimized for extended use
 
 ## Technology Stack
@@ -67,18 +73,55 @@ make build-linux
 ```
 mongopal/
 ├── main.go                 # Entry point, Wails app setup
-├── app.go                  # All backend methods
+├── app.go                  # All backend methods (MongoDB ops, connections)
+├── app_test.go             # Backend unit tests
+├── integration_test.go     # Integration tests (requires Docker)
 ├── wails.json              # Wails configuration
 ├── Makefile                # Build automation
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx         # Root component
-│   │   └── components/     # UI components
+│   │   ├── App.jsx         # Root component with state management
+│   │   ├── components/     # React components
+│   │   │   ├── Sidebar.jsx           # Database/collection tree
+│   │   │   ├── CollectionView.jsx    # Document list with filters
+│   │   │   ├── DocumentEditView.jsx  # Monaco editor
+│   │   │   ├── SchemaView.jsx        # Collection schema analysis
+│   │   │   ├── Import/ExportModals   # Data transfer
+│   │   │   └── ...
+│   │   └── utils/          # Query parsing, schema utils
 │   └── ...
 │
+├── .claude/                # Claude Code configuration
+│   ├── rules/              # Project context
+│   └── skills/             # Custom skills (pr-summary)
+│
 └── build/
-    └── appicon.png         # App icon
+    └── bin/                # Built binaries
+```
+
+## Testing
+
+### Run all tests
+```bash
+make test
+```
+
+### Frontend tests only
+```bash
+make test-frontend
+# or watch mode
+npm test -- --watch
+```
+
+### Backend tests only
+```bash
+make test-go
+```
+
+### Integration tests (requires Docker)
+```bash
+make test-integration
 ```
 
 ## Keyboard Shortcuts

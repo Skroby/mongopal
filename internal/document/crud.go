@@ -1,0 +1,253 @@
+// Package document handles MongoDB document CRUD operations.
+package document
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/peternagy/mongopal/internal/core"
+	"github.com/peternagy/mongopal/internal/types"
+)
+
+// Service handles document CRUD operations.
+type Service struct {
+	state *core.AppState
+}
+
+// NewService creates a new document service.
+func NewService(state *core.AppState) *Service {
+	return &Service{state: state}
+}
+
+// FindDocuments executes a query and returns paginated results.
+func (s *Service) FindDocuments(connID, dbName, collName, query string, opts types.QueryOptions) (*types.QueryResult, error) {
+	client, err := s.state.GetClient(connID)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := core.ContextWithTimeout()
+	defer cancel()
+
+	coll := client.Database(dbName).Collection(collName)
+
+	// Parse query filter
+	var filter bson.M
+	if query == "" || query == "{}" {
+		filter = bson.M{}
+	} else {
+		if err := bson.UnmarshalExtJSON([]byte(query), true, &filter); err != nil {
+			return nil, fmt.Errorf("invalid query: %w", err)
+		}
+	}
+
+	// Set defaults
+	if opts.Limit <= 0 || opts.Limit > 1000 {
+		opts.Limit = 50
+	}
+	if opts.Skip < 0 {
+		opts.Skip = 0
+	}
+
+	startTime := time.Now()
+
+	// Get total count
+	total, err := coll.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count documents: %w", err)
+	}
+
+	// Build find options
+	findOpts := options.Find().
+		SetSkip(opts.Skip).
+		SetLimit(opts.Limit)
+
+	// Parse projection
+	if opts.Projection != "" && opts.Projection != "{}" {
+		var projection bson.M
+		if err := bson.UnmarshalExtJSON([]byte(opts.Projection), true, &projection); err != nil {
+			return nil, fmt.Errorf("invalid projection: %w", err)
+		}
+		findOpts.SetProjection(projection)
+	}
+
+	// Parse sort
+	if opts.Sort != "" {
+		sortDoc := bson.D{}
+		// Simple format: "-fieldName" for descending, "fieldName" for ascending
+		for _, field := range strings.Split(opts.Sort, ",") {
+			field = strings.TrimSpace(field)
+			if strings.HasPrefix(field, "-") {
+				sortDoc = append(sortDoc, bson.E{Key: field[1:], Value: -1})
+			} else {
+				sortDoc = append(sortDoc, bson.E{Key: field, Value: 1})
+			}
+		}
+		findOpts.SetSort(sortDoc)
+	}
+
+	// Execute query
+	cursor, err := coll.Find(ctx, filter, findOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find documents: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	// Collect results as Extended JSON
+	var documents []string
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			continue
+		}
+		jsonBytes, err := bson.MarshalExtJSON(doc, true, false)
+		if err != nil {
+			continue
+		}
+		documents = append(documents, string(jsonBytes))
+	}
+
+	queryTime := time.Since(startTime).Milliseconds()
+
+	return &types.QueryResult{
+		Documents:   documents,
+		Total:       total,
+		HasMore:     opts.Skip+int64(len(documents)) < total,
+		QueryTimeMs: queryTime,
+	}, nil
+}
+
+// GetDocument returns a single document by ID.
+// docID can be: Extended JSON, ObjectID hex, or plain string.
+func (s *Service) GetDocument(connID, dbName, collName, docID string) (string, error) {
+	client, err := s.state.GetClient(connID)
+	if err != nil {
+		return "", err
+	}
+
+	ctx, cancel := core.ContextWithTimeout()
+	defer cancel()
+
+	coll := client.Database(dbName).Collection(collName)
+	filter := bson.M{"_id": ParseDocumentID(docID)}
+
+	var doc bson.M
+	if err := coll.FindOne(ctx, filter).Decode(&doc); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return "", fmt.Errorf("document not found")
+		}
+		return "", fmt.Errorf("failed to get document: %w", err)
+	}
+
+	jsonBytes, err := bson.MarshalExtJSON(doc, true, false)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal document: %w", err)
+	}
+
+	return string(jsonBytes), nil
+}
+
+// UpdateDocument replaces a document.
+// docID can be: Extended JSON, ObjectID hex, or plain string.
+func (s *Service) UpdateDocument(connID, dbName, collName, docID, jsonDoc string) error {
+	client, err := s.state.GetClient(connID)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := core.ContextWithTimeout()
+	defer cancel()
+
+	// Parse the JSON document
+	var doc bson.M
+	if err := bson.UnmarshalExtJSON([]byte(jsonDoc), true, &doc); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	coll := client.Database(dbName).Collection(collName)
+
+	// Build filter using the _id from the document or the provided docID
+	var filter bson.M
+	if id, ok := doc["_id"]; ok {
+		filter = bson.M{"_id": id}
+	} else {
+		filter = bson.M{"_id": ParseDocumentID(docID)}
+	}
+
+	result, err := coll.ReplaceOne(ctx, filter, doc)
+	if err != nil {
+		return fmt.Errorf("failed to update document: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("document not found")
+	}
+
+	return nil
+}
+
+// InsertDocument creates a new document.
+func (s *Service) InsertDocument(connID, dbName, collName, jsonDoc string) (string, error) {
+	client, err := s.state.GetClient(connID)
+	if err != nil {
+		return "", err
+	}
+
+	ctx, cancel := core.ContextWithTimeout()
+	defer cancel()
+
+	// Parse the JSON document
+	var doc bson.M
+	if err := bson.UnmarshalExtJSON([]byte(jsonDoc), true, &doc); err != nil {
+		return "", fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	coll := client.Database(dbName).Collection(collName)
+
+	result, err := coll.InsertOne(ctx, doc)
+	if err != nil {
+		return "", fmt.Errorf("failed to insert document: %w", err)
+	}
+
+	// Return the inserted ID as string
+	switch id := result.InsertedID.(type) {
+	case primitive.ObjectID:
+		return id.Hex(), nil
+	default:
+		return fmt.Sprintf("%v", id), nil
+	}
+}
+
+// DeleteDocument removes a document.
+// docID can be: Extended JSON (e.g., {"$oid":"..."} or {"$binary":...}), plain ObjectID hex, or string.
+func (s *Service) DeleteDocument(connID, dbName, collName, docID string) error {
+	client, err := s.state.GetClient(connID)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := core.ContextWithTimeout()
+	defer cancel()
+
+	coll := client.Database(dbName).Collection(collName)
+
+	// Build filter based on docID format
+	filter := bson.M{"_id": ParseDocumentID(docID)}
+
+	result, err := coll.DeleteOne(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("failed to delete document: %w", err)
+	}
+
+	if result.DeletedCount == 0 {
+		return fmt.Errorf("document not found")
+	}
+
+	return nil
+}

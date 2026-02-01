@@ -93,7 +93,7 @@ export default function ImportCollectionsModal({ connectionId, connectionName, d
       setStep('configure')
     } catch (err) {
       console.error('Failed to preview file:', err)
-      notify.error(`Failed to read file: ${err.message || err}`)
+      notify.error(`Failed to read file: ${err?.message || String(err)}`)
     }
   }
 
@@ -148,7 +148,7 @@ export default function ImportCollectionsModal({ connectionId, connectionName, d
       // Result will be set by event handler
     } catch (err) {
       console.error('Import failed:', err)
-      notify.error(`Import failed: ${err.message || err}`)
+      notify.error(`Import failed: ${err?.message || String(err)}`)
       setStep('configure')
     }
   }
@@ -191,7 +191,7 @@ export default function ImportCollectionsModal({ connectionId, connectionName, d
       }
     } catch (err) {
       console.error('Preview failed:', err)
-      notify.error(`Preview failed: ${err.message || err}`)
+      notify.error(`Preview failed: ${err?.message || String(err)}`)
       setStep('configure')
     }
   }
