@@ -1,2 +1,4 @@
 export { ConnectionProvider, useConnection } from './ConnectionContext'
 export { TabProvider, useTab } from './TabContext'
+export { StatusProvider, useStatus } from './StatusContext'
+export { OperationProvider, useOperation } from './OperationContext'

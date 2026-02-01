@@ -68,7 +68,9 @@ func (s *Service) ExportCollections(connID, dbName string, collNames []string) e
 		return fmt.Errorf("failed to open save dialog: %w", err)
 	}
 	if filePath == "" {
-		return nil // User cancelled
+		// User cancelled the save dialog - notify frontend
+		runtime.EventsEmit(s.state.Ctx, "export:cancelled")
+		return nil
 	}
 
 	// Ensure .zip extension
@@ -105,6 +107,20 @@ func (s *Service) ExportCollections(connID, dbName string, collNames []string) e
 	db := client.Database(dbName)
 	totalCollections := len(collNames)
 
+	// Pre-scan to get total document count for ETA calculation
+	var totalDocs int64
+	collEstimates := make(map[string]int64)
+	for _, collName := range collNames {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		coll := db.Collection(collName)
+		count, _ := coll.EstimatedDocumentCount(ctx)
+		collEstimates[collName] = count
+		totalDocs += count
+		cancel()
+	}
+
+	var processedDocs int64
+
 	// Export each collection
 	for collIdx, collName := range collNames {
 		// Check for cancellation
@@ -119,11 +135,7 @@ func (s *Service) ExportCollections(connID, dbName string, collNames []string) e
 		}
 
 		coll := db.Collection(collName)
-
-		// Get estimated document count for progress
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		estimatedCount, _ := coll.EstimatedDocumentCount(ctx)
-		cancel()
+		estimatedCount := collEstimates[collName]
 
 		// Emit progress
 		s.state.EmitEvent("export:progress", types.ExportProgress{
@@ -134,10 +146,12 @@ func (s *Service) ExportCollections(connID, dbName string, collNames []string) e
 			Total:           estimatedCount,
 			CollectionIndex: collIdx + 1,
 			CollectionTotal: totalCollections,
+			ProcessedDocs:   processedDocs,
+			TotalDocs:       totalDocs,
 		})
 
 		// Export documents as NDJSON
-		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		docCursor, err := coll.Find(ctx, bson.D{})
 		if err != nil {
 			cancel()
@@ -175,6 +189,8 @@ func (s *Service) ExportCollections(connID, dbName string, collNames []string) e
 					Total:           estimatedCount,
 					CollectionIndex: collIdx + 1,
 					CollectionTotal: totalCollections,
+					ProcessedDocs:   processedDocs + docCount,
+					TotalDocs:       totalDocs,
 				})
 			}
 
@@ -194,6 +210,9 @@ func (s *Service) ExportCollections(connID, dbName string, collNames []string) e
 		}
 		docCursor.Close(ctx)
 		cancel()
+
+		// Update cumulative processed count
+		processedDocs += docCount
 
 		if cancelled {
 			s.state.EmitEvent("export:cancelled", nil)

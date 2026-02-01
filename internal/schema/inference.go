@@ -65,6 +65,14 @@ func (s *Service) InferCollectionSchema(connID, dbName, collName string, sampleS
 	// Collect samples by skipping at regular intervals
 	var samples []bson.M
 	actualSamples := 0
+
+	// Emit initial progress
+	s.state.EmitEvent("schema:progress", map[string]interface{}{
+		"current": 0,
+		"total":   sampleSize,
+		"phase":   "sampling",
+	})
+
 	for i := int64(0); i < total && actualSamples < sampleSize; i += interval {
 		findOpts := options.FindOne().SetSkip(i)
 		var doc bson.M
@@ -73,6 +81,13 @@ func (s *Service) InferCollectionSchema(connID, dbName, collName string, sampleS
 		}
 		samples = append(samples, doc)
 		actualSamples++
+
+		// Emit progress update
+		s.state.EmitEvent("schema:progress", map[string]interface{}{
+			"current": actualSamples,
+			"total":   sampleSize,
+			"phase":   "sampling",
+		})
 	}
 
 	// Analyze schema from samples

@@ -47,7 +47,7 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 ### Components
 | Purpose | File |
 |---------|------|
-| Left sidebar tree | `frontend/src/components/Sidebar.jsx` |
+| Left sidebar tree (folders, connections) | `frontend/src/components/Sidebar.jsx` |
 | Tab bar with drag-reorder | `frontend/src/components/TabBar.jsx` |
 | Collection data view with filters | `frontend/src/components/CollectionView.jsx` |
 | Document table display | `frontend/src/components/TableView.jsx` |
@@ -56,13 +56,28 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | Bulk action bar | `frontend/src/components/BulkActionBar.jsx` |
 | Connection form modal | `frontend/src/components/ConnectionForm.jsx` |
 | Application settings | `frontend/src/components/Settings.jsx` |
-| Toast notifications | `frontend/src/components/NotificationContext.jsx` |
+| Toast notifications + history | `frontend/src/components/NotificationContext.jsx` |
 | Confirmation dialogs | `frontend/src/components/ConfirmDialog.jsx` |
 | Error boundary wrapper | `frontend/src/components/ErrorBoundary.jsx` |
 | Database export modal | `frontend/src/components/ExportDatabasesModal.jsx` |
 | Database import modal | `frontend/src/components/ImportDatabasesModal.jsx` |
 | Collection export modal | `frontend/src/components/ExportCollectionsModal.jsx` |
 | Collection import modal | `frontend/src/components/ImportCollectionsModal.jsx` |
+| Keyboard shortcuts modal | `frontend/src/components/KeyboardShortcuts.jsx` |
+| Actionable error display | `frontend/src/components/ActionableError.jsx` |
+
+### Contexts
+| Purpose | File |
+|---------|------|
+| Connection state management | `frontend/src/components/contexts/ConnectionContext.jsx` |
+| Tab state management | `frontend/src/components/contexts/TabContext.jsx` |
+| Status bar state | `frontend/src/components/contexts/StatusContext.jsx` |
+| Operation tracking (busy indicator) | `frontend/src/components/contexts/OperationContext.jsx` |
+
+### Hooks
+| Purpose | File |
+|---------|------|
+| ETA time remaining calculation | `frontend/src/hooks/useProgressETA.js` |
 
 ### Utilities
 | Purpose | File |
@@ -71,6 +86,7 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | Mongosh script parsing | `frontend/src/utils/mongoshParser.js` |
 | Schema analysis helpers | `frontend/src/utils/schemaUtils.js` |
 | Table formatting utils | `frontend/src/utils/tableViewUtils.js` |
+| Error parsing for actionable hints | `frontend/src/utils/errorParser.js` |
 
 ## Key Patterns
 
@@ -106,6 +122,25 @@ Both database-level and collection-level operations:
 - Analyzes field distribution and types
 - Identifies nested structures with frequency stats
 - Exports schema as JSON
+
+### Folder Organization
+- Connections can be organized into nested folders
+- Drag-and-drop to move connections/folders between folders
+- Folder hierarchy stored in `~/.config/mongopal/folders.json`
+- WebKit drag fix: State updates deferred via `setTimeout(0)` to prevent drag cancellation
+
+### Keyboard Navigation
+- Full keyboard navigation for sidebar tree (arrow keys, Home/End)
+- Tab management (Cmd+W close, Cmd+Shift+[ ] switch tabs)
+- Bulk action shortcuts (Cmd+A select all, Delete for selected)
+- Query history dropdown (arrow keys, Enter to select)
+- Escape closes modals and panels
+
+### Notifications
+- Toast stack limited to 4 visible with grouping
+- Auto-dismiss pauses on hover
+- Notification history drawer (persisted)
+- Actionable error hints with recovery suggestions
 
 ## Build Commands
 ```bash

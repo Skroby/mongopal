@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { useNotification } from './NotificationContext'
+import { useOperation } from './contexts/OperationContext'
+import { useProgressETA } from '../hooks/useProgressETA'
 import ConfirmDialog from './ConfirmDialog'
+import { getErrorSummary } from '../utils/errorParser'
 
 const go = window.go?.main?.App
 
@@ -36,8 +39,10 @@ function formatResultForClipboard(result, connectionName) {
 
 export default function ImportDatabasesModal({ connectionId, connectionName, onClose, onComplete }) {
   const { notify } = useNotification()
+  const { startOperation, updateOperation, completeOperation } = useOperation()
+  const { recordProgress, getETA, reset: resetETA } = useProgressETA()
 
-  // Step: 'select' | 'configure' | 'previewing' | 'preview' | 'importing' | 'done'
+  // Step: 'select' | 'configure' | 'previewing' | 'preview' | 'importing' | 'done' | 'error'
   const [step, setStep] = useState('select')
   const [preview, setPreview] = useState(null)
   const [selectedDbs, setSelectedDbs] = useState(new Set())
@@ -46,22 +51,69 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
   const [result, setResult] = useState(null)
   const [dryRunResult, setDryRunResult] = useState(null)
   const [showOverrideConfirm, setShowOverrideConfirm] = useState(false)
+  const operationId = useRef(null)
+  const [errorInfo, setErrorInfo] = useState(null) // { error, partialResult, failedDatabase, failedCollection, remainingDatabases }
+  const previewCancelledRef = useRef(false) // Track if preview was cancelled to ignore stale dryrun:complete events
+  const totalDocsRef = useRef(0)
+  const processedDocsRef = useRef(0)
 
   useEffect(() => {
     // Listen for import progress events
     const unsubProgress = EventsOn('import:progress', (data) => {
       setProgress(data)
+
+      // Track cumulative progress for ETA calculation
+      if (data.totalDocs && data.totalDocs > totalDocsRef.current) {
+        totalDocsRef.current = data.totalDocs
+      }
+      if (typeof data.processedDocs === 'number') {
+        processedDocsRef.current = data.processedDocs
+        recordProgress(data.processedDocs)
+      }
+
+      // Update global operation indicator
+      if (operationId.current) {
+        let progressPercent = null
+        let label = `Importing to ${connectionName}...`
+
+        if (data.total > 0 && data.current > 0) {
+          progressPercent = Math.min(100, Math.round((data.current / data.total) * 100))
+        } else if (data.databaseTotal > 0) {
+          progressPercent = Math.round(((data.databaseIndex - 1) / data.databaseTotal) * 100)
+        }
+
+        if (data.collection) {
+          label = `Importing ${data.collection}...`
+        } else if (data.database) {
+          label = `Importing ${data.database}...`
+        }
+
+        updateOperation(operationId.current, { progress: progressPercent, label })
+      }
     })
     const unsubComplete = EventsOn('import:complete', (data) => {
       setStep('done')
       setProgress(null)
       setResult(data)
+      if (operationId.current) {
+        completeOperation(operationId.current)
+        operationId.current = null
+      }
     })
     const unsubCancelled = EventsOn('import:cancelled', (data) => {
       setStep('done')
       setProgress(null)
       setResult({ ...data, cancelled: true })
       notify.info('Import cancelled')
+      if (operationId.current) {
+        completeOperation(operationId.current)
+        operationId.current = null
+      }
+    })
+    const unsubError = EventsOn('import:error', (data) => {
+      setStep('error')
+      setProgress(null)
+      setErrorInfo(data)
     })
 
     // Listen for dry-run events
@@ -69,6 +121,11 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
       setProgress(data)
     })
     const unsubDryRunComplete = EventsOn('dryrun:complete', (data) => {
+      // Ignore if preview was cancelled - user went back to configure step
+      if (previewCancelledRef.current) {
+        previewCancelledRef.current = false
+        return
+      }
       setStep('preview')
       setProgress(null)
       setDryRunResult(data)
@@ -78,10 +135,34 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
       if (unsubProgress) unsubProgress()
       if (unsubComplete) unsubComplete()
       if (unsubCancelled) unsubCancelled()
+      if (unsubError) unsubError()
       if (unsubDryRunProgress) unsubDryRunProgress()
       if (unsubDryRunComplete) unsubDryRunComplete()
     }
-  }, [])
+  }, [connectionName, updateOperation, completeOperation])
+
+  // Handle Escape key to close modal (respects nested ConfirmDialog)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        // Don't handle if ConfirmDialog is open (it has its own handler)
+        if (showOverrideConfirm) return
+
+        if (step === 'importing') {
+          go?.CancelImport?.()
+        } else if (step === 'previewing') {
+          handleCancelAnalysis()
+        } else if (step === 'done' || step === 'error') {
+          handleClose()
+        } else {
+          onClose()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [step, showOverrideConfirm, onClose])
 
   const handleSelectFile = async () => {
     try {
@@ -96,7 +177,7 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
       setStep('configure')
     } catch (err) {
       console.error('Failed to preview file:', err)
-      notify.error(`Failed to read file: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     }
   }
 
@@ -124,17 +205,48 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
 
   const startImport = async () => {
     setStep('importing')
+    setErrorInfo(null)
+    resetETA()
+    totalDocsRef.current = 0
+    processedDocsRef.current = 0
+
+    // Register global operation (imports with override mode are destructive)
+    operationId.current = startOperation({
+      type: 'import',
+      label: `Importing to ${connectionName}...`,
+      progress: null,
+      destructive: mode === 'override',
+      active: true,
+    })
+
     try {
       await go?.ImportDatabases(connectionId, {
         filePath: preview.filePath,
         databases: Array.from(selectedDbs),
         mode: mode,
       })
-      // Result will be set by event handler
+      // Result will be set by event handler (import:complete, import:cancelled, or import:error)
     } catch (err) {
+      const errMsg = err?.message || String(err)
+      // Don't show error for cancellation - the event handler shows info toast
+      if (errMsg.toLowerCase().includes('cancel')) {
+        return
+      }
       console.error('Import failed:', err)
-      notify.error(`Import failed: ${err?.message || String(err)}`)
-      setStep('configure')
+      notify.error(getErrorSummary(errMsg))
+      // Show error recovery screen
+      setStep('error')
+      setErrorInfo({
+        error: errMsg,
+        partialResult: { databases: [], documentsInserted: 0, documentsSkipped: 0, errors: [] },
+        failedDatabase: '',
+        failedCollection: '',
+        remainingDatabases: Array.from(selectedDbs),
+      })
+      if (operationId.current) {
+        completeOperation(operationId.current)
+        operationId.current = null
+      }
     }
   }
 
@@ -159,6 +271,8 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
       return
     }
 
+    // Reset cancelled flag when starting a new preview
+    previewCancelledRef.current = false
     setStep('previewing')
     setDryRunResult(null)
     try {
@@ -170,7 +284,7 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
       // Result will be set by event handler
     } catch (err) {
       console.error('Preview failed:', err)
-      notify.error(`Preview failed: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
       setStep('configure')
     }
   }
@@ -180,11 +294,99 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
     setDryRunResult(null)
   }
 
+  const handleCancelAnalysis = () => {
+    // Mark preview as cancelled so we ignore the dryrun:complete event
+    previewCancelledRef.current = true
+    setStep('configure')
+    setProgress(null)
+    setDryRunResult(null)
+  }
+
   const handleClose = () => {
-    if (result) {
+    if (result || (errorInfo?.partialResult?.documentsInserted > 0)) {
       onComplete?.()
     }
     onClose()
+  }
+
+  const handleRetryFailed = async () => {
+    // Retry with only the remaining databases (starting from the failed one)
+    if (errorInfo?.remainingDatabases?.length > 0) {
+      setSelectedDbs(new Set(errorInfo.remainingDatabases))
+      setErrorInfo(null)
+      setStep('importing')
+      resetETA()
+      totalDocsRef.current = 0
+      processedDocsRef.current = 0
+      try {
+        await go?.ImportDatabases(connectionId, {
+          filePath: preview.filePath,
+          databases: errorInfo.remainingDatabases,
+          mode: mode,
+        })
+      } catch (err) {
+        console.error('Retry failed:', err)
+        if (step === 'importing') {
+          setStep('error')
+          setErrorInfo({
+            error: err?.message || String(err),
+            partialResult: { databases: [], documentsInserted: 0, documentsSkipped: 0, errors: [] },
+            failedDatabase: '',
+            failedCollection: '',
+            remainingDatabases: errorInfo.remainingDatabases,
+          })
+        }
+      }
+    }
+  }
+
+  const handleSkipAndContinue = async () => {
+    // Skip the failed database and continue with the remaining ones
+    if (errorInfo?.remainingDatabases?.length > 1) {
+      const remaining = errorInfo.remainingDatabases.slice(1) // Skip the first (failed) one
+      setSelectedDbs(new Set(remaining))
+      setErrorInfo(null)
+      setStep('importing')
+      resetETA()
+      totalDocsRef.current = 0
+      processedDocsRef.current = 0
+      try {
+        await go?.ImportDatabases(connectionId, {
+          filePath: preview.filePath,
+          databases: remaining,
+          mode: mode,
+        })
+      } catch (err) {
+        console.error('Continue failed:', err)
+        if (step === 'importing') {
+          setStep('error')
+          setErrorInfo({
+            error: err?.message || String(err),
+            partialResult: { databases: [], documentsInserted: 0, documentsSkipped: 0, errors: [] },
+            failedDatabase: '',
+            failedCollection: '',
+            remainingDatabases: remaining,
+          })
+        }
+      }
+    } else {
+      // No more databases to continue with, go to done with partial results
+      setResult(errorInfo?.partialResult || { databases: [], documentsInserted: 0, documentsSkipped: 0, errors: [] })
+      setStep('done')
+    }
+  }
+
+  const handleDismissError = () => {
+    // Show partial results as done
+    if (errorInfo?.partialResult?.documentsInserted > 0) {
+      setResult({
+        ...errorInfo.partialResult,
+        errors: [...(errorInfo.partialResult.errors || []), `Import stopped: ${errorInfo.error}`]
+      })
+      setStep('done')
+    } else {
+      handleClose()
+    }
   }
 
   const getProgressPercent = () => {
@@ -206,7 +408,7 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
           <h2 className="text-lg font-medium text-zinc-100">Import Databases</h2>
           <p className="text-sm text-zinc-400 mt-1">
             {connectionName}
-            {preview && <span className="text-zinc-500"> - {preview.databases.length} databases in archive</span>}
+            {preview && <span className="text-zinc-400"> - {preview.databases.length} databases in archive</span>}
           </p>
         </div>
 
@@ -229,7 +431,7 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
           {step === 'configure' && preview && (
             <>
               {/* File info */}
-              <div className="px-4 py-2 bg-zinc-800/50 border-b border-border text-xs text-zinc-500">
+              <div className="px-4 py-2 bg-zinc-800/50 border-b border-border text-xs text-zinc-400">
                 Exported: {preview.exportedAt}
               </div>
 
@@ -242,13 +444,13 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
                 <button className="text-sm text-accent hover:text-accent/80" onClick={deselectAll}>
                   Deselect All
                 </button>
-                <span className="ml-auto text-sm text-zinc-500">
+                <span className="ml-auto text-sm text-zinc-400">
                   {selectedDbs.size} selected
                 </span>
               </div>
 
               {/* Database list */}
-              <div className="flex-1 overflow-y-auto p-2 max-h-48">
+              <div className="flex-1 overflow-y-auto p-2">
                 {preview.databases.map(db => (
                   <label
                     key={db.name}
@@ -264,7 +466,7 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
                     />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-zinc-200 truncate">{db.name}</div>
-                      <div className="text-xs text-zinc-500">
+                      <div className="text-xs text-zinc-400">
                         {db.collectionCount} collections, {formatNumber(db.documentCount)} docs
                       </div>
                     </div>
@@ -289,7 +491,7 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
                     />
                     <div>
                       <div className="text-sm text-zinc-200">Skip Existing</div>
-                      <div className="text-xs text-zinc-500">
+                      <div className="text-xs text-zinc-400">
                         Only insert documents that don't already exist (by _id).
                       </div>
                     </div>
@@ -325,7 +527,7 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
                       <span>
                         Analyzing {progress?.databaseIndex || 0} of {progress?.databaseTotal}
                       </span>
-                      <span className="text-zinc-500">
+                      <span className="text-zinc-400">
                         {progress?.database}
                       </span>
                     </>
@@ -345,20 +547,23 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
                   />
                 </div>
 
-                <div className="text-xs text-zinc-500 mt-1 h-4">
+                <div className="text-xs text-zinc-400 mt-1 h-4">
                   {progress?.total > 0 && (
                     <span>{formatNumber(progress.current)} / {formatNumber(progress.total)} documents</span>
                   )}
                 </div>
               </div>
-              <p className="text-sm text-zinc-500 text-center">
+              <p className="text-sm text-zinc-400 text-center">
                 Analyzing changes...
+              </p>
+              <p className="text-xs text-zinc-600 text-center mt-2">
+                This may take a while for large files
               </p>
             </div>
           )}
 
           {step === 'preview' && dryRunResult && (
-            <div className="p-4">
+            <div className="p-4 flex-1 flex flex-col overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
                 <svg className="w-6 h-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -385,7 +590,7 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
                 )}
               </div>
 
-              <div className="max-h-48 overflow-y-auto space-y-3">
+              <div className="flex-1 overflow-y-auto space-y-3">
                 {dryRunResult.databases?.map(db => (
                   <div key={db.name} className="bg-zinc-800/50 rounded p-3">
                     <div className="flex items-center justify-between text-sm font-medium text-zinc-200 mb-2">
@@ -434,9 +639,15 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
                       <span>
                         Database {progress?.databaseIndex || 0} of {progress?.databaseTotal}
                       </span>
-                      <span className="text-zinc-500">
-                        {progress?.database}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        {(() => {
+                          const eta = getETA(processedDocsRef.current, totalDocsRef.current)
+                          return eta ? <span className="text-accent text-xs font-mono">{eta} left</span> : null
+                        })()}
+                        <span className="text-zinc-400">
+                          {progress?.database}
+                        </span>
+                      </div>
                     </>
                   )}
                 </div>
@@ -459,20 +670,20 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
                 </div>
 
                 {/* Document count - fixed height slot */}
-                <div className="text-xs text-zinc-500 mt-1 h-4">
+                <div className="text-xs text-zinc-400 mt-1 h-4">
                   {progress?.total > 0 && progress?.phase === 'importing' && (
                     <span>{formatNumber(progress.current)} / {formatNumber(progress.total)} documents</span>
                   )}
                 </div>
               </div>
-              <p className="text-sm text-zinc-500 text-center">
+              <p className="text-sm text-zinc-400 text-center">
                 Please wait while your databases are being imported...
               </p>
             </div>
           )}
 
           {step === 'done' && result && (
-            <div className="p-4">
+            <div className="p-4 flex-1 flex flex-col overflow-hidden">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   {result.cancelled ? (
@@ -518,7 +729,7 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
               </div>
 
               {/* Per-database breakdown */}
-              <div className="max-h-48 overflow-y-auto space-y-3">
+              <div className="flex-1 overflow-y-auto space-y-3">
                 {result.databases?.map(db => (
                   <div key={db.name} className="bg-zinc-800/50 rounded p-3">
                     <div className="text-sm font-medium text-zinc-200 mb-2">{db.name}</div>
@@ -551,11 +762,99 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
               )}
             </div>
           )}
+
+          {step === 'error' && errorInfo && (
+            <div className="p-4">
+              {/* Error header */}
+              <div className="flex items-center gap-2 mb-4">
+                <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-lg font-medium text-zinc-100">Import Failed</span>
+              </div>
+
+              {/* Error message */}
+              <div className="bg-red-900/20 border border-red-800/50 rounded p-3 mb-4">
+                <div className="text-sm text-red-400 font-medium mb-1">Error:</div>
+                <div className="text-sm text-zinc-300">{errorInfo.error}</div>
+                {errorInfo.failedDatabase && (
+                  <div className="text-xs text-zinc-400 mt-2">
+                    Failed at: {errorInfo.failedDatabase}
+                    {errorInfo.failedCollection && ` / ${errorInfo.failedCollection}`}
+                  </div>
+                )}
+              </div>
+
+              {/* Partial results */}
+              {errorInfo.partialResult?.documentsInserted > 0 && (
+                <div className="mb-4">
+                  <div className="text-sm font-medium text-zinc-300 mb-2">Partial Progress (before failure):</div>
+                  <div className="flex gap-4 mb-3 text-sm">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-zinc-400">Inserted:</span>
+                      <span className="text-green-400 font-medium">{formatNumber(errorInfo.partialResult.documentsInserted)}</span>
+                    </div>
+                    {errorInfo.partialResult.documentsSkipped > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-zinc-400">Skipped:</span>
+                        <span className="text-yellow-400 font-medium">{formatNumber(errorInfo.partialResult.documentsSkipped)}</span>
+                      </div>
+                    )}
+                  </div>
+                  {errorInfo.partialResult.databases?.length > 0 && (
+                    <div className="max-h-32 overflow-y-auto space-y-2">
+                      {errorInfo.partialResult.databases.map(db => (
+                        <div key={db.name} className="bg-zinc-800/50 rounded p-2">
+                          <div className="text-xs font-medium text-zinc-200 mb-1">{db.name}</div>
+                          <div className="space-y-0.5">
+                            {db.collections?.map(coll => (
+                              <div key={coll.name} className="flex items-center justify-between text-xs">
+                                <span className="text-zinc-400 truncate mr-2">{coll.name}</span>
+                                <span className="text-green-400 shrink-0">+{formatNumber(coll.documentsInserted)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Remaining databases */}
+              {errorInfo.remainingDatabases?.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-sm font-medium text-zinc-300 mb-2">Remaining ({errorInfo.remainingDatabases.length}):</div>
+                  <div className="bg-zinc-800/50 rounded p-2 max-h-24 overflow-y-auto">
+                    {errorInfo.remainingDatabases.map(db => (
+                      <div key={db} className="text-xs text-zinc-400 py-0.5">{db}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-border flex justify-end gap-2">
-          {step === 'done' ? (
+          {step === 'error' ? (
+            <>
+              <button className="btn btn-ghost" onClick={handleDismissError}>
+                {errorInfo?.partialResult?.documentsInserted > 0 ? 'View Results' : 'Close'}
+              </button>
+              {errorInfo?.remainingDatabases?.length > 1 && (
+                <button className="btn btn-ghost" onClick={handleSkipAndContinue}>
+                  Skip & Continue
+                </button>
+              )}
+              {errorInfo?.remainingDatabases?.length > 0 && (
+                <button className="btn btn-primary" onClick={handleRetryFailed}>
+                  Retry
+                </button>
+              )}
+            </>
+          ) : step === 'done' ? (
             <button className="btn btn-primary" onClick={handleClose}>
               Done
             </button>
@@ -567,8 +866,8 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
               Cancel
             </button>
           ) : step === 'previewing' ? (
-            <button className="btn btn-ghost" disabled>
-              Analyzing...
+            <button className="btn btn-ghost" onClick={handleCancelAnalysis}>
+              Cancel Analysis
             </button>
           ) : step === 'preview' ? (
             <>
@@ -606,13 +905,37 @@ export default function ImportDatabasesModal({ connectionId, connectionName, onC
         title="Override Databases"
         message={
           <div>
+            {/* Impact summary when we have dry-run data */}
+            {dryRunResult && dryRunResult.documentsDropped > 0 && (
+              <div className="mb-4 p-3 bg-red-900/30 border border-red-800/50 rounded">
+                <div className="text-red-400 font-medium text-sm">
+                  This will permanently delete {formatNumber(dryRunResult.documentsDropped)} documents across {dryRunResult.databases?.length || 0} database{(dryRunResult.databases?.length || 0) !== 1 ? 's' : ''}
+                </div>
+              </div>
+            )}
+
             <p className="mb-3">This will DROP and replace the following databases:</p>
-            <div className="max-h-32 overflow-y-auto bg-zinc-800 rounded p-2 mb-3">
-              {Array.from(selectedDbs).map(db => (
-                <div key={db} className="py-1 px-2 text-zinc-200">{db}</div>
-              ))}
+            <div className="max-h-40 overflow-y-auto bg-zinc-800 rounded p-2 mb-3 space-y-1">
+              {dryRunResult?.databases ? (
+                // Show with document counts from dry-run
+                dryRunResult.databases.map(db => (
+                  <div key={db.name} className="py-1.5 px-2 flex items-center justify-between">
+                    <span className="text-zinc-200">{db.name}</span>
+                    {db.currentCount > 0 && (
+                      <span className="text-red-400 text-sm font-medium">
+                        {formatNumber(db.currentCount)} docs
+                      </span>
+                    )}
+                  </div>
+                ))
+              ) : (
+                // Fallback: just show names (no preview was done)
+                Array.from(selectedDbs).map(db => (
+                  <div key={db} className="py-1 px-2 text-zinc-200">{db}</div>
+                ))
+              )}
             </div>
-            <p className="text-red-400">This action cannot be undone.</p>
+            <p className="text-red-400 text-sm">This action cannot be undone.</p>
           </div>
         }
         confirmLabel="Drop & Import"

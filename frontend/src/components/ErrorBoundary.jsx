@@ -1,9 +1,19 @@
 import { Component } from 'react'
 
+// LocalStorage key for preserved state
+const PRESERVED_STATE_KEY = 'mongopal_error_recovery_state'
+const GITHUB_ISSUES_URL = 'https://github.com/your-org/mongopal/issues/new'
+
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props)
-    this.state = { hasError: false, error: null, errorInfo: null }
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null,
+      stateSaved: false,
+      showSaveConfirmation: false,
+    }
   }
 
   static getDerivedStateFromError(error) {
@@ -15,25 +25,110 @@ class ErrorBoundary extends Component {
     this.setState({ errorInfo })
   }
 
+  // Attempt to gather current application state for preservation
+  gatherCurrentState = () => {
+    try {
+      // Get tabs from TabContext (we can't access React context directly from class component,
+      // but we can try to get it from any global state or localStorage)
+      // The TabContext doesn't persist to localStorage by default, so we'll save what we can
+
+      const state = {
+        timestamp: new Date().toISOString(),
+        error: this.state.error?.toString(),
+        // Try to preserve query history (this is already in localStorage)
+        queryHistory: localStorage.getItem('mongopal_query_history'),
+        // Preserve sidebar width
+        sidebarWidth: localStorage.getItem('mongopal_sidebar_width'),
+        // Preserve any settings
+        settings: localStorage.getItem('mongopal_settings'),
+        // Note: tabs state is in React state and not easily accessible here
+        // We'll add a note about this limitation
+      }
+
+      return state
+    } catch (err) {
+      console.error('Failed to gather state:', err)
+      return null
+    }
+  }
+
+  // Save current state to localStorage before reset
+  saveStateForRecovery = () => {
+    try {
+      const state = this.gatherCurrentState()
+      if (state) {
+        localStorage.setItem(PRESERVED_STATE_KEY, JSON.stringify(state))
+        this.setState({ stateSaved: true, showSaveConfirmation: true })
+        setTimeout(() => this.setState({ showSaveConfirmation: false }), 2000)
+        return true
+      }
+      return false
+    } catch (err) {
+      console.error('Failed to save state for recovery:', err)
+      return false
+    }
+  }
+
   handleReload = () => {
+    // Save state before reloading
+    this.saveStateForRecovery()
     window.location.reload()
   }
 
   handleDismiss = () => {
-    this.setState({ hasError: false, error: null, errorInfo: null })
+    // Save state before dismissing (resetting)
+    this.saveStateForRecovery()
+    this.setState({ hasError: false, error: null, errorInfo: null, stateSaved: false })
   }
 
   handleCopy = async () => {
     const errorText = [
+      'MongoPal Error Report',
+      '='.repeat(40),
+      '',
+      'Error:',
       this.state.error?.toString(),
-      this.state.errorInfo?.componentStack
-    ].filter(Boolean).join('\n\n')
+      '',
+      'Stack Trace:',
+      this.state.errorInfo?.componentStack,
+      '',
+      'Timestamp: ' + new Date().toISOString(),
+      'User Agent: ' + navigator.userAgent,
+    ].filter(Boolean).join('\n')
 
     try {
       await navigator.clipboard.writeText(errorText)
     } catch (err) {
       console.error('Failed to copy:', err)
     }
+  }
+
+  handleReportIssue = () => {
+    const errorSummary = this.state.error?.toString() || 'Unknown error'
+    const issueTitle = encodeURIComponent(`Bug: ${errorSummary.slice(0, 80)}`)
+    const issueBody = encodeURIComponent([
+      '## Description',
+      'An unexpected error occurred in the application.',
+      '',
+      '## Error Details',
+      '```',
+      this.state.error?.toString(),
+      '```',
+      '',
+      '## Steps to Reproduce',
+      '1. [Describe what you were doing when the error occurred]',
+      '',
+      '## Environment',
+      `- Timestamp: ${new Date().toISOString()}`,
+      `- User Agent: ${navigator.userAgent}`,
+      '',
+      '## Stack Trace',
+      '```',
+      this.state.errorInfo?.componentStack || 'Not available',
+      '```',
+    ].join('\n'))
+
+    window.open(`${GITHUB_ISSUES_URL}?title=${issueTitle}&body=${issueBody}`, '_blank')
   }
 
   render() {
@@ -67,11 +162,31 @@ class ErrorBoundary extends Component {
                   Show stack trace
                 </summary>
                 <div className="mt-2 p-3 bg-zinc-900 rounded border border-zinc-700 overflow-auto max-h-48">
-                  <code className="text-xs text-zinc-500 whitespace-pre-wrap">
+                  <code className="text-xs text-zinc-400 whitespace-pre-wrap">
                     {this.state.errorInfo.componentStack}
                   </code>
                 </div>
               </details>
+            )}
+
+            {/* Warning about state reset */}
+            <div className="mb-4 p-3 bg-amber-900/20 border border-amber-700/50 rounded flex items-start gap-2">
+              <svg className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div className="text-sm">
+                <p className="text-amber-400 font-medium">Recovery will reset your session</p>
+                <p className="text-amber-500/80 text-xs mt-1">
+                  Open tabs and unsaved changes may be lost. Query history and settings are preserved.
+                </p>
+              </div>
+            </div>
+
+            {/* Save confirmation */}
+            {this.state.showSaveConfirmation && (
+              <div className="mb-4 p-2 bg-green-900/20 border border-green-700/50 rounded text-sm text-green-400 text-center">
+                State saved for recovery
+              </div>
             )}
 
             <div className="flex flex-col gap-2">
@@ -94,10 +209,21 @@ class ErrorBoundary extends Component {
                 <button
                   onClick={this.handleDismiss}
                   className="btn btn-ghost"
+                  title="Attempt to recover without reloading. Open tabs will be lost."
                 >
-                  Try to Continue
+                  Reset and Continue
                 </button>
               </div>
+              {/* Report Issue link */}
+              <button
+                onClick={this.handleReportIssue}
+                className="w-full py-2 px-4 text-zinc-400 hover:text-zinc-200 text-sm flex items-center justify-center gap-2 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Report this issue
+              </button>
             </div>
           </div>
         </div>
@@ -105,6 +231,37 @@ class ErrorBoundary extends Component {
     }
 
     return this.props.children
+  }
+}
+
+// Helper function to check for preserved state (can be called by App.jsx on load)
+export function getPreservedState() {
+  try {
+    const saved = localStorage.getItem(PRESERVED_STATE_KEY)
+    if (saved) {
+      return JSON.parse(saved)
+    }
+  } catch (err) {
+    console.error('Failed to retrieve preserved state:', err)
+  }
+  return null
+}
+
+// Helper function to clear preserved state
+export function clearPreservedState() {
+  try {
+    localStorage.removeItem(PRESERVED_STATE_KEY)
+  } catch (err) {
+    console.error('Failed to clear preserved state:', err)
+  }
+}
+
+// Helper function to check if recovery state exists
+export function hasPreservedState() {
+  try {
+    return localStorage.getItem(PRESERVED_STATE_KEY) !== null
+  } catch {
+    return false
   }
 }
 

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { parseError } from '../utils/errorParser'
 
 const go = window.go?.main?.App
 
@@ -31,6 +32,86 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
   const [saving, setSaving] = useState(false)
   const [showUri, setShowUri] = useState(false)
 
+  // Track which fields have been touched for inline validation
+  const [touched, setTouched] = useState({ name: false, uri: false })
+
+  // Validation helper functions
+  const validateName = (value) => {
+    if (!value.trim()) return 'Connection name is required'
+    if (value.trim().length < 2) return 'Name must be at least 2 characters'
+    return null
+  }
+
+  const validateUri = (value) => {
+    if (!value.trim()) return 'Connection URI is required'
+    if (!value.trim().startsWith('mongodb://') && !value.trim().startsWith('mongodb+srv://')) {
+      return 'URI must start with mongodb:// or mongodb+srv://'
+    }
+    return null
+  }
+
+  // Get current validation errors
+  const nameError = validateName(name)
+  const uriError = validateUri(uri)
+
+  // Mark field as touched on blur
+  const handleBlur = (field) => {
+    setTouched(prev => ({ ...prev, [field]: true }))
+  }
+
+  const modalRef = useRef(null)
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onCancel()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onCancel])
+
+  // Focus trap - keep focus within modal
+  useEffect(() => {
+    const modal = modalRef.current
+    if (!modal) return
+
+    const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+
+    const handleTabKey = (e) => {
+      if (e.key !== 'Tab') return
+
+      const focusableElements = modal.querySelectorAll(focusableSelector)
+      const focusable = Array.from(focusableElements).filter(
+        el => !el.disabled && el.offsetParent !== null
+      )
+
+      if (focusable.length === 0) return
+
+      const firstElement = focusable[0]
+      const lastElement = focusable[focusable.length - 1]
+
+      if (e.shiftKey) {
+        // Shift+Tab: if on first element, go to last
+        if (document.activeElement === firstElement) {
+          e.preventDefault()
+          lastElement.focus()
+        }
+      } else {
+        // Tab: if on last element, go to first
+        if (document.activeElement === lastElement) {
+          e.preventDefault()
+          firstElement.focus()
+        }
+      }
+    }
+
+    modal.addEventListener('keydown', handleTabKey)
+    return () => modal.removeEventListener('keydown', handleTabKey)
+  }, [])
+
   const handleTest = async () => {
     setTesting(true)
     setTestResult(null)
@@ -42,14 +123,24 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
         setTestResult({ success: true, message: 'Test skipped (dev mode)' })
       }
     } catch (err) {
-      setTestResult({ success: false, message: err.message || 'Connection failed' })
+      const parsed = parseError(err.message || 'Connection failed')
+      setTestResult({
+        success: false,
+        message: parsed.friendlyMessage,
+        hint: parsed.isKnown ? parsed.hint : null,
+        rawError: parsed.raw,
+      })
     } finally {
       setTesting(false)
     }
   }
 
   const handleSave = async () => {
-    if (!name.trim() || !uri.trim()) return
+    // Mark all fields as touched to show any validation errors
+    setTouched({ name: true, uri: true })
+
+    // Don't save if there are validation errors
+    if (nameError || uriError) return
 
     setSaving(true)
     try {
@@ -73,14 +164,14 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-secondary rounded-lg shadow-xl w-full max-w-lg mx-4 border border-border">
+      <div ref={modalRef} className="bg-surface-secondary rounded-lg shadow-xl w-full max-w-lg mx-4 border border-border">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="text-lg font-medium">
             {isEditing ? 'Edit Connection' : 'New Connection'}
           </h2>
           <button
-            className="p-1 rounded hover:bg-zinc-700"
+            className="icon-btn p-1 hover:bg-zinc-700"
             onClick={onCancel}
           >
             <CloseIcon className="w-5 h-5" />
@@ -96,12 +187,16 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
             </label>
             <input
               type="text"
-              className="input"
+              className={`input ${touched.name && nameError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
               placeholder="My MongoDB"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onBlur={() => handleBlur('name')}
               autoFocus
             />
+            {touched.name && nameError && (
+              <p className="mt-1 text-xs text-red-400">{nameError}</p>
+            )}
           </div>
 
           {/* Folder selection */}
@@ -128,15 +223,18 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
             <label className="block text-sm font-medium text-zinc-300 mb-2">
               Color
             </label>
-            <div className="flex gap-2">
+            <div className="flex gap-2" role="radiogroup" aria-label="Connection color">
               {colors.map(c => (
                 <button
                   key={c}
-                  className={`w-6 h-6 rounded-full border-2 transition-all ${
+                  className={`color-btn w-6 h-6 rounded-full border-2 transition-all ${
                     color === c ? 'border-white scale-110' : 'border-transparent'
                   }`}
                   style={{ backgroundColor: c }}
                   onClick={() => setColor(c)}
+                  role="radio"
+                  aria-checked={color === c}
+                  aria-label={`Color ${c}`}
                 />
               ))}
             </div>
@@ -150,14 +248,15 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
             <div className="relative">
               <input
                 type={showUri ? "text" : "password"}
-                className="input font-mono text-sm pr-10"
+                className={`input font-mono text-sm pr-10 ${touched.uri && uriError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
                 placeholder="mongodb://localhost:27017"
                 value={uri}
                 onChange={(e) => setUri(e.target.value)}
+                onBlur={() => handleBlur('uri')}
               />
               <button
                 type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
+                className="icon-btn absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
                 onClick={() => setShowUri(!showUri)}
                 title={showUri ? "Hide URI" : "Show URI"}
               >
@@ -173,9 +272,13 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
                 )}
               </button>
             </div>
-            <p className="mt-1 text-xs text-zinc-500">
-              Full MongoDB connection string including credentials
-            </p>
+            {touched.uri && uriError ? (
+              <p className="mt-1 text-xs text-red-400">{uriError}</p>
+            ) : (
+              <p className="mt-1 text-xs text-zinc-400">
+                Full MongoDB connection string including credentials
+              </p>
+            )}
           </div>
 
           {/* Test result */}
@@ -187,7 +290,20 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
                   : 'bg-red-900/30 text-red-400 border border-red-800'
               }`}
             >
-              {testResult.message}
+              <div className="font-medium">{testResult.message}</div>
+              {testResult.hint && (
+                <div className="mt-1 text-red-400/80 text-xs">{testResult.hint}</div>
+              )}
+              {testResult.rawError && testResult.rawError !== testResult.message && (
+                <details className="mt-2">
+                  <summary className="text-xs text-red-400/60 cursor-pointer hover:text-red-400/80">
+                    Show details
+                  </summary>
+                  <pre className="mt-1 text-xs text-red-400/60 whitespace-pre-wrap break-words font-mono">
+                    {testResult.rawError}
+                  </pre>
+                </details>
+              )}
             </div>
           )}
         </div>
@@ -212,7 +328,7 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
             <button
               className="btn btn-primary"
               onClick={handleSave}
-              disabled={saving || !name.trim() || !uri.trim()}
+              disabled={saving || !!nameError || !!uriError}
             >
               {saving ? 'Saving...' : 'Save'}
             </button>

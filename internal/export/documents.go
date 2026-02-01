@@ -31,7 +31,8 @@ func (s *Service) ExportDocumentsAsZip(entries []types.DocumentExportEntry, defa
 		return fmt.Errorf("failed to open save dialog: %w", err)
 	}
 	if filePath == "" {
-		// User cancelled
+		// User cancelled the save dialog - notify frontend
+		runtime.EventsEmit(s.state.Ctx, "export:cancelled")
 		return nil
 	}
 

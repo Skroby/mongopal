@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import Settings, { loadSettings, saveSettings } from './Settings'
 
 describe('Settings', () => {
@@ -148,27 +148,12 @@ describe('Settings', () => {
       expect(saved.autoFormat).toBe(false)
     })
 
-    it('toggles confirmDelete and persists', () => {
-      render(<Settings onClose={mockOnClose} />)
-
-      const checkboxes = screen.getAllByRole('checkbox')
-      const confirmDeleteCheckbox = checkboxes[1]
-
-      expect(confirmDeleteCheckbox).toBeChecked()
-
-      fireEvent.click(confirmDeleteCheckbox)
-
-      expect(confirmDeleteCheckbox).not.toBeChecked()
-
-      const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
-      expect(saved.confirmDelete).toBe(false)
-    })
-
     it('toggles wordWrap and persists', () => {
       render(<Settings onClose={mockOnClose} />)
 
       const checkboxes = screen.getAllByRole('checkbox')
-      const wordWrapCheckbox = checkboxes[2]
+      // Order: autoFormat[0], wordWrap[1], showLineNumbers[2], confirmDelete[3]
+      const wordWrapCheckbox = checkboxes[1]
 
       expect(wordWrapCheckbox).toBeChecked()
 
@@ -184,7 +169,8 @@ describe('Settings', () => {
       render(<Settings onClose={mockOnClose} />)
 
       const checkboxes = screen.getAllByRole('checkbox')
-      const showLineNumbersCheckbox = checkboxes[3]
+      // Order: autoFormat[0], wordWrap[1], showLineNumbers[2], confirmDelete[3]
+      const showLineNumbersCheckbox = checkboxes[2]
 
       expect(showLineNumbersCheckbox).toBeChecked()
 
@@ -194,6 +180,23 @@ describe('Settings', () => {
 
       const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
       expect(saved.showLineNumbers).toBe(false)
+    })
+
+    it('toggles confirmDelete and persists', () => {
+      render(<Settings onClose={mockOnClose} />)
+
+      const checkboxes = screen.getAllByRole('checkbox')
+      // Order: autoFormat[0], wordWrap[1], showLineNumbers[2], confirmDelete[3]
+      const confirmDeleteCheckbox = checkboxes[3]
+
+      expect(confirmDeleteCheckbox).toBeChecked()
+
+      fireEvent.click(confirmDeleteCheckbox)
+
+      expect(confirmDeleteCheckbox).not.toBeChecked()
+
+      const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
+      expect(saved.confirmDelete).toBe(false)
     })
   })
 
@@ -241,7 +244,9 @@ describe('Settings', () => {
       render(<Settings onClose={mockOnClose} />)
 
       // Find close button by its position (in header)
-      const header = screen.getByText('Settings').closest('div')
+      // The header structure is: div.header > div.titleWrapper > h2 + savedIndicator
+      //                                      > button.closeButton
+      const header = screen.getByText('Settings').closest('div').parentElement
       const closeBtn = header.querySelector('button')
 
       fireEvent.click(closeBtn)
@@ -264,11 +269,99 @@ describe('Settings', () => {
 
       expect(screen.getByRole('combobox')).toHaveValue('100')
 
+      // New order: autoFormat[0], wordWrap[1], showLineNumbers[2], confirmDelete[3]
       const checkboxes = screen.getAllByRole('checkbox')
       expect(checkboxes[0]).not.toBeChecked() // autoFormat
-      expect(checkboxes[1]).toBeChecked() // confirmDelete
-      expect(checkboxes[2]).not.toBeChecked() // wordWrap
-      expect(checkboxes[3]).toBeChecked() // showLineNumbers
+      expect(checkboxes[1]).not.toBeChecked() // wordWrap
+      expect(checkboxes[2]).toBeChecked() // showLineNumbers
+      expect(checkboxes[3]).toBeChecked() // confirmDelete
+    })
+  })
+
+  describe('save confirmation feedback', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterAll(() => {
+      vi.useRealTimers()
+    })
+
+    it('shows saved indicator when a setting changes', () => {
+      render(<Settings onClose={mockOnClose} />)
+
+      // Initially, saved indicator should be hidden (opacity-0)
+      const savedIndicator = screen.getByText('Saved').parentElement
+      expect(savedIndicator).toHaveClass('opacity-0')
+
+      // Change a setting
+      const checkboxes = screen.getAllByRole('checkbox')
+      fireEvent.click(checkboxes[0])
+
+      // Now saved indicator should be visible (opacity-100)
+      expect(savedIndicator).toHaveClass('opacity-100')
+    })
+
+    it('hides saved indicator after timeout', () => {
+      render(<Settings onClose={mockOnClose} />)
+
+      const savedIndicator = screen.getByText('Saved').parentElement
+
+      // Change a setting
+      fireEvent.click(screen.getAllByRole('checkbox')[0])
+      expect(savedIndicator).toHaveClass('opacity-100')
+
+      // Fast-forward time - wrap in act() since it triggers state change
+      act(() => {
+        vi.advanceTimersByTime(1500)
+      })
+
+      // Should be hidden again
+      expect(savedIndicator).toHaveClass('opacity-0')
+    })
+
+    it('shows saved indicator when reset to defaults is clicked', () => {
+      render(<Settings onClose={mockOnClose} />)
+
+      const savedIndicator = screen.getByText('Saved').parentElement
+      expect(savedIndicator).toHaveClass('opacity-0')
+
+      fireEvent.click(screen.getByText('Reset to defaults'))
+
+      expect(savedIndicator).toHaveClass('opacity-100')
+    })
+
+    it('resets timeout when multiple changes occur', () => {
+      render(<Settings onClose={mockOnClose} />)
+
+      const savedIndicator = screen.getByText('Saved').parentElement
+      const checkboxes = screen.getAllByRole('checkbox')
+
+      // First change
+      fireEvent.click(checkboxes[0])
+      expect(savedIndicator).toHaveClass('opacity-100')
+
+      // Wait 1000ms (less than timeout) - wrap in act() since timers may trigger state
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
+      expect(savedIndicator).toHaveClass('opacity-100')
+
+      // Second change resets the timer
+      fireEvent.click(checkboxes[1])
+      expect(savedIndicator).toHaveClass('opacity-100')
+
+      // Wait another 1000ms (still less than 1500ms from second change)
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
+      expect(savedIndicator).toHaveClass('opacity-100')
+
+      // Wait remaining time
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(savedIndicator).toHaveClass('opacity-0')
     })
   })
 })

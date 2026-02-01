@@ -7,14 +7,17 @@ import DocumentEditView from './components/DocumentEditView'
 import SchemaView from './components/SchemaView'
 import ConnectionForm from './components/ConnectionForm'
 import Settings from './components/Settings'
+import KeyboardShortcuts from './components/KeyboardShortcuts'
 import ExportDatabasesModal from './components/ExportDatabasesModal'
 import ImportDatabasesModal from './components/ImportDatabasesModal'
 import ExportCollectionsModal from './components/ExportCollectionsModal'
 import ImportCollectionsModal from './components/ImportCollectionsModal'
 import ConfirmDialog from './components/ConfirmDialog'
-import { useNotification } from './components/NotificationContext'
+import { useNotification, NotificationHistoryButton, NotificationHistoryDrawer } from './components/NotificationContext'
 import { useConnection } from './components/contexts/ConnectionContext'
 import { useTab } from './components/contexts/TabContext'
+import { useStatus } from './components/contexts/StatusContext'
+import { useOperation } from './components/contexts/OperationContext'
 
 // Constants
 const DEFAULT_SIDEBAR_WIDTH = 260
@@ -34,13 +37,26 @@ function App() {
     activeConnections,
     deleteConnection,
     saveConnection,
+    getConnectionById,
   } = useConnection()
 
+  const { documentCount, queryTime } = useStatus()
+  const { activeOperations } = useOperation()
+
   const {
+    tabs,
+    activeTab,
     currentTab,
+    setActiveTab,
+    closeTab,
+    closeAllTabs,
     convertInsertToDocumentTab,
     openDocumentTab,
     openInsertTab,
+    nextTab,
+    previousTab,
+    goToTab,
+    closeActiveTab,
   } = useTab()
 
   // Wails bindings state
@@ -51,6 +67,7 @@ function App() {
   const [showConnectionForm, setShowConnectionForm] = useState(false)
   const [editingConnection, setEditingConnection] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [exportModal, setExportModal] = useState(null) // { connectionId, connectionName }
   const [importModal, setImportModal] = useState(null) // { connectionId, connectionName }
@@ -96,16 +113,107 @@ function App() {
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+      const modKey = isMac ? e.metaKey : e.ctrlKey
+      const altKey = e.altKey
+
       // Cmd+N: New document (if a tab is open)
-      if (e.key === 'n' && (e.metaKey || e.ctrlKey) && currentTab) {
+      if (e.key === 'n' && modKey && currentTab) {
         e.preventDefault()
         // Trigger insert in CollectionView - handled there
+        return
+      }
+
+      // Cmd+W: Close current tab
+      if (e.key === 'w' && modKey && !e.shiftKey) {
+        e.preventDefault()
+        if (activeTab) {
+          closeTab(activeTab)
+        }
+        return
+      }
+
+      // Cmd+Shift+W: Close all tabs
+      if (e.key === 'W' && modKey && e.shiftKey) {
+        e.preventDefault()
+        closeAllTabs()
+        return
+      }
+
+      // Cmd+Option+Left (Mac) / Ctrl+Alt+Left (Win/Linux): Previous tab
+      if (e.key === 'ArrowLeft' && modKey && altKey) {
+        e.preventDefault()
+        if (tabs.length > 1 && activeTab) {
+          const currentIndex = tabs.findIndex(t => t.id === activeTab)
+          if (currentIndex > 0) {
+            setActiveTab(tabs[currentIndex - 1].id)
+          } else {
+            // Wrap to last tab
+            setActiveTab(tabs[tabs.length - 1].id)
+          }
+        }
+        return
+      }
+
+      // Cmd+Option+Right (Mac) / Ctrl+Alt+Right (Win/Linux): Next tab
+      if (e.key === 'ArrowRight' && modKey && altKey) {
+        e.preventDefault()
+        if (tabs.length > 1 && activeTab) {
+          const currentIndex = tabs.findIndex(t => t.id === activeTab)
+          if (currentIndex < tabs.length - 1) {
+            setActiveTab(tabs[currentIndex + 1].id)
+          } else {
+            // Wrap to first tab
+            setActiveTab(tabs[0].id)
+          }
+        }
+        return
+      }
+
+      // Cmd+1-9: Jump to tab by position
+      if (modKey && !e.shiftKey && !altKey && e.key >= '1' && e.key <= '9') {
+        e.preventDefault()
+        const tabIndex = parseInt(e.key, 10) - 1
+        if (tabIndex < tabs.length) {
+          setActiveTab(tabs[tabIndex].id)
+        }
+        return
+      }
+      // Cmd+? or Cmd+/: Show keyboard shortcuts
+      if ((e.key === '?' || e.key === '/') && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setShowKeyboardShortcuts(true)
+      }
+      // Cmd+,: Open settings
+      if (e.key === ',' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setShowSettings(true)
+      }
+      // Cmd+W: Close current tab
+      if (e.key === 'w' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        closeActiveTab()
+      }
+      // Cmd+1 through Cmd+9: Jump to tab by number
+      if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '9') {
+        e.preventDefault()
+        goToTab(parseInt(e.key, 10))
+      }
+      // Cmd+Shift+]: Next tab
+      if (e.key === ']' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault()
+        nextTab()
+      }
+      // Cmd+Shift+[: Previous tab
+      if (e.key === '[' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault()
+        previousTab()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentTab])
+  }, [currentTab, closeActiveTab, goToTab, nextTab, previousTab])
 
   // Connection form actions
   const handleAddConnection = () => {
@@ -216,6 +324,8 @@ function App() {
           <div className="flex-1 overflow-hidden">
             {currentTab?.type === 'document' ? (
               <DocumentEditView
+                key={currentTab.id}
+                tabId={currentTab.id}
                 connectionId={currentTab.connectionId}
                 database={currentTab.database}
                 collection={currentTab.collection}
@@ -228,6 +338,7 @@ function App() {
             ) : currentTab?.type === 'insert' ? (
               <DocumentEditView
                 key={currentTab.id}
+                tabId={currentTab.id}
                 connectionId={currentTab.connectionId}
                 database={currentTab.database}
                 collection={currentTab.collection}
@@ -250,7 +361,7 @@ function App() {
                 collection={currentTab.collection}
               />
             ) : (
-              <div className="h-full flex items-center justify-center text-zinc-500">
+              <div className="h-full flex items-center justify-center text-zinc-400">
                 <div className="text-center">
                   <p className="text-lg mb-2">No collection selected</p>
                   <p className="text-sm">Select a collection from the sidebar to view documents</p>
@@ -262,26 +373,105 @@ function App() {
       </div>
 
       {/* Status bar */}
-      <div className="h-6 bg-surface-secondary border-t border-border flex items-center justify-between px-3 text-xs text-zinc-500 flex-shrink-0">
-        <div className="flex items-center">
-          <span>Connected: {activeConnections.length}</span>
-          <span className="mx-3">|</span>
-          <span>
-            {currentTab
-              ? `${currentTab.database} > ${currentTab.collection}`
-              : 'No selection'}
-          </span>
+      <div className="h-6 bg-surface-secondary border-t border-border flex items-center justify-between px-3 text-xs text-zinc-400 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          {/* Connection info */}
+          {currentTab ? (
+            <>
+              <span className="text-zinc-400" title="Active connection">
+                {getConnectionById(currentTab.connectionId)?.name || 'Unknown'}
+              </span>
+              <span className="text-zinc-600">:</span>
+              <span title="Database and collection">
+                {currentTab.database}.{currentTab.collection}
+              </span>
+              {/* Document count for collection views */}
+              {currentTab.type === 'collection' && documentCount !== null && (
+                <>
+                  <span className="text-zinc-600">|</span>
+                  <span title="Documents in result">
+                    {documentCount.toLocaleString()} doc{documentCount !== 1 ? 's' : ''}
+                  </span>
+                </>
+              )}
+              {/* Query time */}
+              {currentTab.type === 'collection' && queryTime !== null && (
+                <>
+                  <span className="text-zinc-600">|</span>
+                  <span className="text-zinc-400" title="Query execution time">
+                    {queryTime}ms
+                  </span>
+                </>
+              )}
+            </>
+          ) : (
+            <span>No selection</span>
+          )}
         </div>
-        <button
-          className="p-1 rounded hover:bg-zinc-700 hover:text-zinc-300"
-          onClick={() => setShowSettings(true)}
-          title="Settings"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Global operation indicator */}
+          {activeOperations.length > 0 && (
+            <>
+              <div
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-700/50 cursor-pointer hover:bg-zinc-700"
+                onClick={() => {
+                  // Click to open related modal if available
+                  const op = activeOperations[0]
+                  if (op?.modalOpener) op.modalOpener()
+                }}
+                title={activeOperations.map(op => op.label).join(', ')}
+              >
+                {/* Spinner */}
+                <svg className="w-3 h-3 animate-spin text-accent" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                {/* Label */}
+                <span className="text-zinc-300 max-w-[150px] truncate">
+                  {activeOperations[0].label}
+                </span>
+                {/* Progress percentage */}
+                {activeOperations[0].progress !== null && (
+                  <span className="text-accent font-medium">
+                    {activeOperations[0].progress}%
+                  </span>
+                )}
+                {/* Additional operations count */}
+                {activeOperations.length > 1 && (
+                  <span className="text-zinc-500">
+                    +{activeOperations.length - 1}
+                  </span>
+                )}
+              </div>
+              <span className="text-zinc-600">|</span>
+            </>
+          )}
+          {/* Active connections count */}
+          <span className="text-zinc-400" title="Number of active connections">
+            {activeConnections.length} connection{activeConnections.length !== 1 ? 's' : ''}
+          </span>
+          {/* Notification history button */}
+          <NotificationHistoryButton />
+          <button
+            className="p-1 rounded hover:bg-zinc-700 hover:text-zinc-300"
+            onClick={() => setShowKeyboardShortcuts(true)}
+            title="Keyboard Shortcuts (Cmd+?)"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+          <button
+            className="p-1 rounded hover:bg-zinc-700 hover:text-zinc-300"
+            onClick={() => setShowSettings(true)}
+            title="Settings (Cmd+,)"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Connection form modal */}
@@ -297,6 +487,11 @@ function App() {
       {/* Settings modal */}
       {showSettings && (
         <Settings onClose={() => setShowSettings(false)} />
+      )}
+
+      {/* Keyboard shortcuts modal */}
+      {showKeyboardShortcuts && (
+        <KeyboardShortcuts onClose={() => setShowKeyboardShortcuts(false)} />
       )}
 
       {/* Export databases modal */}
@@ -359,6 +554,9 @@ function App() {
         onConfirm={confirmDialog?.onConfirm}
         onCancel={() => setConfirmDialog(null)}
       />
+
+      {/* Notification history drawer */}
+      <NotificationHistoryDrawer />
     </div>
   )
 }

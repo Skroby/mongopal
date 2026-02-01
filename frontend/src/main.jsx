@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { NotificationProvider } from './components/NotificationContext'
-import { ConnectionProvider, TabProvider } from './components/contexts'
+import { ConnectionProvider, TabProvider, StatusProvider, OperationProvider } from './components/contexts'
 import './index.css'
 
 const container = document.getElementById('root')
@@ -15,7 +15,11 @@ root.render(
       <NotificationProvider>
         <ConnectionProvider>
           <TabProvider>
-            <App />
+            <StatusProvider>
+              <OperationProvider>
+                <App />
+              </OperationProvider>
+            </StatusProvider>
           </TabProvider>
         </ConnectionProvider>
       </NotificationProvider>

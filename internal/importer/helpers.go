@@ -37,26 +37,27 @@ func countExistingIds(coll *mongo.Collection, ids []interface{}) int64 {
 }
 
 // insertBatchSkipDuplicates inserts documents, skipping duplicates.
-func insertBatchSkipDuplicates(coll *mongo.Collection, batch []interface{}) (inserted, skipped int64) {
+// Returns inserted count, skipped count, and any fatal error (e.g., connection failure).
+func insertBatchSkipDuplicates(coll *mongo.Collection, batch []interface{}) (inserted, skipped int64, err error) {
 	if len(batch) == 0 {
-		return 0, 0
+		return 0, 0, nil
 	}
 
 	ctx, cancel := core.ContextWithTimeout()
 	defer cancel()
 
 	opts := options.InsertMany().SetOrdered(false)
-	result, err := coll.InsertMany(ctx, batch, opts)
-	if err != nil {
-		// Check for bulk write errors (duplicate key errors)
-		if bwe, ok := err.(mongo.BulkWriteException); ok {
+	result, insertErr := coll.InsertMany(ctx, batch, opts)
+	if insertErr != nil {
+		// Check for bulk write errors (duplicate key errors) - these are recoverable
+		if bwe, ok := insertErr.(mongo.BulkWriteException); ok {
 			inserted = int64(len(batch) - len(bwe.WriteErrors))
 			skipped = int64(len(bwe.WriteErrors))
-			return
+			return inserted, skipped, nil
 		}
-		// Other error, count all as skipped
-		return 0, int64(len(batch))
+		// Other errors are fatal (connection issues, auth failures, etc.)
+		return 0, 0, insertErr
 	}
 
-	return int64(len(result.InsertedIDs)), 0
+	return int64(len(result.InsertedIDs)), 0, nil
 }

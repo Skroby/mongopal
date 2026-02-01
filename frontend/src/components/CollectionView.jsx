@@ -2,10 +2,14 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import Editor from '@monaco-editor/react'
 import TableView from './TableView'
 import BulkActionBar from './BulkActionBar'
+import ActionableError from './ActionableError'
 import { useNotification } from './NotificationContext'
 import { useTab } from './contexts/TabContext'
+import { useStatus } from './contexts/StatusContext'
+import { useOperation } from './contexts/OperationContext'
 import { parseFilterFromQuery, parseProjectionFromQuery, buildFullQuery, isSimpleFindQuery, wrapScriptForOutput } from '../utils/queryParser'
 import { parseMongoshOutput } from '../utils/mongoshParser'
+import { getErrorSummary } from '../utils/errorParser'
 
 const go = window.go?.main?.App
 
@@ -32,6 +36,126 @@ const HistoryIcon = ({ className = "w-4 h-4" }) => (
 // Query history storage key
 const QUERY_HISTORY_KEY = 'mongopal_query_history'
 const MAX_HISTORY_ITEMS = 20
+
+// Query History Dropdown with keyboard navigation
+function QueryHistoryDropdown({ queryHistory, onSelect, onClose, historyRef }) {
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const [filterText, setFilterText] = useState('')
+  const filterInputRef = useRef(null)
+  const listRef = useRef(null)
+
+  // Filter history based on search text
+  const filteredHistory = useMemo(() => {
+    if (!filterText.trim()) return queryHistory
+    const lowerFilter = filterText.toLowerCase()
+    return queryHistory.filter(item =>
+      item.query.toLowerCase().includes(lowerFilter) ||
+      item.collection.toLowerCase().includes(lowerFilter)
+    )
+  }, [queryHistory, filterText])
+
+  // Reset highlight when filter changes
+  useEffect(() => {
+    setHighlightedIndex(filteredHistory.length > 0 ? 0 : -1)
+  }, [filterText, filteredHistory.length])
+
+  // Focus filter input when dropdown opens
+  useEffect(() => {
+    if (filterInputRef.current) {
+      filterInputRef.current.focus()
+    }
+  }, [])
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (highlightedIndex >= 0 && listRef.current) {
+      const items = listRef.current.querySelectorAll('[data-history-item]')
+      if (items[highlightedIndex]) {
+        items[highlightedIndex].scrollIntoView({ block: 'nearest' })
+      }
+    }
+  }, [highlightedIndex])
+
+  const handleKeyDown = (e) => {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        setHighlightedIndex(prev =>
+          prev < filteredHistory.length - 1 ? prev + 1 : prev
+        )
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setHighlightedIndex(prev => prev > 0 ? prev - 1 : prev)
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (highlightedIndex >= 0 && highlightedIndex < filteredHistory.length) {
+          onSelect(filteredHistory[highlightedIndex].query)
+          onClose()
+        }
+        break
+      case 'Escape':
+        e.preventDefault()
+        onClose()
+        break
+    }
+  }
+
+  return (
+    <div
+      ref={historyRef}
+      className="absolute right-0 top-full mt-1 w-[500px] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 flex flex-col max-h-72"
+      onKeyDown={handleKeyDown}
+    >
+      {/* Filter input */}
+      <div className="flex-shrink-0 p-2 border-b border-zinc-700">
+        <input
+          ref={filterInputRef}
+          type="text"
+          className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+          placeholder="Type to filter history..."
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+        />
+      </div>
+      {/* History list */}
+      <div ref={listRef} className="flex-1 overflow-auto">
+        {filteredHistory.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-zinc-500">
+            {queryHistory.length === 0 ? 'No query history' : 'No matching queries'}
+          </div>
+        ) : (
+          filteredHistory.map((item, idx) => (
+            <button
+              key={idx}
+              data-history-item
+              className={`w-full px-3 py-2 text-left border-b border-zinc-700 last:border-0 transition-colors ${
+                idx === highlightedIndex
+                  ? 'bg-zinc-600'
+                  : 'hover:bg-zinc-700'
+              }`}
+              onClick={() => {
+                onSelect(item.query)
+                onClose()
+              }}
+              onMouseEnter={() => setHighlightedIndex(idx)}
+            >
+              <div className="font-mono text-sm text-zinc-200 truncate">{item.query}</div>
+              <div className="text-xs text-zinc-500">{item.collection}</div>
+            </button>
+          ))
+        )}
+      </div>
+      {/* Keyboard hints */}
+      <div className="flex-shrink-0 px-3 py-1.5 border-t border-zinc-700 text-xs text-zinc-500 flex gap-3">
+        <span><kbd className="px-1 py-0.5 bg-zinc-700 rounded text-zinc-400">↑↓</kbd> navigate</span>
+        <span><kbd className="px-1 py-0.5 bg-zinc-700 rounded text-zinc-400">Enter</kbd> select</span>
+        <span><kbd className="px-1 py-0.5 bg-zinc-700 rounded text-zinc-400">Esc</kbd> close</span>
+      </div>
+    </div>
+  )
+}
 
 function loadQueryHistory() {
   try {
@@ -79,6 +203,8 @@ const CollapseIcon = ({ className = "w-4 h-4" }) => (
 export default function CollectionView({ connectionId, database, collection }) {
   const { notify } = useNotification()
   const { openDocumentTab, openInsertTab } = useTab()
+  const { updateDocumentStatus, clearStatus } = useStatus()
+  const { startOperation, updateOperation, completeOperation } = useOperation()
   const [query, setQuery] = useState(() => buildFullQuery(collection, '{}'))
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(false)
@@ -123,11 +249,24 @@ export default function CollectionView({ connectionId, database, collection }) {
   const [total, setTotal] = useState(0)
   const [queryTime, setQueryTime] = useState(null)
   const [goToPage, setGoToPage] = useState('')
+  const [paginationResetHighlight, setPaginationResetHighlight] = useState(false)
+  const prevSkipRef = useRef(skip)
 
   // Reset query when collection changes
   useEffect(() => {
     setQuery(buildFullQuery(collection, '{}'))
   }, [collection])
+
+  // Detect pagination reset and trigger highlight animation
+  useEffect(() => {
+    // Only highlight if skip was > 0 and is now 0 (actual reset, not initial load)
+    if (prevSkipRef.current > 0 && skip === 0) {
+      setPaginationResetHighlight(true)
+      const timer = setTimeout(() => setPaginationResetHighlight(false), 600)
+      return () => clearTimeout(timer)
+    }
+    prevSkipRef.current = skip
+  }, [skip])
 
   // Load documents on mount and when collection/pagination changes
   useEffect(() => {
@@ -138,6 +277,13 @@ export default function CollectionView({ connectionId, database, collection }) {
   useEffect(() => {
     setSelectedIds(new Set())
   }, [connectionId, database, collection, skip, limit, query])
+
+  // Update status bar with document count
+  useEffect(() => {
+    updateDocumentStatus(total, queryTime)
+    // Clear status when unmounting
+    return () => clearStatus()
+  }, [total, queryTime, updateDocumentStatus, clearStatus])
 
   // Helper to open insert tab
   const handleInsertDocument = () => {
@@ -261,7 +407,7 @@ export default function CollectionView({ connectionId, database, collection }) {
       if (currentQueryId !== queryIdRef.current) return
       const errorMsg = err.message || 'Failed to execute query'
       setError(errorMsg)
-      notify.error(errorMsg)
+      notify.error(getErrorSummary(errorMsg))
       setDocuments([])
       setTotal(0)
     } finally {
@@ -349,7 +495,7 @@ export default function CollectionView({ connectionId, database, collection }) {
         executeQuery() // Refresh the list
       }
     } catch (err) {
-      notify.error(`Failed to delete: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     } finally {
       setDeleting(false)
     }
@@ -360,6 +506,15 @@ export default function CollectionView({ connectionId, database, collection }) {
     setBulkDeleting(true)
     const idsToDelete = Array.from(selectedIds)
     setBulkDeleteProgress({ done: 0, total: idsToDelete.length })
+
+    // Register global operation (bulk delete is destructive)
+    const opId = startOperation({
+      type: 'bulk-delete',
+      label: `Deleting ${idsToDelete.length} docs...`,
+      progress: 0,
+      destructive: true,
+      active: true,
+    })
 
     let successCount = 0
     let failCount = 0
@@ -374,9 +529,12 @@ export default function CollectionView({ connectionId, database, collection }) {
         failCount++
         console.error(`Failed to delete ${idsToDelete[i]}:`, err)
       }
+      const progress = Math.round(((i + 1) / idsToDelete.length) * 100)
       setBulkDeleteProgress({ done: i + 1, total: idsToDelete.length })
+      updateOperation(opId, { progress, label: `Deleting ${i + 1}/${idsToDelete.length}...` })
     }
 
+    completeOperation(opId)
     setBulkDeleting(false)
     setShowBulkDeleteModal(false)
     setSelectedIds(new Set())
@@ -429,7 +587,7 @@ export default function CollectionView({ connectionId, database, collection }) {
         notify.success(`Exported ${entries.length} document${entries.length !== 1 ? 's' : ''}`)
       }
     } catch (err) {
-      notify.error(`Export failed: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     } finally {
       setExporting(false)
     }
@@ -446,8 +604,8 @@ export default function CollectionView({ connectionId, database, collection }) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Query bar */}
-      <div className="flex-shrink-0 p-2 border-b border-border bg-surface-secondary">
+      {/* Query bar - overflow-visible for dropdown */}
+      <div className="flex-shrink-0 p-2 border-b border-border bg-surface-secondary overflow-visible">
         {expandedQuery ? (
           /* Expanded multiline mode */
           <div className="flex flex-col gap-2">
@@ -480,39 +638,26 @@ export default function CollectionView({ connectionId, database, collection }) {
                   <span>Insert</span>
                 </button>
               </div>
-              <div className="flex items-center gap-1">
-                <div ref={historyRef} className="relative">
+              <div className="flex items-center gap-1 overflow-visible">
+                <div className="relative overflow-visible">
                   <button
-                    className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
+                    className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
                     onClick={() => setShowHistory(!showHistory)}
                     title="Query history"
                   >
                     <HistoryIcon className="w-4 h-4" />
                   </button>
                   {showHistory && (
-                    <div className="absolute right-0 top-full mt-1 w-[500px] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 max-h-64 overflow-auto">
-                      {queryHistory.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-zinc-500">No query history</div>
-                      ) : (
-                        queryHistory.map((item, idx) => (
-                          <button
-                            key={idx}
-                            className="w-full px-3 py-2 text-left hover:bg-zinc-700 border-b border-zinc-700 last:border-0"
-                            onClick={() => {
-                              setQuery(item.query)
-                              setShowHistory(false)
-                            }}
-                          >
-                            <div className="font-mono text-sm text-zinc-200 truncate">{item.query}</div>
-                            <div className="text-xs text-zinc-500">{item.collection}</div>
-                          </button>
-                        ))
-                      )}
-                    </div>
+                    <QueryHistoryDropdown
+                      queryHistory={queryHistory}
+                      onSelect={setQuery}
+                      onClose={() => setShowHistory(false)}
+                      historyRef={historyRef}
+                    />
                   )}
                 </div>
                 <button
-                  className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
+                  className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
                   onClick={() => setExpandedQuery(false)}
                   title="Collapse to single line"
                 >
@@ -561,8 +706,8 @@ export default function CollectionView({ connectionId, database, collection }) {
           </div>
         ) : (
           /* Compact one-liner mode */
-          <div className="flex gap-2">
-            <div className="flex-1 relative">
+          <div className="flex gap-2 overflow-visible">
+            <div className="flex-1 relative overflow-visible">
               <input
                 type="text"
                 className="input pr-16 pl-3 font-mono text-sm !bg-zinc-900"
@@ -585,38 +730,25 @@ export default function CollectionView({ connectionId, database, collection }) {
               />
               {/* History and expand buttons */}
               <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
-                <div ref={historyRef} className="relative">
+                <div className="relative">
                   <button
-                    className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
+                    className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
                     onClick={() => setShowHistory(!showHistory)}
                     title="Query history"
                   >
                     <HistoryIcon className="w-4 h-4" />
                   </button>
                   {showHistory && (
-                    <div className="absolute right-0 top-full mt-1 w-[500px] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 max-h-64 overflow-auto">
-                      {queryHistory.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-zinc-500">No query history</div>
-                      ) : (
-                        queryHistory.map((item, idx) => (
-                          <button
-                            key={idx}
-                            className="w-full px-3 py-2 text-left hover:bg-zinc-700 border-b border-zinc-700 last:border-0"
-                            onClick={() => {
-                              setQuery(item.query)
-                              setShowHistory(false)
-                            }}
-                          >
-                            <div className="font-mono text-sm text-zinc-200 truncate">{item.query}</div>
-                            <div className="text-xs text-zinc-500">{item.collection}</div>
-                          </button>
-                        ))
-                      )}
-                    </div>
+                    <QueryHistoryDropdown
+                      queryHistory={queryHistory}
+                      onSelect={setQuery}
+                      onClose={() => setShowHistory(false)}
+                      historyRef={historyRef}
+                    />
                   )}
                 </div>
                 <button
-                  className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
+                  className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
                   onClick={() => setExpandedQuery(true)}
                   title="Expand to multiline"
                 >
@@ -656,16 +788,18 @@ export default function CollectionView({ connectionId, database, collection }) {
       {/* View mode tabs and info */}
       <div className="flex-shrink-0 flex items-center justify-between px-3 py-1.5 border-b border-border bg-surface text-sm">
         <div className="flex items-center gap-3">
-          <div className="flex gap-1">
+          <div className="flex gap-1" role="tablist" aria-label="View mode">
             {['table', 'json', 'raw'].map(mode => (
               <button
                 key={mode}
-                className={`px-2 py-1 rounded text-xs capitalize ${
+                className={`view-mode-btn px-2 py-1 rounded text-xs capitalize ${
                   viewMode === mode
                     ? 'bg-zinc-700 text-zinc-100'
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
                 }`}
                 onClick={() => setViewMode(mode)}
+                role="tab"
+                aria-selected={viewMode === mode}
               >
                 {mode}
               </button>
@@ -673,12 +807,12 @@ export default function CollectionView({ connectionId, database, collection }) {
           </div>
 
           {queryTime !== null && (
-            <span className="text-zinc-500 text-xs">Query: {queryTime}ms</span>
+            <span className="text-zinc-400 text-xs">Query: {queryTime}ms</span>
           )}
         </div>
 
         {/* Pagination controls */}
-        <div className="flex items-center gap-2 text-zinc-500 text-xs">
+        <div className={`flex items-center gap-2 text-zinc-400 text-xs ${paginationResetHighlight ? 'pagination-reset-highlight' : ''}`}>
           {/* Page size selector */}
           <select
             className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-xs text-zinc-300"
@@ -707,7 +841,7 @@ export default function CollectionView({ connectionId, database, collection }) {
           {/* Navigation buttons */}
           <div className="flex gap-0.5">
             <button
-              className="px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
               onClick={() => setSkip(0)}
               disabled={skip === 0}
               title="First page"
@@ -715,7 +849,7 @@ export default function CollectionView({ connectionId, database, collection }) {
               ««
             </button>
             <button
-              className="px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
               onClick={() => setSkip(Math.max(0, skip - limit))}
               disabled={skip === 0}
               title="Previous page"
@@ -745,7 +879,7 @@ export default function CollectionView({ connectionId, database, collection }) {
             </div>
 
             <button
-              className="px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
               onClick={() => setSkip(skip + limit)}
               disabled={skip + limit >= total}
               title="Next page"
@@ -753,7 +887,7 @@ export default function CollectionView({ connectionId, database, collection }) {
               »
             </button>
             <button
-              className="px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
               onClick={() => setSkip((totalPages - 1) * limit)}
               disabled={skip + limit >= total}
               title="Last page"
@@ -766,31 +900,24 @@ export default function CollectionView({ connectionId, database, collection }) {
 
       {/* Error message */}
       {error && (
-        <div className="flex-shrink-0 px-3 py-2 bg-red-900/30 text-red-400 text-sm border-b border-red-800 flex items-start justify-between gap-2">
-          <span className="flex-1">{error}</span>
-          <button
-            className="flex-shrink-0 p-1 rounded hover:bg-red-800/50 text-red-400 hover:text-red-300"
-            onClick={() => {
-              navigator.clipboard.writeText(error)
-              notify.success('Error copied to clipboard')
-            }}
-            title="Copy error"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </button>
+        <div className="flex-shrink-0 px-3 py-2 border-b border-red-800">
+          <ActionableError
+            error={error}
+            onDismiss={() => setError(null)}
+            compact
+          />
         </div>
       )}
 
-      {/* Document list */}
-      <div className="flex-1 overflow-auto">
+      {/* Document list with bulk action bar overlay */}
+      <div className="flex-1 overflow-auto relative">
         {loading ? (
-          <div className="h-full flex items-center justify-center text-zinc-500">
-            <span>Loading...</span>
+          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-3">
+            <div className="spinner" />
+            <span>Loading documents...</span>
           </div>
         ) : documents.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-zinc-500">
+          <div className="h-full flex items-center justify-center text-zinc-400">
             <span>No documents found</span>
           </div>
         ) : viewMode === 'table' ? (
@@ -839,19 +966,21 @@ export default function CollectionView({ connectionId, database, collection }) {
             }}
           />
         )}
-      </div>
 
-      {/* Bulk Action Bar */}
-      {selectedIds.size > 0 && (
-        <BulkActionBar
-          selectedCount={selectedIds.size}
-          onClear={() => setSelectedIds(new Set())}
-          onDelete={() => setShowBulkDeleteModal(true)}
-          onExport={handleExport}
-          isDeleting={bulkDeleting}
-          isExporting={exporting}
-        />
-      )}
+        {/* Bulk Action Bar - positioned at bottom of scroll container */}
+        {selectedIds.size > 0 && (
+          <div className="sticky bottom-0 left-0 right-0 z-20">
+            <BulkActionBar
+              selectedCount={selectedIds.size}
+              onClear={() => setSelectedIds(new Set())}
+              onDelete={() => setShowBulkDeleteModal(true)}
+              onExport={handleExport}
+              isDeleting={bulkDeleting}
+              isExporting={exporting}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Delete Confirmation Modal */}
       {deleteDoc && (
@@ -890,7 +1019,7 @@ export default function CollectionView({ connectionId, database, collection }) {
                 Cancel
               </button>
               <button
-                className="px-3 py-1.5 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
+                className="px-3 py-1.5 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors focus-visible:ring-2 focus-visible:ring-red-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                 onClick={handleConfirmDelete}
                 disabled={deleting}
               >
@@ -958,7 +1087,7 @@ export default function CollectionView({ connectionId, database, collection }) {
                 Cancel
               </button>
               <button
-                className="px-3 py-1.5 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-red-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                 onClick={handleBulkDelete}
                 disabled={bulkDeleting}
               >

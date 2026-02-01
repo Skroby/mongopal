@@ -5,17 +5,21 @@ A lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing do
 ## Features
 
 - Connect to MongoDB instances via connection URI
+- Organize connections into nested folders with drag-and-drop
 - Browse databases and collections in tree view
 - View documents in Table or JSON format with pagination
+- Smart column widths based on field names and types
 - Edit documents with Monaco editor (syntax highlighting, formatting)
 - Insert new documents with JSON validation
-- Bulk operations (select, delete multiple documents)
+- Bulk operations with keyboard shortcuts (select, delete multiple)
 - Collection schema analysis with field type distribution
-- Export/import databases and collections (JSON format)
+- Export/import databases and collections with progress tracking and ETA
 - Query filtering and sorting with mongosh script support
 - Secure credential storage (OS keyring with encrypted fallback)
 - Multi-tab interface with pinning, renaming, drag-reorder
-- Dark theme optimized for extended use
+- Full keyboard navigation throughout the app
+- Notification history with actionable error hints
+- Dark theme optimized for extended use (WCAG AA compliant)
 
 ## Technology Stack
 
@@ -96,13 +100,17 @@ mongopal/
 │   ├── src/
 │   │   ├── App.jsx         # Root component with state management
 │   │   ├── components/     # React components
-│   │   │   ├── Sidebar.jsx           # Database/collection tree
+│   │   │   ├── Sidebar.jsx           # Folder/connection tree with drag-drop
 │   │   │   ├── CollectionView.jsx    # Document list with filters
 │   │   │   ├── DocumentEditView.jsx  # Monaco editor
 │   │   │   ├── SchemaView.jsx        # Collection schema analysis
+│   │   │   ├── KeyboardShortcuts.jsx # Shortcuts reference modal
+│   │   │   ├── ActionableError.jsx   # Error hints with recovery
 │   │   │   ├── Import/ExportModals   # Data transfer
+│   │   │   ├── contexts/             # React contexts for state
 │   │   │   └── ...
-│   │   └── utils/          # Query parsing, schema utils
+│   │   ├── hooks/          # Custom React hooks (useProgressETA)
+│   │   └── utils/          # Query parsing, schema utils, error parsing
 │   └── ...
 │
 ├── .claude/                # Claude Code configuration
@@ -141,9 +149,18 @@ make test-integration
 
 | Shortcut | Action |
 |----------|--------|
+| `Cmd+/` | Show keyboard shortcuts reference |
 | `Cmd+S` | Save document |
 | `Cmd+Enter` | Execute query |
+| `Cmd+W` | Close current tab |
+| `Cmd+Shift+[` | Previous tab |
+| `Cmd+Shift+]` | Next tab |
+| `Cmd+A` | Select all documents (in bulk mode) |
+| `Delete` | Delete selected documents |
 | `Escape` | Close panel / cancel edit |
+| `↑↓←→` | Navigate sidebar tree |
+| `Enter` | Expand/collapse or open item |
+| `Home/End` | Jump to first/last item |
 
 ## Documentation
 

@@ -71,10 +71,8 @@ describe('ConnectionForm', () => {
       render(<ConnectionForm {...defaultProps} />)
 
       expect(screen.getByText('Color')).toBeInTheDocument()
-      // 8 color buttons
-      const colorButtons = screen.getAllByRole('button').filter(btn =>
-        btn.style.backgroundColor !== ''
-      )
+      // 8 color buttons (using radio role for accessibility)
+      const colorButtons = screen.getAllByRole('radio')
       expect(colorButtons.length).toBe(8)
     })
   })
@@ -122,9 +120,7 @@ describe('ConnectionForm', () => {
     it('changes color when color button is clicked', () => {
       render(<ConnectionForm {...defaultProps} />)
 
-      const colorButtons = screen.getAllByRole('button').filter(btn =>
-        btn.style.backgroundColor !== ''
-      )
+      const colorButtons = screen.getAllByRole('radio')
 
       // First button (green) should be selected by default
       expect(colorButtons[0]).toHaveClass('scale-110')

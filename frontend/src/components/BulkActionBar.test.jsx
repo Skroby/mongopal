@@ -25,9 +25,9 @@ describe('BulkActionBar', () => {
       expect(screen.getByText('1 document selected')).toBeInTheDocument()
     })
 
-    it('renders clear button', () => {
+    it('renders clear button with keyboard shortcut hint', () => {
       render(<BulkActionBar {...defaultProps} />)
-      expect(screen.getByTitle('Clear selection')).toBeInTheDocument()
+      expect(screen.getByTitle('Clear selection (Escape)')).toBeInTheDocument()
     })
 
     it('renders export button', () => {
@@ -39,12 +39,32 @@ describe('BulkActionBar', () => {
       render(<BulkActionBar {...defaultProps} />)
       expect(screen.getByText('Delete')).toBeInTheDocument()
     })
+
+    it('has role="toolbar" on container', () => {
+      render(<BulkActionBar {...defaultProps} />)
+      expect(screen.getByRole('toolbar')).toBeInTheDocument()
+    })
+
+    it('has proper aria-label on toolbar', () => {
+      render(<BulkActionBar {...defaultProps} selectedCount={3} />)
+      expect(screen.getByRole('toolbar')).toHaveAttribute(
+        'aria-label',
+        'Bulk actions for 3 selected documents'
+      )
+    })
+
+    it('has proper aria-labels on buttons', () => {
+      render(<BulkActionBar {...defaultProps} />)
+      expect(screen.getByLabelText('Clear selection (Escape)')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Delete 5 documents/)).toBeInTheDocument()
+      expect(screen.getByLabelText(/Export 5 documents/)).toBeInTheDocument()
+    })
   })
 
   describe('button interactions', () => {
     it('calls onClear when clear button clicked', () => {
       render(<BulkActionBar {...defaultProps} />)
-      fireEvent.click(screen.getByTitle('Clear selection'))
+      fireEvent.click(screen.getByTitle('Clear selection (Escape)'))
       expect(defaultProps.onClear).toHaveBeenCalledTimes(1)
     })
 
@@ -58,6 +78,62 @@ describe('BulkActionBar', () => {
       render(<BulkActionBar {...defaultProps} />)
       fireEvent.click(screen.getByText('Delete'))
       expect(defaultProps.onDelete).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('keyboard shortcuts', () => {
+    it('calls onClear when Escape is pressed', () => {
+      render(<BulkActionBar {...defaultProps} />)
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(defaultProps.onClear).toHaveBeenCalledTimes(1)
+    })
+
+    it('calls onDelete when Delete key is pressed', () => {
+      render(<BulkActionBar {...defaultProps} />)
+      fireEvent.keyDown(document, { key: 'Delete' })
+      expect(defaultProps.onDelete).toHaveBeenCalledTimes(1)
+    })
+
+    it('calls onDelete when Backspace key is pressed', () => {
+      render(<BulkActionBar {...defaultProps} />)
+      fireEvent.keyDown(document, { key: 'Backspace' })
+      expect(defaultProps.onDelete).toHaveBeenCalledTimes(1)
+    })
+
+    it('calls onExport when Ctrl+E is pressed', () => {
+      render(<BulkActionBar {...defaultProps} />)
+      fireEvent.keyDown(document, { key: 'e', ctrlKey: true })
+      expect(defaultProps.onExport).toHaveBeenCalledTimes(1)
+    })
+
+    it('calls onExport when Cmd+E is pressed (Mac)', () => {
+      render(<BulkActionBar {...defaultProps} />)
+      fireEvent.keyDown(document, { key: 'e', metaKey: true })
+      expect(defaultProps.onExport).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not trigger shortcuts when typing in input', () => {
+      render(
+        <div>
+          <input data-testid="test-input" />
+          <BulkActionBar {...defaultProps} />
+        </div>
+      )
+      const input = screen.getByTestId('test-input')
+      fireEvent.keyDown(input, { key: 'Escape' })
+      expect(defaultProps.onClear).not.toHaveBeenCalled()
+    })
+
+    it('does not call onDelete when isDeleting is true', () => {
+      render(<BulkActionBar {...defaultProps} isDeleting={true} />)
+      fireEvent.keyDown(document, { key: 'Delete' })
+      expect(defaultProps.onDelete).not.toHaveBeenCalled()
+    })
+
+    it('does not call onExport when isExporting is true', () => {
+      render(<BulkActionBar {...defaultProps} isExporting={true} />)
+      fireEvent.keyDown(document, { key: 'e', ctrlKey: true })
+      expect(defaultProps.onExport).not.toHaveBeenCalled()
     })
   })
 

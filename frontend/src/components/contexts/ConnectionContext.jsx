@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { useNotification } from '../NotificationContext'
+import { getErrorSummary } from '../../utils/errorParser'
 
 const ConnectionContext = createContext(null)
 
@@ -52,7 +53,7 @@ export function ConnectionProvider({ children }) {
       }
     } catch (err) {
       console.error('Failed to connect:', err)
-      notify.error(`Connection failed: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     } finally {
       setConnectingId(null)
     }
@@ -67,7 +68,7 @@ export function ConnectionProvider({ children }) {
       }
     } catch (err) {
       console.error('Failed to disconnect:', err)
-      notify.error(`Failed to disconnect: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     }
   }, [notify])
 
@@ -80,7 +81,7 @@ export function ConnectionProvider({ children }) {
       onAllTabsClose?.()
     } catch (err) {
       console.error('Failed to disconnect all:', err)
-      notify.error(`Failed to disconnect all: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     }
   }, [notify])
 
@@ -96,7 +97,7 @@ export function ConnectionProvider({ children }) {
       notify.success('Other connections disconnected')
     } catch (err) {
       console.error('Failed to disconnect others:', err)
-      notify.error(`Failed to disconnect others: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     }
   }, [activeConnections, notify])
 
@@ -110,7 +111,7 @@ export function ConnectionProvider({ children }) {
       }
     } catch (err) {
       console.error('Failed to save connection:', err)
-      notify.error(`Failed to save connection: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     }
     return false
   }, [loadConnections, notify])
@@ -125,7 +126,7 @@ export function ConnectionProvider({ children }) {
       }
     } catch (err) {
       console.error('Failed to delete connection:', err)
-      notify.error(`Failed to delete connection: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     }
     return false
   }, [loadConnections, notify])
@@ -140,7 +141,7 @@ export function ConnectionProvider({ children }) {
       }
     } catch (err) {
       console.error('Failed to duplicate connection:', err)
-      notify.error(`Failed to duplicate connection: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     }
   }, [connections, loadConnections, notify])
 
@@ -151,7 +152,7 @@ export function ConnectionProvider({ children }) {
         notify.info('Connection refreshed')
       } catch (err) {
         console.error('Failed to refresh:', err)
-        notify.error(`Failed to refresh: ${err?.message || String(err)}`)
+        notify.error(getErrorSummary(err?.message || String(err)))
       }
     }
   }, [notify])
@@ -174,10 +175,10 @@ export function ConnectionProvider({ children }) {
     }
   }, [])
 
-  const createFolder = useCallback(async (name) => {
+  const createFolder = useCallback(async (name, parentId = '') => {
     try {
       if (go?.CreateFolder) {
-        await go.CreateFolder(name, '')
+        await go.CreateFolder(name, parentId)
         await loadConnections()
       }
     } catch (err) {
@@ -194,6 +195,31 @@ export function ConnectionProvider({ children }) {
       }
     } catch (err) {
       console.error('Failed to delete folder:', err)
+      throw err
+    }
+  }, [loadConnections])
+
+  const moveConnectionToFolder = useCallback(async (connId, folderId) => {
+    try {
+      if (go?.MoveConnectionToFolder) {
+        await go.MoveConnectionToFolder(connId, folderId || '')
+        await loadConnections()
+      }
+    } catch (err) {
+      console.error('Failed to move connection:', err)
+      throw err
+    }
+  }, [loadConnections])
+
+  const moveFolderToFolder = useCallback(async (folderId, parentId) => {
+    try {
+      if (go?.UpdateFolder) {
+        // Pass empty string for name to keep existing name
+        await go.UpdateFolder(folderId, '', parentId || '')
+        await loadConnections()
+      }
+    } catch (err) {
+      console.error('Failed to move folder:', err)
       throw err
     }
   }, [loadConnections])
@@ -235,6 +261,8 @@ export function ConnectionProvider({ children }) {
     // Folder actions
     createFolder,
     deleteFolder,
+    moveConnectionToFolder,
+    moveFolderToFolder,
 
     // Helpers
     getConnectionById,

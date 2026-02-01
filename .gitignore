@@ -46,3 +46,6 @@ coverage/
 
 # Wails generated bindings (regenerated via `make generate`)
 frontend/wailsjs/
+
+# Local planning/task files
+tickets/

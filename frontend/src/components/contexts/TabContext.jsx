@@ -184,6 +184,13 @@ export function TabProvider({ children }) {
     ))
   }, [])
 
+  // Set dirty state for a tab (for unsaved changes indicator)
+  const setTabDirty = useCallback((tabId, isDirty) => {
+    setTabs(prev => prev.map(t =>
+      t.id === tabId ? { ...t, dirty: isDirty } : t
+    ))
+  }, [])
+
   const reorderTabs = useCallback((draggedId, targetId) => {
     setTabs(prev => {
       const newTabs = [...prev]
@@ -247,6 +254,37 @@ export function TabProvider({ children }) {
     })
   }, [activeTab])
 
+  // Navigate to next tab
+  const nextTab = useCallback(() => {
+    if (tabs.length === 0) return
+    const currentIndex = tabs.findIndex(t => t.id === activeTab)
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % tabs.length : 0
+    setActiveTab(tabs[nextIndex].id)
+  }, [tabs, activeTab])
+
+  // Navigate to previous tab
+  const previousTab = useCallback(() => {
+    if (tabs.length === 0) return
+    const currentIndex = tabs.findIndex(t => t.id === activeTab)
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : tabs.length - 1
+    setActiveTab(tabs[prevIndex].id)
+  }, [tabs, activeTab])
+
+  // Jump to tab by number (1-9)
+  const goToTab = useCallback((number) => {
+    if (number < 1 || number > tabs.length) return
+    setActiveTab(tabs[number - 1].id)
+  }, [tabs])
+
+  // Close current active tab
+  const closeActiveTab = useCallback(() => {
+    if (!activeTab) return
+    const tab = tabs.find(t => t.id === activeTab)
+    // Don't close pinned tabs
+    if (tab?.pinned) return
+    closeTab(activeTab)
+  }, [activeTab, tabs, closeTab])
+
   const value = {
     // State
     tabs,
@@ -267,6 +305,7 @@ export function TabProvider({ children }) {
     renameTab,
     reorderTabs,
     convertInsertToDocumentTab,
+    setTabDirty,
 
     // Bulk close operations
     closeTabsForConnection,
@@ -274,6 +313,12 @@ export function TabProvider({ children }) {
     closeTabsForCollection,
     closeAllTabs,
     keepOnlyConnectionTabs,
+
+    // Tab navigation
+    nextTab,
+    previousTab,
+    goToTab,
+    closeActiveTab,
   }
 
   return (

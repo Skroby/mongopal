@@ -11,12 +11,18 @@ export default function ConfirmDialog({
   onCancel,
 }) {
   const confirmRef = useRef(null)
+  const cancelRef = useRef(null)
 
   useEffect(() => {
-    if (open && confirmRef.current) {
-      confirmRef.current.focus()
+    if (open) {
+      // For danger dialogs, focus Cancel button to prevent accidental confirmation
+      if (danger && cancelRef.current) {
+        cancelRef.current.focus()
+      } else if (confirmRef.current) {
+        confirmRef.current.focus()
+      }
     }
-  }, [open])
+  }, [open, danger])
 
   useEffect(() => {
     if (!open) return
@@ -24,14 +30,15 @@ export default function ConfirmDialog({
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         onCancel()
-      } else if (e.key === 'Enter') {
+      } else if (e.key === 'Enter' && !danger) {
+        // Only auto-confirm on Enter for non-danger dialogs
         onConfirm()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [open, onConfirm, onCancel])
+  }, [open, danger, onConfirm, onCancel])
 
   if (!open) return null
 
@@ -51,7 +58,7 @@ export default function ConfirmDialog({
         </div>
 
         <div className="px-4 py-3 border-t border-border flex justify-end gap-2">
-          <button className="btn btn-ghost" onClick={onCancel}>
+          <button ref={cancelRef} className="btn btn-ghost" onClick={onCancel}>
             {cancelLabel}
           </button>
           <button

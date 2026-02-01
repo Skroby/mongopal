@@ -6,6 +6,7 @@ import {
   getNestedValue,
   extractColumns,
   columnHasExpandableObjects,
+  getDefaultColumnWidth,
 } from '../utils/tableViewUtils'
 
 // JSX wrapper for formatValue utility - renders with appropriate styling
@@ -15,7 +16,7 @@ function formatValue(value) {
   switch (formatted.type) {
     case 'null':
     case 'undefined':
-      return <span className="text-zinc-500">{formatted.display}</span>
+      return <span className="text-zinc-400 italic">{formatted.display}</span>
     case 'boolean':
       return <span className={formatted.boolValue ? 'text-green-400' : 'text-red-400'}>{formatted.display}</span>
     case 'number':
@@ -72,6 +73,12 @@ const CollapseIcon = ({ className = "w-3 h-3" }) => (
   </svg>
 )
 
+const CheckIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+  </svg>
+)
+
 export default function TableView({
   documents,
   onEdit,
@@ -82,6 +89,7 @@ export default function TableView({
   const [expandedColumns, setExpandedColumns] = useState(new Set())
   const columns = useMemo(() => extractColumns(documents, expandedColumns), [documents, expandedColumns])
   const [contextMenu, setContextMenu] = useState(null) // { x, y, doc, cellValue, cellKey }
+  const [copiedField, setCopiedField] = useState(null) // 'value' | 'json' - tracks which item was just copied
   const menuRef = useRef(null)
   const headerCheckboxRef = useRef(null)
 
@@ -89,18 +97,18 @@ export default function TableView({
   const [columnWidths, setColumnWidths] = useState({})
   const resizingRef = useRef(null) // { column, startX, startWidth }
 
-  // Initialize column widths
+  // Initialize column widths based on type and name
   useEffect(() => {
     const defaultWidths = {}
     columns.forEach(col => {
       if (!columnWidths[col]) {
-        defaultWidths[col] = col === '_id' ? 180 : 150
+        defaultWidths[col] = getDefaultColumnWidth(col, documents)
       }
     })
     if (Object.keys(defaultWidths).length > 0) {
       setColumnWidths(prev => ({ ...prev, ...defaultWidths }))
     }
-  }, [columns])
+  }, [columns, documents])
 
   // Handle column resize
   const handleResizeStart = useCallback((e, column) => {
@@ -232,8 +240,9 @@ export default function TableView({
     }
   }, [contextMenu])
 
-  const handleContextMenu = (e, doc, cellKey, cellValue) => {
+  const handleContextMenu = (e, doc, cellKey = null, cellValue = null) => {
     e.preventDefault()
+    e.stopPropagation()
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
@@ -247,8 +256,31 @@ export default function TableView({
     if (contextMenu?.cellValue !== undefined) {
       try {
         await navigator.clipboard.writeText(getRawValue(contextMenu.cellValue))
+        setCopiedField('value')
+        setTimeout(() => {
+          setContextMenu(null)
+          setCopiedField(null)
+        }, 600)
+        return
       } catch (err) {
         console.error('Failed to copy:', err)
+      }
+    }
+    setContextMenu(null)
+  }
+
+  const handleCopyDocumentJson = async () => {
+    if (contextMenu?.doc) {
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(contextMenu.doc, null, 2))
+        setCopiedField('json')
+        setTimeout(() => {
+          setContextMenu(null)
+          setCopiedField(null)
+        }, 600)
+        return
+      } catch (err) {
+        console.error('Failed to copy document:', err)
       }
     }
     setContextMenu(null)
@@ -270,7 +302,7 @@ export default function TableView({
 
   if (documents.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-zinc-500">
+      <div className="h-full flex items-center justify-center text-zinc-400">
         No documents to display
       </div>
     )
@@ -279,7 +311,7 @@ export default function TableView({
   return (
     <div className="overflow-auto">
       <table className="text-sm table-fixed" role="grid" aria-label="Documents table">
-        <thead className="bg-surface-secondary sticky top-0">
+        <thead className="bg-surface-secondary sticky top-0 z-10">
           <tr role="row">
             {/* Checkbox column header */}
             <th scope="col" className="px-3 py-2 w-10 border-b border-border">
@@ -311,28 +343,28 @@ export default function TableView({
                   {isSub && parentCol && (
                     <button
                       onClick={() => toggleColumnExpansion(parentCol)}
-                      className="p-0.5 hover:bg-zinc-700 rounded text-zinc-500 hover:text-zinc-300"
+                      className="icon-btn p-0.5 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-300"
                       title={`Collapse ${parentCol}`}
                     >
                       <CollapseIcon className="w-3 h-3" />
                     </button>
                   )}
                   {/* Column name */}
-                  <span className={isSub ? 'text-zinc-500' : ''}>{isSub ? `↳ ${displayName}` : displayName}</span>
+                  <span className={isSub ? 'text-zinc-400' : ''}>{isSub ? `↳ ${displayName}` : displayName}</span>
                   {/* Expand button for expandable columns */}
                   {canExpand && !isExpanded && (
                     <button
                       onClick={() => toggleColumnExpansion(col)}
-                      className="p-0.5 hover:bg-zinc-700 rounded text-zinc-500 hover:text-accent"
+                      className="icon-btn p-0.5 hover:bg-zinc-700 rounded text-zinc-400 hover:text-accent"
                       title={`Expand ${col}`}
                     >
                       <ExpandIcon className="w-3 h-3" />
                     </button>
                   )}
                 </div>
-                {/* Column resizer */}
+                {/* Column resizer - 6px hit target with visible inner line */}
                 <div
-                  className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize bg-transparent hover:bg-accent group-hover:bg-zinc-600"
+                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize flex justify-center hover:bg-accent/30 group-hover:after:opacity-100 after:content-[''] after:w-0.5 after:h-full after:bg-zinc-500 after:opacity-0 after:transition-opacity hover:after:bg-accent hover:after:opacity-100"
                   onMouseDown={(e) => handleResizeStart(e, col)}
                 />
               </th>
@@ -347,11 +379,22 @@ export default function TableView({
             return (
               <tr
                 key={docId || idx}
-                className={`border-b border-zinc-800 ${
+                className={`table-row border-b border-zinc-800 ${
                   isSelected
                     ? 'bg-accent/10 hover:bg-accent/20'
                     : 'hover:bg-zinc-800/50'
                 }`}
+                onContextMenu={(e) => handleContextMenu(e, doc)}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    if (onEdit) onEdit(doc)
+                  } else if (e.key === ' ') {
+                    e.preventDefault()
+                    if (docId) toggleSelection(docId)
+                  }
+                }}
               >
                 {/* Row checkbox */}
                 <td className="px-3 py-2 w-10">
@@ -389,37 +432,74 @@ export default function TableView({
           ref={menuRef}
           role="menu"
           aria-label="Document actions"
-          className="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50 min-w-[160px]"
+          className="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50 min-w-[180px]"
           style={{
             left: contextMenu.x,
             top: contextMenu.y,
           }}
         >
-          {contextMenu.cellValue !== undefined && (
+          {/* Cell-specific copy option */}
+          {contextMenu.cellValue !== undefined && contextMenu.cellKey && (
             <button
               role="menuitem"
-              className="w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
+              className={`context-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${
+                copiedField === 'value' ? 'text-accent bg-accent/10' : 'text-zinc-200 hover:bg-zinc-700'
+              }`}
               onClick={handleCopyValue}
+              disabled={copiedField !== null}
             >
-              <CopyIcon className="w-4 h-4 text-zinc-400" />
-              Copy "{contextMenu.cellKey}" value
+              {copiedField === 'value' ? (
+                <>
+                  <CheckIcon className="w-4 h-4 text-accent" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <CopyIcon className="w-4 h-4 text-zinc-400" />
+                  Copy "{contextMenu.cellKey}" value
+                </>
+              )}
             </button>
           )}
+          {/* Document-level copy options */}
           <button
             role="menuitem"
-            className="w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
+            className={`context-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${
+              copiedField === 'json' ? 'text-accent bg-accent/10' : 'text-zinc-200 hover:bg-zinc-700'
+            }`}
+            onClick={handleCopyDocumentJson}
+            disabled={copiedField !== null}
+          >
+            {copiedField === 'json' ? (
+              <>
+                <CheckIcon className="w-4 h-4 text-accent" />
+                Copied!
+              </>
+            ) : (
+              <>
+                <CopyIcon className="w-4 h-4 text-zinc-400" />
+                Copy Document JSON
+              </>
+            )}
+          </button>
+          {/* Separator */}
+          <div className="border-t border-zinc-700 my-1" />
+          {/* Document actions */}
+          <button
+            role="menuitem"
+            className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
             onClick={handleEdit}
           >
             <EditIcon className="w-4 h-4 text-zinc-400" />
-            Edit document
+            Edit Document
           </button>
           <button
             role="menuitem"
-            className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-700 flex items-center gap-2"
+            className="context-menu-item w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-700 flex items-center gap-2"
             onClick={handleDelete}
           >
             <TrashIcon className="w-4 h-4" />
-            Delete document
+            Delete Document
           </button>
         </div>
       )}

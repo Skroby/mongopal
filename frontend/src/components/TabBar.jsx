@@ -95,8 +95,8 @@ export default function TabBar() {
 
   if (tabs.length === 0) {
     return (
-      <div className="h-9 bg-surface-secondary border-b border-border flex items-center px-2">
-        <span className="text-xs text-zinc-500">No open tabs</span>
+      <div className="h-9 bg-surface-secondary border-b border-border flex items-center px-2 titlebar-drag">
+        <span className="text-xs text-zinc-400">No open tabs</span>
       </div>
     )
   }
@@ -176,12 +176,12 @@ export default function TabBar() {
   }
 
   return (
-    <div className="h-9 bg-surface-secondary border-b border-border flex items-center overflow-x-auto overflow-y-hidden">
+    <div className="h-9 bg-surface-secondary border-b border-border flex items-center overflow-x-auto overflow-y-hidden titlebar-drag">
       {sortedTabs.map(tab => (
         <div
           key={tab.id}
           ref={el => tabRefs.current[tab.id] = el}
-          className={`tab ${activeTab === tab.id ? 'active' : ''} group ${
+          className={`tab titlebar-no-drag ${activeTab === tab.id ? 'active' : ''} group ${
             dragOverTab === tab.id ? 'ring-2 ring-accent ring-inset' : ''
           } ${draggedTab?.id === tab.id ? 'opacity-50' : ''}`}
           onClick={() => setActiveTab(tab.id)}
@@ -193,6 +193,15 @@ export default function TabBar() {
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, tab)}
           onDragEnd={handleDragEnd}
+          tabIndex={0}
+          role="tab"
+          aria-selected={activeTab === tab.id}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setActiveTab(tab.id)
+            }
+          }}
         >
           {/* Pin indicator */}
           {tab.pinned && (
@@ -226,14 +235,28 @@ export default function TabBar() {
             <span className="truncate max-w-[150px]">{tab.label}</span>
           )}
 
-          {/* Close button - hidden for pinned tabs */}
+          {/* Dirty indicator dot - show when document has unsaved changes */}
+          {tab.dirty && !tab.pinned && editingTabId !== tab.id && (
+            <span
+              className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0"
+              title="Unsaved changes"
+            />
+          )}
+
+          {/* Close button - always visible on active tab, hover on others, hidden for pinned */}
           {!tab.pinned && editingTabId !== tab.id && (
             <button
-              className="p-0.5 rounded hover:bg-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity"
+              className={`icon-btn p-0.5 hover:bg-zinc-600 rounded transition-opacity ${
+                activeTab === tab.id
+                  ? 'opacity-60 hover:opacity-100'
+                  : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+              }`}
               onClick={(e) => {
                 e.stopPropagation()
                 closeTab(tab.id)
               }}
+              title="Close tab"
+              aria-label={`Close ${tab.label}`}
             >
               <CloseIcon className="w-3 h-3" />
             </button>
@@ -243,7 +266,7 @@ export default function TabBar() {
 
       {/* Add tab button */}
       <button
-        className="p-1.5 mx-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
+        className="icon-btn p-1.5 mx-1 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 titlebar-no-drag"
         onClick={openNewQueryTab}
         title="New Query Tab"
       >
@@ -257,7 +280,7 @@ export default function TabBar() {
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
-            className="w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-700"
+            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-700"
             onClick={() => {
               const tab = tabs.find(t => t.id === contextMenu.tabId)
               if (tab) handleDoubleClick(tab)
@@ -267,7 +290,7 @@ export default function TabBar() {
             Rename
           </button>
           <button
-            className="w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-700"
+            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-700"
             onClick={() => {
               if (pinTab) pinTab(contextMenu.tabId)
               setContextMenu(null)
@@ -277,7 +300,7 @@ export default function TabBar() {
           </button>
           <div className="border-t border-zinc-700 my-1" />
           <button
-            className="w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-zinc-700"
+            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-zinc-700"
             onClick={() => {
               closeTab(contextMenu.tabId)
               setContextMenu(null)

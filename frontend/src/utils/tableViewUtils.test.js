@@ -8,6 +8,7 @@ import {
   extractColumns,
   getNestedKeys,
   columnHasExpandableObjects,
+  getDefaultColumnWidth,
 } from './tableViewUtils'
 
 describe('getDocId', () => {
@@ -599,5 +600,108 @@ describe('columnHasExpandableObjects', () => {
   it('returns false for nested BSON types', () => {
     const docs = [{ user: { createdAt: { $date: '2023-01-01' } } }]
     expect(columnHasExpandableObjects(docs, 'user.createdAt')).toBe(false)
+  })
+})
+
+describe('getDefaultColumnWidth', () => {
+  // Constants from implementation
+  const CHAR_WIDTH = 8
+  const HEADER_PADDING = 40
+
+  it('uses name width for short-named boolean column', () => {
+    // "ok" = 2 chars * 8 + 40 = 56, but min is 60
+    // boolean type = 50, so max(60, 50) = 60
+    const docs = [{ ok: true }]
+    expect(getDefaultColumnWidth('ok', docs)).toBe(60)
+  })
+
+  it('uses name width for long-named boolean column', () => {
+    // "Successful" = 10 chars * 8 + 40 = 120
+    // boolean type = 50, so max(120, 50) = 120
+    const docs = [{ Successful: true }]
+    expect(getDefaultColumnWidth('Successful', docs)).toBe(120)
+  })
+
+  it('uses type width for date column with short name', () => {
+    // "ts" = 2 chars * 8 + 40 = 56
+    // date type = 230, so max(56, 230) = 230
+    const docs = [{ ts: { $date: '2023-01-01' } }]
+    expect(getDefaultColumnWidth('ts', docs)).toBe(230)
+  })
+
+  it('uses type width for date column with medium name', () => {
+    // "FinishedAt" = 10 chars * 8 + 40 = 120
+    // date type = 230, so max(120, 230) = 230
+    const docs = [{ FinishedAt: { $date: '2023-01-01' } }]
+    expect(getDefaultColumnWidth('FinishedAt', docs)).toBe(230)
+  })
+
+  it('uses type width for uuid', () => {
+    // "id" = 2 chars * 8 + 40 = 56
+    // uuid type = 290, so max(56, 290) = 290
+    const docs = [{ id: { $uuid: '550e8400-e29b-41d4-a716-446655440000' } }]
+    expect(getDefaultColumnWidth('id', docs)).toBe(290)
+  })
+
+  it('uses type width for objectId', () => {
+    // "_id" = 3 chars * 8 + 40 = 64
+    // objectId type = 200, so max(64, 200) = 200
+    const docs = [{ _id: { $oid: '507f1f77bcf86cd799439011' } }]
+    expect(getDefaultColumnWidth('_id', docs)).toBe(200)
+  })
+
+  it('uses name width for long column name with small type', () => {
+    // "isUserAuthenticated" = 19 chars * 8 + 40 = 192
+    // boolean type = 50, so max(192, 50) = 192
+    const docs = [{ isUserAuthenticated: true }]
+    expect(getDefaultColumnWidth('isUserAuthenticated', docs)).toBe(192)
+  })
+
+  it('caps at maximum width', () => {
+    // "thisIsAnExtremelyLongColumnNameThatShouldBeTruncated" = 52 chars * 8 + 40 = 456
+    // Should cap at 350
+    const docs = [{ thisIsAnExtremelyLongColumnNameThatShouldBeTruncated: 'value' }]
+    expect(getDefaultColumnWidth('thisIsAnExtremelyLongColumnNameThatShouldBeTruncated', docs)).toBe(350)
+  })
+
+  it('respects minimum width', () => {
+    // "x" = 1 char * 8 + 40 = 48, but min is 60
+    // null type = 45, so max(48, 45) = 48, then max(48, 60) = 60
+    const docs = [{ x: null }]
+    expect(getDefaultColumnWidth('x', docs)).toBe(60)
+  })
+
+  it('uses default string width when no documents', () => {
+    // "name" = 4 chars * 8 + 40 = 72
+    // no docs, so default string type = 120, max(72, 120) = 120
+    expect(getDefaultColumnWidth('name', [])).toBe(120)
+  })
+
+  it('handles nested column paths using leaf name', () => {
+    // "active" (leaf) = 6 chars * 8 + 40 = 88
+    // boolean type = 50, so max(88, 50) = 88
+    const docs = [{ user: { profile: { active: true } } }]
+    expect(getDefaultColumnWidth('user.profile.active', docs)).toBe(88)
+  })
+
+  it('handles missing values in documents', () => {
+    // Falls back to string type width
+    const docs = [{ a: 1 }, { b: 2 }]
+    const result = getDefaultColumnWidth('c', docs)
+    // "c" = 1 char * 8 + 40 = 48, string = 120, max = 120
+    expect(result).toBe(120)
+  })
+
+  it('detects predominant type from multiple values', () => {
+    // 3 booleans, 1 string - should use boolean width
+    const docs = [
+      { status: true },
+      { status: false },
+      { status: true },
+      { status: 'unknown' }
+    ]
+    // "status" = 6 chars * 8 + 40 = 88
+    // boolean type = 50, max(88, 50) = 88
+    expect(getDefaultColumnWidth('status', docs)).toBe(88)
   })
 })

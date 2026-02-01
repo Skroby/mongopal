@@ -136,6 +136,8 @@ type ExportProgress struct {
 	DatabaseTotal   int    `json:"databaseTotal"`   // Total databases
 	CollectionIndex int    `json:"collectionIndex"` // Current collection (1-indexed) for collection-level exports
 	CollectionTotal int    `json:"collectionTotal"` // Total collections for collection-level exports
+	ProcessedDocs   int64  `json:"processedDocs"`   // Cumulative docs processed across all collections
+	TotalDocs       int64  `json:"totalDocs"`       // Total docs across all collections (for ETA)
 }
 
 // ImportProgress is the same as ExportProgress.
@@ -188,6 +190,15 @@ type ImportResult struct {
 	DocumentsParseError int64                  `json:"documentsParseError,omitempty"` // Docs that failed to parse
 	DocumentsDropped    int64                  `json:"documentsDropped,omitempty"`    // For dry-run override: docs that will be dropped
 	Errors              []string               `json:"errors"`
+}
+
+// ImportErrorResult contains partial results and error details when an import fails.
+type ImportErrorResult struct {
+	Error              string       `json:"error"`                        // The error message
+	PartialResult      ImportResult `json:"partialResult"`                // What was imported before failure
+	FailedDatabase     string       `json:"failedDatabase,omitempty"`     // Database where failure occurred
+	FailedCollection   string       `json:"failedCollection,omitempty"`   // Collection where failure occurred
+	RemainingDatabases []string     `json:"remainingDatabases,omitempty"` // Databases that weren't attempted
 }
 
 // ExportManifest contains metadata about an exported archive.

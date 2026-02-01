@@ -219,3 +219,79 @@ export function extractColumns(documents, expandedColumns = new Set()) {
 
   return result
 }
+
+/**
+ * Typical content widths by value type (in pixels).
+ * Based on actual rendered content width.
+ */
+const TYPE_CONTENT_WIDTHS = {
+  boolean: 50,       // "true" / "false"
+  null: 45,          // "null"
+  undefined: 45,     // "undefined"
+  number: 80,        // typical numbers
+  numberInt: 80,
+  numberLong: 100,
+  numberDouble: 100,
+  objectId: 200,     // ObjectId("12345678...")
+  uuid: 290,         // UUID("12345678-1234-1234-1234-123456789012")
+  binary: 160,       // Binary("...")
+  date: 230,         // 2026-01-08T16:00:00.000Z (24 chars)
+  array: 90,         // [5 items]
+  object: 60,        // {...}
+  string: 120,       // variable, moderate default
+  unknown: 100,
+}
+
+const CHAR_WIDTH = 8          // Approximate px per character for column header
+const HEADER_PADDING = 40     // Extra padding for header (sort icon, etc.)
+const MAX_COLUMN_WIDTH = 350
+const MIN_COLUMN_WIDTH = 60
+
+/**
+ * Get the default column width based on column name length and value type.
+ * Returns the larger of: (name length × char width) or (type content width),
+ * capped at maximum.
+ *
+ * @param {string} columnName - The column name (may include dots for nested)
+ * @param {Array} documents - Array of documents to sample
+ * @param {number} sampleSize - Number of documents to sample (default 5)
+ * @returns {number} Recommended column width in pixels
+ */
+export function getDefaultColumnWidth(columnName, documents, sampleSize = 5) {
+  // Get leaf name for nested columns (e.g., "user.profile.name" -> "name")
+  const leafName = columnName.includes('.') ? columnName.split('.').pop() : columnName
+
+  // Width based on column name length
+  const nameWidth = (leafName.length * CHAR_WIDTH) + HEADER_PADDING
+
+  // Detect predominant type from sampled documents
+  let typeWidth = TYPE_CONTENT_WIDTHS.string // default
+
+  if (documents && documents.length > 0) {
+    const typeCounts = {}
+    const sampled = documents.slice(0, sampleSize)
+
+    for (const doc of sampled) {
+      const value = getNestedValue(doc, columnName)
+      if (value === undefined) continue
+      const formatted = formatValue(value)
+      typeCounts[formatted.type] = (typeCounts[formatted.type] || 0) + 1
+    }
+
+    // Find most common type
+    let maxCount = 0
+    let predominantType = 'string'
+    for (const [type, count] of Object.entries(typeCounts)) {
+      if (count > maxCount) {
+        maxCount = count
+        predominantType = type
+      }
+    }
+
+    typeWidth = TYPE_CONTENT_WIDTHS[predominantType] || TYPE_CONTENT_WIDTHS.string
+  }
+
+  // Take the larger of name width or type width, within bounds
+  const width = Math.max(nameWidth, typeWidth)
+  return Math.max(MIN_COLUMN_WIDTH, Math.min(width, MAX_COLUMN_WIDTH))
+}

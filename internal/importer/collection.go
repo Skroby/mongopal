@@ -246,6 +246,19 @@ func (s *Service) ImportCollections(connID, dbName string, opts types.ImportOpti
 	}
 	defer zipReader.Close()
 
+	// Read manifest to get doc counts for ETA
+	var manifest types.ExportManifest
+	for _, f := range zipReader.File {
+		if f.Name == "manifest.json" {
+			rc, err := f.Open()
+			if err == nil {
+				json.NewDecoder(rc).Decode(&manifest)
+				rc.Close()
+			}
+			break
+		}
+	}
+
 	// Create cancellable context
 	importCtx, importCancel := context.WithCancel(context.Background())
 	s.state.SetImportCancel(importCancel)
@@ -297,6 +310,43 @@ func (s *Service) ImportCollections(connID, dbName string, opts types.ImportOpti
 	collIdx := 0
 	cancelled := false
 
+	// Calculate total docs for ETA from manifest
+	var totalDocs int64
+	collDocCounts := make(map[string]int64)
+	for _, db := range manifest.Databases {
+		if db.Name == opts.SourceDatabase {
+			for _, coll := range db.Collections {
+				if len(selectedColls) == 0 || selectedColls[coll.Name] {
+					totalDocs += coll.DocCount
+					collDocCounts[coll.Name] = coll.DocCount
+				}
+			}
+			break
+		}
+	}
+	var processedDocs int64
+
+	// Get collection names for remaining tracking
+	collectionNames := make([]string, 0, len(collections))
+	for name := range collections {
+		collectionNames = append(collectionNames, name)
+	}
+
+	// Helper to emit error event with partial results
+	emitError := func(errMsg string, failedColl string, collIdx int) {
+		var remaining []string
+		for i := collIdx; i < len(collectionNames); i++ {
+			remaining = append(remaining, collectionNames[i])
+		}
+		// For collection imports, remaining databases is just the current database with remaining collections
+		s.state.EmitEvent("import:error", types.ImportErrorResult{
+			Error:            errMsg,
+			PartialResult:    *result,
+			FailedDatabase:   dbName,
+			FailedCollection: failedColl,
+		})
+	}
+
 	for collName, files := range collections {
 		// Check for cancellation
 		select {
@@ -330,6 +380,9 @@ func (s *Service) ImportCollections(connID, dbName string, opts types.ImportOpti
 				Collection:      collName,
 				CollectionIndex: collIdx,
 				CollectionTotal: totalCollections,
+				Total:           collDocCounts[collName],
+				ProcessedDocs:   processedDocs,
+				TotalDocs:       totalDocs,
 			})
 
 			rc, err := files.docs.Open()
@@ -372,14 +425,36 @@ func (s *Service) ImportCollections(connID, dbName string, opts types.ImportOpti
 
 				if len(batch) >= batchSize {
 					if opts.Mode == "skip" {
-						inserted, skipped := insertBatchSkipDuplicates(coll, batch)
+						inserted, skipped, insertErr := insertBatchSkipDuplicates(coll, batch)
+						if insertErr != nil {
+							// Fatal error - save partial results and emit error event
+							collResult.DocumentsInserted += inserted
+							collResult.DocumentsSkipped += skipped
+							result.DocumentsInserted += collResult.DocumentsInserted
+							result.DocumentsSkipped += collResult.DocumentsSkipped
+							dbResult.Collections = append(dbResult.Collections, collResult)
+							result.Databases = append(result.Databases, dbResult)
+							emitError(insertErr.Error(), collName, collIdx)
+							return result, insertErr
+						}
 						collResult.DocumentsInserted += inserted
 						collResult.DocumentsSkipped += skipped
 					} else {
 						ctx, cancel := core.ContextWithTimeout()
-						res, err := coll.InsertMany(ctx, batch, options.InsertMany().SetOrdered(false))
+						res, insertErr := coll.InsertMany(ctx, batch, options.InsertMany().SetOrdered(false))
 						cancel()
-						if err == nil && res != nil {
+						if insertErr != nil {
+							// Check if it's a fatal error (not bulk write)
+							if _, ok := insertErr.(mongo.BulkWriteException); !ok {
+								result.DocumentsInserted += collResult.DocumentsInserted
+								result.DocumentsSkipped += collResult.DocumentsSkipped
+								dbResult.Collections = append(dbResult.Collections, collResult)
+								result.Databases = append(result.Databases, dbResult)
+								emitError(insertErr.Error(), collName, collIdx)
+								return result, insertErr
+							}
+						}
+						if res != nil {
 							collResult.DocumentsInserted += int64(len(res.InsertedIDs))
 						}
 					}
@@ -390,24 +465,52 @@ func (s *Service) ImportCollections(connID, dbName string, opts types.ImportOpti
 						Database:        dbName,
 						Collection:      collName,
 						Current:         docCount,
+						Total:           collDocCounts[collName],
 						CollectionIndex: collIdx,
 						CollectionTotal: totalCollections,
+						ProcessedDocs:   processedDocs + docCount,
+						TotalDocs:       totalDocs,
 					})
 				}
 			}
 			rc.Close()
 
+			// Update cumulative processed count
+			processedDocs += docCount
+
 			// Insert remaining batch
 			if len(batch) > 0 && !cancelled {
 				if opts.Mode == "skip" {
-					inserted, skipped := insertBatchSkipDuplicates(coll, batch)
+					inserted, skipped, insertErr := insertBatchSkipDuplicates(coll, batch)
+					if insertErr != nil {
+						// Fatal error - save partial results and emit error event
+						collResult.DocumentsInserted += inserted
+						collResult.DocumentsSkipped += skipped
+						result.DocumentsInserted += collResult.DocumentsInserted
+						result.DocumentsSkipped += collResult.DocumentsSkipped
+						dbResult.Collections = append(dbResult.Collections, collResult)
+						result.Databases = append(result.Databases, dbResult)
+						emitError(insertErr.Error(), collName, collIdx)
+						return result, insertErr
+					}
 					collResult.DocumentsInserted += inserted
 					collResult.DocumentsSkipped += skipped
 				} else {
 					ctx, cancel := core.ContextWithTimeout()
-					res, err := coll.InsertMany(ctx, batch, options.InsertMany().SetOrdered(false))
+					res, insertErr := coll.InsertMany(ctx, batch, options.InsertMany().SetOrdered(false))
 					cancel()
-					if err == nil && res != nil {
+					if insertErr != nil {
+						// Check if it's a fatal error (not bulk write)
+						if _, ok := insertErr.(mongo.BulkWriteException); !ok {
+							result.DocumentsInserted += collResult.DocumentsInserted
+							result.DocumentsSkipped += collResult.DocumentsSkipped
+							dbResult.Collections = append(dbResult.Collections, collResult)
+							result.Databases = append(result.Databases, dbResult)
+							emitError(insertErr.Error(), collName, collIdx)
+							return result, insertErr
+						}
+					}
+					if res != nil {
 						collResult.DocumentsInserted += int64(len(res.InsertedIDs))
 					}
 				}

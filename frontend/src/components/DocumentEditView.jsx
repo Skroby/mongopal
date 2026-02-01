@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import Editor from '@monaco-editor/react'
 import { useNotification } from './NotificationContext'
+import { useTab } from './contexts/TabContext'
 import ConfirmDialog from './ConfirmDialog'
 import MonacoErrorBoundary from './MonacoErrorBoundary'
+import { getErrorSummary } from '../utils/errorParser'
 
 const go = window.go?.main?.App
 
@@ -10,6 +12,12 @@ const go = window.go?.main?.App
 const SaveIcon = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+  </svg>
+)
+
+const CheckIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
   </svg>
 )
 
@@ -62,14 +70,17 @@ export default function DocumentEditView({
   onSave,
   mode = 'edit', // 'edit' or 'insert'
   onInsertComplete,
+  tabId,
 }) {
   const { notify } = useNotification()
+  const { setTabDirty } = useTab()
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
 
   const isInsertMode = mode === 'insert'
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [inserting, setInserting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
@@ -94,14 +105,86 @@ export default function DocumentEditView({
     }
   }, [document, isInsertMode])
 
-  // Track changes
+  // Track changes and update tab dirty state
   useEffect(() => {
-    setHasChanges(content !== originalContent)
-  }, [content, originalContent])
+    const isDirty = content !== originalContent
+    setHasChanges(isDirty)
+    // Update tab dirty indicator if tabId is provided
+    if (tabId && setTabDirty) {
+      setTabDirty(tabId, isDirty)
+    }
+  }, [content, originalContent, tabId, setTabDirty])
 
   const handleEditorDidMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
+
+    // Define custom theme matching app's zinc/dark palette
+    monaco.editor.defineTheme('mongopal-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        // JSON-specific syntax highlighting
+        { token: 'string.key.json', foreground: '94a3b8' },  // slate-400 for keys
+        { token: 'string.value.json', foreground: '4CC38A' }, // accent green for string values
+        { token: 'number', foreground: 'f59e0b' },           // amber-500 for numbers
+        { token: 'keyword', foreground: 'a78bfa' },          // violet-400 for true/false/null
+      ],
+      colors: {
+        // Editor backgrounds
+        'editor.background': '#18181b',                      // zinc-900
+        'editor.foreground': '#f4f4f5',                      // zinc-100
+        'editorLineNumber.foreground': '#52525b',            // zinc-600
+        'editorLineNumber.activeForeground': '#a1a1aa',      // zinc-400
+        'editor.lineHighlightBackground': '#27272a',         // zinc-800
+        'editor.lineHighlightBorder': '#00000000',           // transparent
+
+        // Selection colors
+        'editor.selectionBackground': '#4CC38A40',           // accent with 25% opacity
+        'editor.selectionHighlightBackground': '#4CC38A20',  // accent with 12% opacity
+        'editor.wordHighlightBackground': '#4CC38A30',       // accent with 19% opacity
+        'editor.findMatchBackground': '#4CC38A40',           // accent with 25% opacity
+        'editor.findMatchHighlightBackground': '#4CC38A20',  // accent with 12% opacity
+
+        // Cursor
+        'editorCursor.foreground': '#4CC38A',                // accent green
+
+        // Gutter and margins
+        'editorGutter.background': '#18181b',                // zinc-900
+
+        // Scrollbar
+        'scrollbar.shadow': '#00000000',
+        'scrollbarSlider.background': '#52525b80',           // zinc-600 with 50% opacity
+        'scrollbarSlider.hoverBackground': '#71717a80',      // zinc-500 with 50% opacity
+        'scrollbarSlider.activeBackground': '#a1a1aa80',     // zinc-400 with 50% opacity
+
+        // Widget backgrounds (find/replace dialog, autocomplete, etc.)
+        'editorWidget.background': '#27272a',                // zinc-800
+        'editorWidget.border': '#3f3f46',                    // zinc-700
+        'input.background': '#18181b',                       // zinc-900
+        'input.border': '#3f3f46',                           // zinc-700
+        'input.foreground': '#f4f4f5',                       // zinc-100
+        'inputOption.activeBorder': '#4CC38A',               // accent
+        'inputOption.activeBackground': '#4CC38A40',         // accent with 25% opacity
+
+        // Focus border
+        'focusBorder': '#4CC38A',                            // accent
+
+        // Bracket matching
+        'editorBracketMatch.background': '#4CC38A30',        // accent with 19% opacity
+        'editorBracketMatch.border': '#4CC38A',              // accent
+
+        // Indent guides
+        'editorIndentGuide.background': '#3f3f46',           // zinc-700
+        'editorIndentGuide.activeBackground': '#52525b',     // zinc-600
+
+        // Overview ruler (right edge minimap markers)
+        'editorOverviewRuler.border': '#3f3f46',             // zinc-700
+      }
+    })
+
+    // Apply the custom theme
+    monaco.editor.setTheme('mongopal-dark')
 
     // Configure editor
     editor.updateOptions({
@@ -147,11 +230,13 @@ export default function DocumentEditView({
         notify.success('Document saved')
         setOriginalContent(currentContent)
         setHasChanges(false)
+        setSaving(false)
+        setSaved(true)
+        setTimeout(() => setSaved(false), 1500)
         if (onSave) onSave()
       }
     } catch (err) {
-      notify.error(`Failed to save: ${err?.message || String(err)}`)
-    } finally {
+      notify.error(getErrorSummary(err?.message || String(err)))
       setSaving(false)
     }
   }
@@ -180,7 +265,7 @@ export default function DocumentEditView({
         }
       }
     } catch (err) {
-      notify.error(`Failed to insert: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     } finally {
       setInserting(false)
     }
@@ -211,7 +296,7 @@ export default function DocumentEditView({
         notify.success('Document refreshed')
       }
     } catch (err) {
-      notify.error(`Failed to refresh: ${err?.message || String(err)}`)
+      notify.error(getErrorSummary(err?.message || String(err)))
     } finally {
       setRefreshing(false)
     }
@@ -308,16 +393,27 @@ export default function DocumentEditView({
           ) : (
             <button
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded font-medium transition-colors ${
-                hasChanges && !saving
+                saved
+                  ? 'bg-green-600 text-white'
+                  : hasChanges && !saving
                   ? 'bg-accent text-zinc-900 hover:bg-accent/90'
-                  : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                  : 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
               }`}
               onClick={handleSave}
-              disabled={saving || !hasChanges}
+              disabled={saving || saved || !hasChanges}
               title="Save (Cmd+S)"
             >
-              <SaveIcon className="w-3.5 h-3.5" />
-              {saving ? 'Saving...' : 'Save'}
+              {saved ? (
+                <>
+                  <CheckIcon className="w-3.5 h-3.5" />
+                  Saved
+                </>
+              ) : (
+                <>
+                  <SaveIcon className="w-3.5 h-3.5" />
+                  {saving ? 'Saving...' : 'Save'}
+                </>
+              )}
             </button>
           )}
         </div>

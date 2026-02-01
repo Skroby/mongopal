@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { useNotification } from './NotificationContext'
 import { toJsonSchema, getTypeColor, getOccurrenceColor } from '../utils/schemaUtils'
 
@@ -38,7 +39,7 @@ const typeColorMap = {
   'cyan': 'text-cyan-400',
   'pink': 'text-pink-400',
   'red': 'text-red-400',
-  'zinc': 'text-zinc-500',
+  'zinc': 'text-zinc-400',
   'default': 'text-zinc-300',
 }
 
@@ -65,7 +66,7 @@ function SchemaFieldNode({ name, field, level = 0, defaultExpanded = true }) {
         onClick={() => (hasChildren || hasArrayType) && setExpanded(!expanded)}
       >
         {(hasChildren || hasArrayType) ? (
-          <span className="text-zinc-500">
+          <span className="text-zinc-400">
             {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
           </span>
         ) : (
@@ -95,7 +96,7 @@ function SchemaFieldNode({ name, field, level = 0, defaultExpanded = true }) {
       {expanded && hasArrayType && (
         <div>
           <div
-            className="flex items-center gap-2 py-1 px-2 text-zinc-500 text-xs italic"
+            className="flex items-center gap-2 py-1 px-2 text-zinc-400 text-xs italic"
             style={{ paddingLeft: `${(level + 1) * 16 + 8}px` }}
           >
             Array element structure:
@@ -122,10 +123,12 @@ export default function SchemaView({ connectionId, database, collection }) {
   const [error, setError] = useState(null)
   const [sampleSize, setSampleSize] = useState(10)
   const [viewMode, setViewMode] = useState('tree') // 'tree' | 'json' | 'jsonschema'
+  const [progress, setProgress] = useState(null) // { current, total, phase }
 
   const loadSchema = async () => {
     setLoading(true)
     setError(null)
+    setProgress(null)
     try {
       if (go?.InferCollectionSchema) {
         const result = await go.InferCollectionSchema(connectionId, database, collection, sampleSize)
@@ -136,8 +139,17 @@ export default function SchemaView({ connectionId, database, collection }) {
       notify.error(`Failed to infer schema: ${err?.message || String(err)}`)
     } finally {
       setLoading(false)
+      setProgress(null)
     }
   }
+
+  // Listen for schema progress events
+  useEffect(() => {
+    const unsub = EventsOn('schema:progress', (data) => {
+      setProgress(data)
+    })
+    return () => unsub?.()
+  }, [])
 
   useEffect(() => {
     loadSchema()
@@ -175,16 +187,34 @@ export default function SchemaView({ connectionId, database, collection }) {
   }
 
   if (loading) {
+    const progressPercent = progress?.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0
     return (
-      <div className="h-full flex items-center justify-center text-zinc-500">
-        <span>Analyzing schema...</span>
+      <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+        <div className="flex items-center gap-3">
+          <div className="animate-spin rounded-full h-5 w-5 border-2 border-zinc-600 border-t-accent"></div>
+          <span>Analyzing schema...</span>
+        </div>
+        {progress && progress.total > 0 && (
+          <div className="w-48">
+            <div className="flex items-center justify-between text-xs text-zinc-500 mb-1">
+              <span>Sampling documents</span>
+              <span>{progress.current} / {progress.total}</span>
+            </div>
+            <div className="h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-accent transition-all duration-150"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-zinc-500 gap-4">
+      <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
         <span className="text-red-400">{error}</span>
         <button className="btn btn-primary" onClick={handleRefresh}>
           Retry
@@ -195,7 +225,7 @@ export default function SchemaView({ connectionId, database, collection }) {
 
   if (!schema || Object.keys(schema.fields).length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-zinc-500">
+      <div className="h-full flex items-center justify-center text-zinc-400">
         <span>No schema found (collection may be empty)</span>
       </div>
     )
@@ -208,7 +238,7 @@ export default function SchemaView({ connectionId, database, collection }) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h2 className="text-lg font-medium text-zinc-100">Schema: {collection}</h2>
-            <span className="text-sm text-zinc-500">
+            <span className="text-sm text-zinc-400">
               Sampled {schema.sampleSize} of {schema.totalDocs.toLocaleString()} documents
             </span>
           </div>
@@ -246,22 +276,24 @@ export default function SchemaView({ connectionId, database, collection }) {
 
       {/* View mode tabs */}
       <div className="flex-shrink-0 flex items-center gap-3 px-3 py-1.5 border-b border-border bg-surface text-sm">
-        <div className="flex gap-1">
+        <div className="flex gap-1" role="tablist" aria-label="Schema view mode">
           {['tree', 'json', 'jsonschema'].map(mode => (
             <button
               key={mode}
-              className={`px-2 py-1 rounded text-xs capitalize ${
+              className={`view-mode-btn px-2 py-1 rounded text-xs capitalize ${
                 viewMode === mode
                   ? 'bg-zinc-700 text-zinc-100'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
               }`}
               onClick={() => setViewMode(mode)}
+              role="tab"
+              aria-selected={viewMode === mode}
             >
               {mode === 'jsonschema' ? 'JSON Schema' : mode}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 ml-auto text-xs text-zinc-500">
+        <div className="flex items-center gap-2 ml-auto text-xs text-zinc-400">
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-green-500" /> 100%
           </span>

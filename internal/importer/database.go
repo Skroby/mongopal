@@ -387,6 +387,15 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 		return nil, fmt.Errorf("no databases selected for import")
 	}
 
+	// Calculate total docs for ETA
+	var totalDocs int64
+	for _, db := range databasesToImport {
+		for _, coll := range db.Collections {
+			totalDocs += coll.DocCount
+		}
+	}
+	var processedDocs int64
+
 	result := &types.ImportResult{
 		Databases: []types.DatabaseImportResult{},
 		Errors:    []string{},
@@ -399,6 +408,21 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 	}
 
 	totalDatabases := len(databasesToImport)
+
+	// Helper to emit error event with partial results
+	emitError := func(errMsg string, failedDb string, failedColl string, dbIdx int) {
+		var remaining []string
+		for i := dbIdx; i < len(databasesToImport); i++ {
+			remaining = append(remaining, databasesToImport[i].Name)
+		}
+		s.state.EmitEvent("import:error", types.ImportErrorResult{
+			Error:              errMsg,
+			PartialResult:      *result,
+			FailedDatabase:     failedDb,
+			FailedCollection:   failedColl,
+			RemainingDatabases: remaining,
+		})
+	}
 
 	// Import each database
 	for dbIdx, dbManifest := range databasesToImport {
@@ -429,6 +453,8 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 				Total:         0,
 				DatabaseIndex: dbIdx + 1,
 				DatabaseTotal: totalDatabases,
+				ProcessedDocs: processedDocs,
+				TotalDocs:     totalDocs,
 			})
 			ctx, cancel := core.ContextWithTimeout()
 			if err := db.Drop(ctx); err != nil {
@@ -455,6 +481,8 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 				Total:         collManifest.DocCount,
 				DatabaseIndex: dbIdx + 1,
 				DatabaseTotal: totalDatabases,
+				ProcessedDocs: processedDocs,
+				TotalDocs:     totalDocs,
 			})
 
 			// Import documents
@@ -513,7 +541,18 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 				// Both modes now just batch insert (override already dropped db, skip uses unordered insert)
 				batch = append(batch, doc)
 				if len(batch) >= batchSize {
-					inserted, skipped := insertBatchSkipDuplicates(coll, batch)
+					inserted, skipped, insertErr := insertBatchSkipDuplicates(coll, batch)
+					if insertErr != nil {
+						// Fatal error - save partial results and emit error event
+						collResult.DocumentsInserted += inserted
+						collResult.DocumentsSkipped += skipped
+						result.DocumentsInserted += inserted
+						result.DocumentsSkipped += skipped
+						dbResult.Collections = append(dbResult.Collections, collResult)
+						result.Databases = append(result.Databases, dbResult)
+						emitError(insertErr.Error(), dbName, collName, dbIdx+1)
+						return result, insertErr
+					}
 					collResult.DocumentsInserted += inserted
 					collResult.DocumentsSkipped += skipped
 					result.DocumentsInserted += inserted
@@ -531,6 +570,8 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 						Total:         collManifest.DocCount,
 						DatabaseIndex: dbIdx + 1,
 						DatabaseTotal: totalDatabases,
+						ProcessedDocs: processedDocs + current,
+						TotalDocs:     totalDocs,
 					})
 				}
 			}
@@ -547,12 +588,26 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 
 			// Insert remaining batch
 			if len(batch) > 0 {
-				inserted, skipped := insertBatchSkipDuplicates(coll, batch)
+				inserted, skipped, insertErr := insertBatchSkipDuplicates(coll, batch)
+				if insertErr != nil {
+					// Fatal error - save partial results and emit error event
+					collResult.DocumentsInserted += inserted
+					collResult.DocumentsSkipped += skipped
+					result.DocumentsInserted += inserted
+					result.DocumentsSkipped += skipped
+					dbResult.Collections = append(dbResult.Collections, collResult)
+					result.Databases = append(result.Databases, dbResult)
+					emitError(insertErr.Error(), dbName, collName, dbIdx+1)
+					return result, insertErr
+				}
 				collResult.DocumentsInserted += inserted
 				collResult.DocumentsSkipped += skipped
 				result.DocumentsInserted += inserted
 				result.DocumentsSkipped += skipped
 			}
+
+			// Update cumulative processed count
+			processedDocs += current
 
 			dbResult.Collections = append(dbResult.Collections, collResult)
 

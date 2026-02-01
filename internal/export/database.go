@@ -86,7 +86,9 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 		return fmt.Errorf("failed to open save dialog: %w", err)
 	}
 	if filePath == "" {
-		return nil // User cancelled
+		// User cancelled the save dialog - notify frontend
+		runtime.EventsEmit(s.state.Ctx, "export:cancelled")
+		return nil
 	}
 
 	// Ensure .zip extension
@@ -117,6 +119,44 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 
 	totalDatabases := len(dbNames)
 
+	// Pre-scan to get total document count for ETA calculation
+	var totalDocs int64
+	dbCollections := make(map[string][]string) // dbName -> collection names
+	for _, dbName := range dbNames {
+		ctx, cancel := core.ContextWithTimeout()
+		db := client.Database(dbName)
+		cursor, err := db.ListCollections(ctx, bson.D{})
+		if err != nil {
+			cancel()
+			continue
+		}
+		var collInfos []struct {
+			Name string `bson:"name"`
+			Type string `bson:"type"`
+		}
+		if err := cursor.All(ctx, &collInfos); err != nil {
+			cursor.Close(ctx)
+			cancel()
+			continue
+		}
+		cursor.Close(ctx)
+
+		var collNames []string
+		for _, collInfo := range collInfos {
+			if collInfo.Type == "view" {
+				continue
+			}
+			collNames = append(collNames, collInfo.Name)
+			coll := db.Collection(collInfo.Name)
+			count, _ := coll.EstimatedDocumentCount(ctx)
+			totalDocs += count
+		}
+		dbCollections[dbName] = collNames
+		cancel()
+	}
+
+	var processedDocs int64
+
 	// Export each database
 	for dbIdx, dbName := range dbNames {
 		// Check for cancellation
@@ -135,41 +175,11 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 			Collections: []types.ExportManifestCollection{},
 		}
 
-		// Get collections
-		ctx, cancel := core.ContextWithTimeout()
+		// Use pre-scanned collection list
 		db := client.Database(dbName)
-		cursor, err := db.ListCollections(ctx, bson.D{})
-		if err != nil {
-			cancel()
-			s.state.EmitEvent("export:warning", map[string]interface{}{
-				"database": dbName,
-				"error":    fmt.Sprintf("failed to list collections: %v", err),
-			})
-			continue
-		}
+		collNames := dbCollections[dbName]
 
-		var collInfos []struct {
-			Name string `bson:"name"`
-			Type string `bson:"type"`
-		}
-		if err := cursor.All(ctx, &collInfos); err != nil {
-			cursor.Close(ctx)
-			cancel()
-			s.state.EmitEvent("export:warning", map[string]interface{}{
-				"database": dbName,
-				"error":    fmt.Sprintf("failed to read collection list: %v", err),
-			})
-			continue
-		}
-		cursor.Close(ctx)
-		cancel()
-
-		for _, collInfo := range collInfos {
-			if collInfo.Type == "view" {
-				continue // Skip views
-			}
-
-			collName := collInfo.Name
+		for _, collName := range collNames {
 			coll := db.Collection(collName)
 
 			// Get estimated document count for progress
@@ -186,6 +196,8 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 				Total:         estimatedCount,
 				DatabaseIndex: dbIdx + 1,
 				DatabaseTotal: totalDatabases,
+				ProcessedDocs: processedDocs,
+				TotalDocs:     totalDocs,
 			})
 
 			// Export documents as NDJSON
@@ -249,9 +261,14 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 						Total:         estimatedCount,
 						DatabaseIndex: dbIdx + 1,
 						DatabaseTotal: totalDatabases,
+						ProcessedDocs: processedDocs + docCount,
+						TotalDocs:     totalDocs,
 					})
 				}
 			}
+
+			// Update cumulative processed count
+			processedDocs += docCount
 
 			// Emit warning if documents were skipped
 			if skippedDocs > 0 {
