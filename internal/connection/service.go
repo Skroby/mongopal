@@ -18,8 +18,8 @@ import (
 
 // Service handles MongoDB connection operations.
 type Service struct {
-	state      *core.AppState
-	connStore  *storage.ConnectionService
+	state     *core.AppState
+	connStore *storage.ConnectionService
 }
 
 // NewService creates a new connection service.
@@ -53,6 +53,10 @@ func (s *Service) Connect(connID string) error {
 	}
 
 	s.state.SetClient(connID, client)
+
+	// Update last accessed time (ignore error - non-critical)
+	_ = s.connStore.UpdateLastAccessed(connID)
+
 	return nil
 }
 

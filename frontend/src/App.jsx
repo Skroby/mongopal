@@ -5,6 +5,7 @@ import TabBar from './components/TabBar'
 import CollectionView from './components/CollectionView'
 import DocumentEditView from './components/DocumentEditView'
 import SchemaView from './components/SchemaView'
+import IndexView from './components/IndexView'
 import ConnectionForm from './components/ConnectionForm'
 import Settings from './components/Settings'
 import KeyboardShortcuts from './components/KeyboardShortcuts'
@@ -12,6 +13,7 @@ import ExportDatabasesModal from './components/ExportDatabasesModal'
 import ImportDatabasesModal from './components/ImportDatabasesModal'
 import ExportCollectionsModal from './components/ExportCollectionsModal'
 import ImportCollectionsModal from './components/ImportCollectionsModal'
+import CollectionStatsModal from './components/CollectionStatsModal'
 import ConfirmDialog from './components/ConfirmDialog'
 import { useNotification, NotificationHistoryButton, NotificationHistoryDrawer } from './components/NotificationContext'
 import { useConnection } from './components/contexts/ConnectionContext'
@@ -53,6 +55,7 @@ function App() {
     convertInsertToDocumentTab,
     openDocumentTab,
     openInsertTab,
+    openIndexTab,
     nextTab,
     previousTab,
     goToTab,
@@ -73,6 +76,7 @@ function App() {
   const [importModal, setImportModal] = useState(null) // { connectionId, connectionName }
   const [exportCollectionsModal, setExportCollectionsModal] = useState(null) // { connectionId, connectionName, databaseName }
   const [importCollectionsModal, setImportCollectionsModal] = useState(null) // { connectionId, connectionName, databaseName }
+  const [statsModal, setStatsModal] = useState(null) // { connectionId, database, collection }
   const [confirmDialog, setConfirmDialog] = useState(null) // { title, message, onConfirm, danger }
 
   // Check for Wails bindings availability
@@ -293,6 +297,8 @@ function App() {
             onImportDatabases={(connId, connName) => setImportModal({ connectionId: connId, connectionName: connName })}
             onExportCollections={(connId, connName, dbName) => setExportCollectionsModal({ connectionId: connId, connectionName: connName, databaseName: dbName })}
             onImportCollections={(connId, connName, dbName) => setImportCollectionsModal({ connectionId: connId, connectionName: connName, databaseName: dbName })}
+            onShowStats={(connId, dbName, collName) => setStatsModal({ connectionId: connId, database: dbName, collection: collName })}
+            onManageIndexes={(connId, dbName, collName) => openIndexTab(connId, dbName, collName)}
           />
         </div>
 
@@ -354,8 +360,16 @@ function App() {
                 database={currentTab.database}
                 collection={currentTab.collection}
               />
+            ) : currentTab?.type === 'indexes' ? (
+              <IndexView
+                key={currentTab.id}
+                connectionId={currentTab.connectionId}
+                database={currentTab.database}
+                collection={currentTab.collection}
+              />
             ) : currentTab ? (
               <CollectionView
+                key={currentTab.id}
                 connectionId={currentTab.connectionId}
                 database={currentTab.database}
                 collection={currentTab.collection}
@@ -541,6 +555,16 @@ function App() {
               go.ListCollections(importCollectionsModal.connectionId, importCollectionsModal.databaseName).catch(console.error)
             }
           }}
+        />
+      )}
+
+      {/* Collection stats modal */}
+      {statsModal && (
+        <CollectionStatsModal
+          connectionId={statsModal.connectionId}
+          database={statsModal.database}
+          collection={statsModal.collection}
+          onClose={() => setStatsModal(null)}
         />
       )}
 

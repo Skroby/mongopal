@@ -10,7 +10,8 @@ const CloseIcon = ({ className = "w-4 h-4" }) => (
 )
 
 const colors = [
-  '#4CC38A', // Green (default)
+  '', // No color (default)
+  '#4CC38A', // Green
   '#3B82F6', // Blue
   '#F59E0B', // Amber
   '#EF4444', // Red
@@ -25,8 +26,9 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
 
   const [name, setName] = useState(connection?.name || '')
   const [uri, setUri] = useState(connection?.uri || 'mongodb://localhost:27017')
-  const [color, setColor] = useState(connection?.color || colors[0])
+  const [color, setColor] = useState(connection?.color || '')
   const [folderId, setFolderId] = useState(connection?.folderId || '')
+  const [readOnly, setReadOnly] = useState(connection?.readOnly || false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -150,6 +152,7 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
         uri: uri.trim(),
         color,
         folderId,
+        readOnly,
         createdAt: connection?.createdAt || new Date().toISOString(),
       }
       // Extract password from URI for secure storage
@@ -193,6 +196,10 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
               onChange={(e) => setName(e.target.value)}
               onBlur={() => handleBlur('name')}
               autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
             />
             {touched.name && nameError && (
               <p className="mt-1 text-xs text-red-400">{nameError}</p>
@@ -221,23 +228,42 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
           {/* Color picker */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-2">
-              Color
+              Tab Color
             </label>
             <div className="flex gap-2" role="radiogroup" aria-label="Connection color">
-              {colors.map(c => (
+              {colors.map((c, i) => (
                 <button
-                  key={c}
+                  key={c || 'none'}
                   className={`color-btn w-6 h-6 rounded-full border-2 transition-all ${
                     color === c ? 'border-white scale-110' : 'border-transparent'
-                  }`}
-                  style={{ backgroundColor: c }}
+                  } ${!c ? 'bg-zinc-700 flex items-center justify-center' : ''}`}
+                  style={c ? { backgroundColor: c } : undefined}
                   onClick={() => setColor(c)}
                   role="radio"
                   aria-checked={color === c}
-                  aria-label={`Color ${c}`}
-                />
+                  aria-label={c ? `Color ${c}` : 'No color'}
+                  title={c ? undefined : 'No color'}
+                >
+                  {!c && <span className="text-zinc-500 text-xs">∅</span>}
+                </button>
               ))}
             </div>
+          </div>
+
+          {/* Read-only mode */}
+          <div>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded bg-zinc-700 border-zinc-600 text-accent focus:ring-accent"
+                checked={readOnly}
+                onChange={(e) => setReadOnly(e.target.checked)}
+              />
+              <div>
+                <span className="text-sm text-zinc-300">Read-only mode</span>
+                <p className="text-xs text-zinc-400">Disable all write operations (insert, update, delete)</p>
+              </div>
+            </label>
           </div>
 
           {/* Connection URI */}
@@ -253,6 +279,10 @@ export default function ConnectionForm({ connection, folders = [], onSave, onCan
                 value={uri}
                 onChange={(e) => setUri(e.target.value)}
                 onBlur={() => handleBlur('uri')}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
               <button
                 type="button"

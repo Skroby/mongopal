@@ -150,8 +150,15 @@ make build-prod       # Production optimized build
 make build-darwin     # macOS universal binary
 make build-linux      # Linux amd64
 make build-windows    # Windows amd64
-make test             # Run all unit tests
-make test-integration # Integration tests (requires Docker)
+make test                      # All tests (unit + integration)
+make test-unit                 # All unit tests (commit hook)
+make test-unit-go              # Go unit tests only
+make test-unit-frontend        # Frontend unit tests only
+make test-watch                # Frontend watch mode
+make test-integration          # All integration tests (Docker)
+make test-integration-go       # Go integration only
+make test-integration-frontend # Frontend integration only
+make test-coverage             # All tests with coverage
 make generate         # Regenerate Wails bindings
 make fmt              # Format code
 make lint             # Lint code
@@ -182,26 +189,25 @@ make lint             # Lint code
 
 ## Testing
 
-### Frontend Tests
-Run with `make test-frontend`:
-- All utility functions have comprehensive test coverage
-- Test files located alongside source: `*.test.js`
-- Uses Vitest with jsdom environment
+### Unit Tests
+Run with `make test-unit` (used by pre-commit hook):
+- **Frontend** (`make test-unit-frontend`): Vitest with jsdom, 560+ tests
+- **Go** (`make test-unit-go`): URI parsing, validation, document IDs
+- Test files located alongside source: `*.test.js`, `*_test.go`
 - Watch mode: `make test-watch`
 
-### Backend Tests
-Run with `make test-go`:
-- Unit tests in `app_test.go` for URI parsing, document IDs
-- Integration tests in `integration_test.go` require Docker (testcontainers)
-
 ### Integration Tests
-Run with `make test-integration`:
-- Full MongoDB operations against real container
+Run with `make test-integration` (requires Docker):
+- **Go** (`make test-integration-go`): Full MongoDB via testcontainers
+- **Frontend** (`make test-integration-frontend`): E2E-lite tests
 - 5-minute timeout for longer operations
 - Covers connection, CRUD, export/import flows
 
 ### All Tests
-Run with `make test-all` for unit + integration tests.
+Run with `make test` for unit + integration tests.
+
+### Coverage
+Run with `make test-coverage` for coverage reports.
 
 ## Backend Architecture
 

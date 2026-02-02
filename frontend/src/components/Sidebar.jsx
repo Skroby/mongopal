@@ -140,6 +140,12 @@ const ServerIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
+const LockIcon = ({ className = "w-3 h-3" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+  </svg>
+)
+
 const PlusIcon = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -269,18 +275,10 @@ function TreeNode({
   // Show chevron if there are children OR if onToggle is provided (for folders that render children externally)
   const showChevron = hasChildren || onToggle
 
-  // Determine status dot style
+  // Determine status dot style - only for connection nodes
   const getStatusDot = () => {
+    // Only show status dot for connection nodes
     if (!connectionStatus) {
-      // Not a connection node, just show color if provided
-      if (color) {
-        return (
-          <span
-            className="w-2 h-2 rounded-full flex-shrink-0"
-            style={{ backgroundColor: color }}
-          />
-        )
-      }
       return null
     }
 
@@ -300,6 +298,7 @@ function TreeNode({
         />
       )
     } else {
+      // Disconnected - show empty circle
       return (
         <span
           className="w-2 h-2 rounded-full flex-shrink-0 border border-zinc-500"
@@ -367,7 +366,13 @@ function TreeNode({
           <span className="w-4 flex-shrink-0" aria-hidden="true" />
         )}
         {getStatusDot()}
-        <span className="text-zinc-400 flex-shrink-0" aria-hidden="true">{icon}</span>
+        <span
+          className="flex-shrink-0"
+          style={{ color: color || '#a1a1aa' }}
+          aria-hidden="true"
+        >
+          {icon}
+        </span>
         <span className="flex-1 truncate text-sm">{label}</span>
         {count !== undefined && (
           <span className="text-xs text-zinc-400 flex-shrink-0" aria-label={`${count} documents`}>({count})</span>
@@ -403,6 +408,8 @@ function ConnectionNode({
   onDropCollection,
   onClearCollection,
   onViewSchema,
+  onShowStats,
+  onManageIndexes,
   onExportDatabases,
   onImportDatabases,
   onExportCollections,
@@ -472,6 +479,13 @@ function ConnectionNode({
       loadDatabases()
     }
   }, [expanded, isConnected])
+
+  // Auto-collapse when disconnected
+  useEffect(() => {
+    if (!isConnected && expanded) {
+      setExpanded(false)
+    }
+  }, [isConnected])
 
   const loadDatabases = async () => {
     if (!go?.ListDatabases) return
@@ -565,34 +579,57 @@ function ConnectionNode({
   const handleDatabaseContextMenu = (e, dbName) => {
     e.preventDefault()
     e.stopPropagation()
-    onShowContextMenu(e.clientX, e.clientY, [
+    const isReadOnly = connection.readOnly
+    const items = [
       { label: 'Refresh Collections', onClick: () => {
         loadCollections(dbName, true) // Force refresh
       }},
       { type: 'separator' },
       { label: 'Export Collections...', onClick: () => onExportCollections?.(dbName) },
-      { label: 'Import Collections...', onClick: () => onImportCollections?.(dbName) },
-      { type: 'separator' },
-      { label: 'Drop Database...', onClick: () => onDropDatabase(connection.id, dbName, removeDatabase), danger: true },
-    ])
+    ]
+    // Only show import and drop options for non-read-only connections
+    if (!isReadOnly) {
+      items.push(
+        { label: 'Import Collections...', onClick: () => onImportCollections?.(dbName) },
+        { type: 'separator' },
+        { label: 'Drop Database...', onClick: () => onDropDatabase(connection.id, dbName, removeDatabase), danger: true },
+      )
+    }
+    onShowContextMenu(e.clientX, e.clientY, items)
   }
 
   const handleCollectionContextMenu = (e, dbName, collName) => {
     e.preventDefault()
     e.stopPropagation()
-    onShowContextMenu(e.clientX, e.clientY, [
+    const isReadOnly = connection.readOnly
+    const items = [
       { label: 'Open Collection', onClick: () => onOpenCollection(connection.id, dbName, collName) },
       { label: 'View Schema...', onClick: () => onViewSchema(connection.id, dbName, collName) },
       { type: 'separator' },
-      { label: 'Clear Collection...', onClick: () => onClearCollection(connection.id, dbName, collName), danger: true },
-      { label: 'Drop Collection...', onClick: () => onDropCollection(connection.id, dbName, collName, removeCollection), danger: true },
-    ])
+      { label: 'Show Stats...', onClick: () => onShowStats?.(connection.id, dbName, collName) },
+      { label: 'Manage Indexes...', onClick: () => onManageIndexes?.(connection.id, dbName, collName) },
+    ]
+    // Only show destructive options for non-read-only connections
+    if (!isReadOnly) {
+      items.push(
+        { type: 'separator' },
+        { label: 'Clear Collection...', onClick: () => onClearCollection(connection.id, dbName, collName), danger: true },
+        { label: 'Drop Collection...', onClick: () => onDropCollection(connection.id, dbName, collName, removeCollection), danger: true },
+      )
+    }
+    onShowContextMenu(e.clientX, e.clientY, items)
   }
 
   const getLabel = () => {
-    if (isConnecting) return `${connection.name} [connecting...]`
-    if (isConnected) return `${connection.name} [connected]`
-    return connection.name
+    const ReadOnlyBadge = connection.readOnly ? (
+      <span className="inline-flex items-center gap-0.5 ml-1.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-900/40 text-amber-400 border border-amber-800/50" title="Read-only connection - write operations disabled">
+        <LockIcon className="w-2.5 h-2.5" />
+        <span>Read-Only</span>
+      </span>
+    ) : null
+    if (isConnecting) return <>{connection.name}{ReadOnlyBadge} <span className="text-zinc-500">[connecting...]</span></>
+    if (isConnected) return <>{connection.name}{ReadOnlyBadge}</>
+    return <>{connection.name}{ReadOnlyBadge}</>
   }
 
   const connectionStatus = isConnecting ? 'connecting' : isConnected ? 'connected' : 'disconnected'
@@ -630,11 +667,18 @@ function ConnectionNode({
     <TreeNode
       label={getLabel()}
       icon={<ServerIcon />}
+      color={connection.color}
       connectionStatus={connectionStatus}
       statusTooltip={getStatusTooltip()}
       level={level}
       expanded={expanded}
-      onToggle={() => setExpanded(!expanded)}
+      onToggle={() => {
+        // Auto-connect when expanding via chevron if not connected
+        if (!expanded && !isConnected && !isConnecting) {
+          onConnect(connection.id)
+        }
+        setExpanded(!expanded)
+      }}
       onClick={() => {
         if (!isConnected && !isConnecting) {
           onConnect(connection.id)
@@ -660,6 +704,7 @@ function ConnectionNode({
               key={db.name}
               label={db.name}
               icon={<DatabaseIcon />}
+              color={connection.color}
               level={level + 1}
               expanded={getDbExpanded(db.name)}
               onToggle={() => toggleDatabase(db.name)}
@@ -682,6 +727,7 @@ function ConnectionNode({
                     key={coll.name}
                     label={coll.name}
                     icon={<CollectionIcon />}
+                    color={connection.color}
                     count={coll.count}
                     level={level + 2}
                     selected={selectedItem === itemKey}
@@ -789,13 +835,15 @@ export default function Sidebar({
   onImportDatabases,
   onExportCollections,
   onImportCollections,
+  onShowStats,
+  onManageIndexes,
 }) {
   const { notify } = useNotification()
   const {
     connections,
     folders,
     activeConnections,
-    connectingId,
+    isConnecting,
     connect,
     disconnect,
     disconnectAll,
@@ -851,11 +899,15 @@ export default function Sidebar({
 
   // Build folder tree structure and helpers
   const folderHelpers = useMemo(() => {
-    // Get root folders (no parent)
-    const rootFolders = folders.filter(f => !f.parentId)
+    // Sort folders alphabetically (case-insensitive)
+    const sortFolders = (folderList) =>
+      [...folderList].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 
-    // Get child folders for a given parent
-    const getChildFolders = (parentId) => folders.filter(f => f.parentId === parentId)
+    // Get root folders (no parent), sorted alphabetically
+    const rootFolders = sortFolders(folders.filter(f => !f.parentId))
+
+    // Get child folders for a given parent, sorted alphabetically
+    const getChildFolders = (parentId) => sortFolders(folders.filter(f => f.parentId === parentId))
 
     // Get all descendant folder IDs (for preventing circular drops)
     const getDescendantIds = (folderId, visited = new Set()) => {
@@ -894,8 +946,19 @@ export default function Sidebar({
     conn.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  // Sort connections by last accessed date (most recent first), then by name
+  const sortConnections = (connList) =>
+    [...connList].sort((a, b) => {
+      // Most recently accessed first
+      const aTime = a.lastAccessedAt ? new Date(a.lastAccessedAt).getTime() : 0
+      const bTime = b.lastAccessedAt ? new Date(b.lastAccessedAt).getTime() : 0
+      if (aTime !== bTime) return bTime - aTime
+      // Fall back to alphabetical by name
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    })
+
   // Group connections by folder - must be before visibleNodes useMemo
-  const rootConnections = filteredConnections.filter(c => !c.folderId)
+  const rootConnections = sortConnections(filteredConnections.filter(c => !c.folderId))
   const connectionsByFolder = useMemo(() => {
     const byFolder = {}
     filteredConnections.forEach(conn => {
@@ -906,6 +969,10 @@ export default function Sidebar({
         byFolder[conn.folderId].push(conn)
       }
     })
+    // Sort connections within each folder
+    Object.keys(byFolder).forEach(folderId => {
+      byFolder[folderId] = sortConnections(byFolder[folderId])
+    })
     return byFolder
   }, [filteredConnections])
 
@@ -913,8 +980,10 @@ export default function Sidebar({
   const visibleNodes = useMemo(() => {
     const nodes = []
 
-    // Get child folders for a parent
-    const getChildFolders = (parentId) => folders.filter(f => f.parentId === parentId)
+    // Get child folders for a parent, sorted alphabetically
+    const getChildFolders = (parentId) =>
+      folders.filter(f => f.parentId === parentId)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 
     // Helper to add folder nodes (recursive)
     const addFolder = (folder, index, totalSiblings, parentNodeId = null) => {
@@ -1377,6 +1446,10 @@ export default function Sidebar({
                   setRenameFolderValue('')
                 }
               }}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
               onBlur={() => {
                 if (renameFolderValue.trim() && renameFolderValue !== folder.name) {
                   handleRenameFolder(folder.id, renameFolderValue)
@@ -1455,7 +1528,7 @@ export default function Sidebar({
       key={conn.id}
       connection={conn}
       isConnected={activeConnections.includes(conn.id)}
-      isConnecting={connectingId === conn.id}
+      isConnecting={isConnecting(conn.id)}
       databases={databases[conn.id] || []}
       activeConnections={activeConnections}
       selectedItem={selectedItem}
@@ -1475,6 +1548,8 @@ export default function Sidebar({
       onDropCollection={handleDropCollection}
       onClearCollection={handleClearCollection}
       onViewSchema={openSchemaTab}
+      onShowStats={onShowStats}
+      onManageIndexes={onManageIndexes}
       onExportDatabases={() => onExportDatabases?.(conn.id, conn.name)}
       onImportDatabases={() => onImportDatabases?.(conn.id, conn.name)}
       onExportCollections={(dbName) => onExportCollections?.(conn.id, conn.name, dbName)}
@@ -1502,15 +1577,19 @@ export default function Sidebar({
     <div className="h-full flex flex-col bg-surface">
       {/* Search bar - draggable header area */}
       <div className="p-2 border-b border-border titlebar-drag">
-        <div className="relative titlebar-no-drag">
+        <div className="relative">
           <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
           <input
             type="text"
             placeholder="Search connections..."
-            className="input py-1.5 text-sm"
+            className="input py-1.5 text-sm titlebar-no-drag"
             style={{ paddingLeft: '2.5rem' }}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
         </div>
       </div>
@@ -1565,6 +1644,10 @@ export default function Sidebar({
                   setNewSubfolderParentId(null)
                 }
               }}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
               autoFocus
             />
             <button className="btn btn-ghost p-1" onClick={() => handleCreateFolder(newSubfolderParentId || '')}>

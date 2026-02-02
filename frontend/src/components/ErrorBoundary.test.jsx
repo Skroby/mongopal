@@ -287,10 +287,13 @@ describe('ErrorBoundary', () => {
   })
 
   describe('report issue', () => {
-    it('opens GitHub issues page when Report this issue is clicked', () => {
-      const mockOpen = vi.fn()
-      const originalOpen = window.open
-      window.open = mockOpen
+    it('copies error details to clipboard when Report this issue is clicked', async () => {
+      const mockWriteText = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: mockWriteText },
+        writable: true,
+        configurable: true,
+      })
 
       render(
         <ErrorBoundary>
@@ -300,15 +303,13 @@ describe('ErrorBoundary', () => {
 
       fireEvent.click(screen.getByText('Report this issue'))
 
-      expect(mockOpen).toHaveBeenCalled()
-      const [url, target] = mockOpen.mock.calls[0]
-      expect(url).toContain('github.com')
-      expect(url).toContain('issues/new')
-      expect(url).toContain('title=')
-      expect(url).toContain('body=')
-      expect(target).toBe('_blank')
-
-      window.open = originalOpen
+      // Should copy error details to clipboard
+      await vi.waitFor(() => {
+        expect(mockWriteText).toHaveBeenCalled()
+      })
+      const copiedText = mockWriteText.mock.calls[0][0]
+      expect(copiedText).toContain('MongoPal Error Report')
+      expect(copiedText).toContain('Test error')
     })
   })
 })

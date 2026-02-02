@@ -1,8 +1,8 @@
 #!/bin/sh
-# Pre-commit hook: run tests before allowing commit
+# Pre-commit hook: run unit tests before allowing commit
 
-echo "Running frontend tests..."
-cd frontend && npm test
+echo "Running unit tests..."
+make test-unit
 
 if [ $? -ne 0 ]; then
   echo ""

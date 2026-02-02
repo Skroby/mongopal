@@ -1,8 +1,13 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { TabProvider, useTab } from './TabContext'
 import { ConnectionProvider } from './ConnectionContext'
 import { NotificationProvider } from '../NotificationContext'
+
+// Clear localStorage before each test to prevent session persistence interference
+beforeEach(() => {
+  localStorage.clear()
+})
 
 // Wrapper that provides all required contexts
 function AllProviders({ children }) {
@@ -543,6 +548,144 @@ describe('TabContext', () => {
       )
 
       expect(ctx.currentTab).toBeUndefined()
+    })
+  })
+
+  describe('updateTabDocument', () => {
+    it('updates the document property of a tab', () => {
+      let ctx
+
+      render(
+        <AllProviders>
+          <TestConsumer onMount={(c) => { ctx = c }} />
+        </AllProviders>
+      )
+
+      const doc = { _id: '12345678abcd', name: 'Test' }
+      act(() => {
+        ctx.openDocumentTab('conn-1', 'testdb', 'users', doc, '12345678abcd')
+      })
+
+      const tabId = ctx.tabs[0].id
+      const newDoc = { _id: '12345678abcd', name: 'Updated Name', age: 30 }
+
+      act(() => {
+        ctx.updateTabDocument(tabId, newDoc)
+      })
+
+      expect(ctx.tabs[0].document).toEqual(newDoc)
+    })
+
+    it('clears the restored flag when document is updated', () => {
+      let ctx
+
+      render(
+        <AllProviders>
+          <TestConsumer onMount={(c) => { ctx = c }} />
+        </AllProviders>
+      )
+
+      const doc = { _id: '12345678abcd', name: 'Test' }
+      act(() => {
+        ctx.openDocumentTab('conn-1', 'testdb', 'users', doc, '12345678abcd')
+      })
+
+      const tabId = ctx.tabs[0].id
+
+      // Update document - should clear restored flag
+      act(() => {
+        ctx.updateTabDocument(tabId, { ...doc, name: 'Updated' })
+      })
+
+      expect(ctx.tabs[0].restored).toBe(false)
+    })
+
+    it('does not affect other tabs', () => {
+      let ctx
+
+      render(
+        <AllProviders>
+          <TestConsumer onMount={(c) => { ctx = c }} />
+        </AllProviders>
+      )
+
+      const doc1 = { _id: 'doc1', name: 'Doc 1' }
+      const doc2 = { _id: 'doc2', name: 'Doc 2' }
+
+      act(() => {
+        ctx.openDocumentTab('conn-1', 'testdb', 'users', doc1, 'doc1')
+        ctx.openDocumentTab('conn-1', 'testdb', 'users', doc2, 'doc2')
+      })
+
+      const tab1Id = ctx.tabs[0].id
+      const updatedDoc = { _id: 'doc1', name: 'Updated' }
+
+      act(() => {
+        ctx.updateTabDocument(tab1Id, updatedDoc)
+      })
+
+      expect(ctx.tabs[0].document).toEqual(updatedDoc)
+      expect(ctx.tabs[1].document).toEqual(doc2) // unchanged
+    })
+  })
+
+  describe('markTabActivated', () => {
+    it('clears the restored flag on a tab', () => {
+      let ctx
+
+      render(
+        <AllProviders>
+          <TestConsumer onMount={(c) => { ctx = c }} />
+        </AllProviders>
+      )
+
+      act(() => {
+        ctx.openTab('conn-1', 'testdb', 'users')
+      })
+
+      const tabId = ctx.tabs[0].id
+
+      // The tab should not have restored flag initially
+      expect(ctx.tabs[0].restored).toBeUndefined()
+
+      // Call markTabActivated - it should set restored to false
+      act(() => {
+        ctx.markTabActivated(tabId)
+      })
+
+      expect(ctx.tabs[0].restored).toBe(false)
+    })
+  })
+
+  describe('setTabDirty', () => {
+    it('sets the dirty flag on a tab', () => {
+      let ctx
+
+      render(
+        <AllProviders>
+          <TestConsumer onMount={(c) => { ctx = c }} />
+        </AllProviders>
+      )
+
+      act(() => {
+        ctx.openTab('conn-1', 'testdb', 'users')
+      })
+
+      const tabId = ctx.tabs[0].id
+
+      expect(ctx.tabs[0].dirty).toBeUndefined()
+
+      act(() => {
+        ctx.setTabDirty(tabId, true)
+      })
+
+      expect(ctx.tabs[0].dirty).toBe(true)
+
+      act(() => {
+        ctx.setTabDirty(tabId, false)
+      })
+
+      expect(ctx.tabs[0].dirty).toBe(false)
     })
   })
 })

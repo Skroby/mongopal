@@ -758,18 +758,18 @@ func TestIntegration_BSONTypes(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
 	_, err := coll.InsertOne(ctx, bson.M{
-		"_id":         oid,
-		"string":      "hello",
-		"int32":       int32(42),
-		"int64":       int64(9223372036854775807),
-		"double":      3.14159,
-		"bool":        true,
-		"date":        now,
-		"null":        nil,
-		"objectId":    primitive.NewObjectID(),
-		"array":       []string{"a", "b", "c"},
-		"nestedDoc":   bson.M{"x": 1, "y": 2},
-		"binary":      primitive.Binary{Subtype: 0x00, Data: []byte("binary data")},
+		"_id":       oid,
+		"string":    "hello",
+		"int32":     int32(42),
+		"int64":     int64(9223372036854775807),
+		"double":    3.14159,
+		"bool":      true,
+		"date":      now,
+		"null":      nil,
+		"objectId":  primitive.NewObjectID(),
+		"array":     []string{"a", "b", "c"},
+		"nestedDoc": bson.M{"x": 1, "y": 2},
+		"binary":    primitive.Binary{Subtype: 0x00, Data: []byte("binary data")},
 	})
 	require.NoError(t, err)
 
@@ -1125,10 +1125,10 @@ func TestIntegration_SpecialCharactersInFieldNames(t *testing.T) {
 
 	// MongoDB allows many special characters in field names (except . and $)
 	_, err := coll.InsertOne(ctx, bson.M{
-		"normal_field":     "value1",
-		"field with space": "value2",
-		"field-with-dash":  "value3",
-		"field_with_unicode_日本語": "value4",
+		"normal_field":             "value1",
+		"field with space":         "value2",
+		"field-with-dash":          "value3",
+		"field_with_unicode_日本語":   "value4",
 		"field@with#special!chars": "value5",
 		"nested": bson.M{
 			"inner field": "inner value",
@@ -1172,7 +1172,7 @@ func TestIntegration_BinaryDataTypes(t *testing.T) {
 	}
 
 	_, err := coll.InsertOne(ctx, bson.M{
-		"_id":           oid,
+		"_id":            oid,
 		"generic_binary": primitive.Binary{Subtype: 0x00, Data: []byte("generic binary data")},
 		"uuid_binary":    uuid,
 		"md5_binary":     primitive.Binary{Subtype: 0x05, Data: []byte{0xd4, 0x1d, 0x8c, 0xd9, 0x8f, 0x00, 0xb2, 0x04, 0xe9, 0x80, 0x09, 0x98, 0xec, 0xf8, 0x42, 0x7e}},

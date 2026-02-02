@@ -33,13 +33,21 @@ func (s *ConnectionService) SaveConnection(conn types.SavedConnection, password 
 	// Extract password from URI if present
 	cleanURI, uriPassword, _ := credential.ExtractPasswordFromURI(conn.URI)
 
-	// Use explicitly provided password, or the one from URI
+	// Determine password to store:
+	// 1. Use explicitly provided password if given
+	// 2. Otherwise use password from URI if present
+	// 3. Otherwise preserve existing password (for edits where password wasn't changed)
 	passwordToStore := password
 	if passwordToStore == "" {
 		passwordToStore = uriPassword
 	}
+	if passwordToStore == "" {
+		// Check if this is an edit (connection already exists) and preserve existing password
+		existingPassword, _ := s.credential.GetPassword(conn.ID)
+		passwordToStore = existingPassword
+	}
 
-	// Store password in keyring
+	// Store password in keyring (or preserve existing if passwordToStore is still empty)
 	if err := s.credential.SetPassword(conn.ID, passwordToStore); err != nil {
 		// Log but don't fail - password will be in URI as fallback
 		fmt.Printf("Warning: failed to store password in keyring: %v\n", err)
@@ -69,6 +77,20 @@ func (s *ConnectionService) SaveConnection(conn types.SavedConnection, password 
 	}
 
 	return s.storage.PersistConnections(s.state.SavedConnections)
+}
+
+// UpdateLastAccessed updates the last accessed time for a connection.
+func (s *ConnectionService) UpdateLastAccessed(connID string) error {
+	s.state.Mu.Lock()
+	defer s.state.Mu.Unlock()
+
+	for i, c := range s.state.SavedConnections {
+		if c.ID == connID {
+			s.state.SavedConnections[i].LastAccessedAt = time.Now()
+			return s.storage.PersistConnections(s.state.SavedConnections)
+		}
+	}
+	return &core.ConnectionNotFoundError{ConnID: connID}
 }
 
 // ListSavedConnections returns all saved connections.

@@ -19,8 +19,8 @@ export function ConnectionProvider({ children }) {
   const [selectedDatabase, setSelectedDatabase] = useState(null)
   const [selectedCollection, setSelectedCollection] = useState(null)
 
-  // UI state
-  const [connectingId, setConnectingId] = useState(null)
+  // UI state - track multiple simultaneous connections
+  const [connectingIds, setConnectingIds] = useState(new Set())
 
   // Load saved connections on mount
   useEffect(() => {
@@ -43,21 +43,27 @@ export function ConnectionProvider({ children }) {
   }, [])
 
   const connect = useCallback(async (connId) => {
-    if (connectingId) return // Already connecting
-    setConnectingId(connId)
+    if (connectingIds.has(connId)) return // This connection already in progress
+    const conn = connections.find(c => c.id === connId)
+    const connName = conn?.name || 'Unknown'
+    setConnectingIds(prev => new Set(prev).add(connId))
     try {
       if (go?.Connect) {
         await go.Connect(connId)
         setActiveConnections(prev => [...prev, connId])
-        notify.success('Connected successfully')
+        notify.success(`Connected to ${connName}`)
       }
     } catch (err) {
       console.error('Failed to connect:', err)
-      notify.error(getErrorSummary(err?.message || String(err)))
+      notify.error(`${connName}: ${getErrorSummary(err?.message || String(err))}`)
     } finally {
-      setConnectingId(null)
+      setConnectingIds(prev => {
+        const next = new Set(prev)
+        next.delete(connId)
+        return next
+      })
     }
-  }, [connectingId, notify])
+  }, [connections, connectingIds, notify])
 
   const disconnect = useCallback(async (connId, onTabsClose) => {
     try {
@@ -228,12 +234,16 @@ export function ConnectionProvider({ children }) {
     return connections.find(c => c.id === connId)
   }, [connections])
 
+  const isConnecting = useCallback((connId) => {
+    return connectingIds.has(connId)
+  }, [connectingIds])
+
   const value = {
     // State
     connections,
     folders,
     activeConnections,
-    connectingId,
+    connectingIds,
     selectedConnection,
     selectedDatabase,
     selectedCollection,
@@ -267,6 +277,7 @@ export function ConnectionProvider({ children }) {
     // Helpers
     getConnectionById,
     loadConnections,
+    isConnecting,
   }
 
   return (

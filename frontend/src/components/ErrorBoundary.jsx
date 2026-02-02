@@ -2,7 +2,8 @@ import { Component } from 'react'
 
 // LocalStorage key for preserved state
 const PRESERVED_STATE_KEY = 'mongopal_error_recovery_state'
-const GITHUB_ISSUES_URL = 'https://github.com/your-org/mongopal/issues/new'
+// GitHub issues URL - set to actual repo when available
+const GITHUB_ISSUES_URL = null // 'https://github.com/your-org/mongopal/issues/new'
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -13,6 +14,7 @@ class ErrorBoundary extends Component {
       errorInfo: null,
       stateSaved: false,
       showSaveConfirmation: false,
+      showReportCopied: false,
     }
   }
 
@@ -103,32 +105,41 @@ class ErrorBoundary extends Component {
     }
   }
 
-  handleReportIssue = () => {
-    const errorSummary = this.state.error?.toString() || 'Unknown error'
-    const issueTitle = encodeURIComponent(`Bug: ${errorSummary.slice(0, 80)}`)
-    const issueBody = encodeURIComponent([
-      '## Description',
-      'An unexpected error occurred in the application.',
-      '',
-      '## Error Details',
-      '```',
-      this.state.error?.toString(),
-      '```',
-      '',
-      '## Steps to Reproduce',
-      '1. [Describe what you were doing when the error occurred]',
-      '',
-      '## Environment',
-      `- Timestamp: ${new Date().toISOString()}`,
-      `- User Agent: ${navigator.userAgent}`,
-      '',
-      '## Stack Trace',
-      '```',
-      this.state.errorInfo?.componentStack || 'Not available',
-      '```',
-    ].join('\n'))
+  handleReportIssue = async () => {
+    // Copy error details to clipboard
+    await this.handleCopy()
 
-    window.open(`${GITHUB_ISSUES_URL}?title=${issueTitle}&body=${issueBody}`, '_blank')
+    if (GITHUB_ISSUES_URL) {
+      const errorSummary = this.state.error?.toString() || 'Unknown error'
+      const issueTitle = encodeURIComponent(`Bug: ${errorSummary.slice(0, 80)}`)
+      const issueBody = encodeURIComponent([
+        '## Description',
+        'An unexpected error occurred in the application.',
+        '',
+        '## Error Details',
+        '```',
+        this.state.error?.toString(),
+        '```',
+        '',
+        '## Steps to Reproduce',
+        '1. [Describe what you were doing when the error occurred]',
+        '',
+        '## Environment',
+        `- Timestamp: ${new Date().toISOString()}`,
+        `- User Agent: ${navigator.userAgent}`,
+        '',
+        '## Stack Trace',
+        '```',
+        this.state.errorInfo?.componentStack || 'Not available',
+        '```',
+      ].join('\n'))
+
+      window.open(`${GITHUB_ISSUES_URL}?title=${issueTitle}&body=${issueBody}`, '_blank')
+    } else {
+      // No GitHub URL configured - just show that error was copied
+      this.setState({ showReportCopied: true })
+      setTimeout(() => this.setState({ showReportCopied: false }), 3000)
+    }
   }
 
   render() {
@@ -219,10 +230,21 @@ class ErrorBoundary extends Component {
                 onClick={this.handleReportIssue}
                 className="w-full py-2 px-4 text-zinc-400 hover:text-zinc-200 text-sm flex items-center justify-center gap-2 transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Report this issue
+                {this.state.showReportCopied ? (
+                  <>
+                    <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-green-400">Error details copied to clipboard</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Report this issue
+                  </>
+                )}
               </button>
             </div>
           </div>

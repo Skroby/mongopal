@@ -37,6 +37,13 @@ const SchemaIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
+const IndexIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6v12M15 6v12" />
+  </svg>
+)
+
 export default function TabBar() {
   const {
     tabs,
@@ -203,6 +210,14 @@ export default function TabBar() {
             }
           }}
         >
+          {/* Connection color indicator */}
+          {tab.color && (
+            <span
+              className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full"
+              style={{ backgroundColor: tab.color }}
+            />
+          )}
+
           {/* Pin indicator */}
           {tab.pinned && (
             <PinIcon className="w-3 h-3 text-accent flex-shrink-0" filled />
@@ -215,6 +230,8 @@ export default function TabBar() {
             <PlusIcon className="w-3.5 h-3.5 text-accent flex-shrink-0" />
           ) : tab.type === 'schema' ? (
             <SchemaIcon className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+          ) : tab.type === 'indexes' ? (
+            <IndexIcon className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
           ) : (
             <PlayIcon className="w-3 h-3 text-accent flex-shrink-0" />
           )}
@@ -230,6 +247,10 @@ export default function TabBar() {
               onKeyDown={(e) => handleEditKeyDown(e, tab.id)}
               onBlur={() => handleEditSubmit(tab.id)}
               onClick={(e) => e.stopPropagation()}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
             />
           ) : (
             <span className="truncate max-w-[150px]">{tab.label}</span>
@@ -297,6 +318,27 @@ export default function TabBar() {
             }}
           >
             {contextMenu.pinned ? 'Unpin' : 'Pin'}
+          </button>
+          <div className="border-t border-zinc-700 my-1" />
+          <button
+            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-700"
+            onClick={() => {
+              // Close all unpinned tabs except the right-clicked one
+              tabs.filter(t => !t.pinned && t.id !== contextMenu.tabId).forEach(t => closeTab(t.id))
+              setContextMenu(null)
+            }}
+          >
+            Close Others
+          </button>
+          <button
+            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-700"
+            onClick={() => {
+              // Close all unpinned tabs
+              tabs.filter(t => !t.pinned).forEach(t => closeTab(t.id))
+              setContextMenu(null)
+            }}
+          >
+            Close All
           </button>
           <div className="border-t border-zinc-700 my-1" />
           <button

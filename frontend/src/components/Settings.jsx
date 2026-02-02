@@ -31,6 +31,7 @@ const defaultSettings = {
   confirmDelete: true,
   wordWrap: true,
   showLineNumbers: true,
+  freezeIdColumn: false,
 }
 
 const STORAGE_KEY = 'mongopal-settings'
@@ -162,6 +163,19 @@ export default function Settings({ onClose }) {
 
           {/* Editor & Display Section */}
           <SettingsSection title="Editor & Display">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded bg-zinc-700 border-zinc-600 text-accent focus:ring-accent"
+                checked={settings.freezeIdColumn}
+                onChange={(e) => handleChange('freezeIdColumn', e.target.checked)}
+              />
+              <div>
+                <span className="text-sm text-zinc-300">Freeze _id column</span>
+                <p className="text-xs text-zinc-400">Keep the _id column visible when scrolling horizontally</p>
+              </div>
+            </label>
+
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"

@@ -507,10 +507,17 @@ export function NotificationHistoryDrawer() {
           <div className="divide-y divide-zinc-800">
             {notificationHistory.map((notification) => {
               const style = typeStyles[notification.type] || typeStyles.info
+              const handleCopy = async () => {
+                try {
+                  await navigator.clipboard.writeText(notification.message)
+                } catch (err) {
+                  console.error('Failed to copy:', err)
+                }
+              }
               return (
                 <div
                   key={`${notification.id}-${notification.timestamp}`}
-                  className={`px-4 py-3 hover:bg-zinc-800/50 transition-colors ${notification.important ? 'border-l-2 border-red-500' : ''}`}
+                  className={`px-4 py-3 hover:bg-zinc-800/50 transition-colors group ${notification.important ? 'border-l-2 border-red-500' : ''}`}
                 >
                   <div className="flex items-start gap-3">
                     <span className={`flex-shrink-0 mt-0.5 ${style.iconColor}`}>
@@ -520,6 +527,15 @@ export function NotificationHistoryDrawer() {
                       <p className="text-sm text-zinc-200 break-words">{notification.message}</p>
                       <p className="text-xs text-zinc-500 mt-1">{formatTimestamp(notification.timestamp)}</p>
                     </div>
+                    <button
+                      onClick={handleCopy}
+                      className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-all"
+                      title="Copy message"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               )

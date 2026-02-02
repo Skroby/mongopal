@@ -123,26 +123,29 @@ mongopal/
 
 ## Testing
 
-### Run all tests
+### Run all tests (unit + integration)
 ```bash
 make test
 ```
 
-### Frontend tests only
+### Unit tests only (used by commit hook)
 ```bash
-make test-frontend
-# or watch mode
-cd frontend && npm run test:watch
-```
-
-### Backend tests only
-```bash
-make test-go
+make test-unit              # All unit tests
+make test-unit-frontend     # Frontend only
+make test-unit-go           # Go only
+make test-watch             # Frontend watch mode
 ```
 
 ### Integration tests (requires Docker)
 ```bash
-make test-integration
+make test-integration              # All integration tests
+make test-integration-go           # Go only (testcontainers)
+make test-integration-frontend     # Frontend only
+```
+
+### Coverage reports
+```bash
+make test-coverage
 ```
 
 ## Keyboard Shortcuts

@@ -658,5 +658,59 @@ describe('NotificationContext', () => {
       fireEvent.click(screen.getByTitle('Close'))
       expect(screen.queryByText('Notification History')).not.toBeInTheDocument()
     })
+
+    it('shows copy button on history entry hover', () => {
+      let context
+
+      render(
+        <NotificationProvider>
+          <TestConsumer onMount={(ctx) => { context = ctx }} />
+          <NotificationHistoryButton />
+          <NotificationHistoryDrawer />
+        </NotificationProvider>
+      )
+
+      // Add notification to history
+      fireEvent.click(screen.getByText('Error'))
+      fireEvent.click(screen.getByTitle('Dismiss'))
+
+      // Open drawer
+      fireEvent.click(screen.getByTitle(/Notification history/))
+
+      // The copy button should exist in the history entry
+      // It appears on hover via CSS, but should be in the DOM
+      expect(screen.getByTitle('Copy message')).toBeInTheDocument()
+    })
+
+    it('copies history entry message to clipboard when copy button clicked', () => {
+      const mockWriteText = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: mockWriteText },
+        writable: true,
+        configurable: true,
+      })
+
+      let context
+
+      render(
+        <NotificationProvider>
+          <TestConsumer onMount={(ctx) => { context = ctx }} />
+          <NotificationHistoryButton />
+          <NotificationHistoryDrawer />
+        </NotificationProvider>
+      )
+
+      // Add notification to history
+      fireEvent.click(screen.getByText('Info'))
+      fireEvent.click(screen.getByTitle('Dismiss'))
+
+      // Open drawer
+      fireEvent.click(screen.getByTitle(/Notification history/))
+
+      // Click copy button
+      fireEvent.click(screen.getByTitle('Copy message'))
+
+      expect(mockWriteText).toHaveBeenCalledWith('Info message')
+    })
   })
 })

@@ -1,16 +1,94 @@
-import { createContext, useContext, useState, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react'
 import { useConnection } from './ConnectionContext'
 
 const TabContext = createContext(null)
 
 const DEFAULT_ACCENT_COLOR = '#4CC38A'
+const SESSION_STORAGE_KEY = 'mongopal-session'
+
+// Load session from localStorage
+function loadSession() {
+  try {
+    const saved = localStorage.getItem(SESSION_STORAGE_KEY)
+    if (saved) {
+      return JSON.parse(saved)
+    }
+  } catch (err) {
+    console.error('Failed to load session:', err)
+  }
+  return null
+}
+
+// Save session to localStorage
+function saveSession(session) {
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+  } catch (err) {
+    console.error('Failed to save session:', err)
+  }
+}
 
 export function TabProvider({ children }) {
-  const { getConnectionById } = useConnection()
+  const { getConnectionById, connections } = useConnection()
 
-  // Tab state
-  const [tabs, setTabs] = useState([])
-  const [activeTab, setActiveTab] = useState(null)
+  // Tab state - initialize from session if available
+  const [tabs, setTabs] = useState(() => {
+    const session = loadSession()
+    if (session?.tabs) {
+      // Restore tabs without document content (just metadata)
+      // Mark as restored so CollectionView doesn't auto-execute queries
+      return session.tabs.map(tab => ({
+        ...tab,
+        document: null, // Don't restore document content
+        documentId: tab.documentId || null,
+        restored: true, // Flag for restored tabs - don't auto-execute
+      }))
+    }
+    return []
+  })
+  const [activeTab, setActiveTab] = useState(() => {
+    const session = loadSession()
+    return session?.activeTab || null
+  })
+
+  // Track connected connections for session
+  const [sessionConnections, setSessionConnections] = useState(() => {
+    const session = loadSession()
+    return session?.connectedIds || []
+  })
+
+  // Save session when tabs change
+  useEffect(() => {
+    const session = {
+      tabs: tabs.map(tab => ({
+        id: tab.id,
+        type: tab.type,
+        connectionId: tab.connectionId,
+        database: tab.database,
+        collection: tab.collection,
+        label: tab.label,
+        color: tab.color,
+        pinned: tab.pinned,
+        documentId: tab.documentId || null,
+      })),
+      activeTab,
+      connectedIds: sessionConnections,
+    }
+    saveSession(session)
+  }, [tabs, activeTab, sessionConnections])
+
+  // Update session connections when a connection is made
+  const trackConnection = useCallback((connId) => {
+    setSessionConnections(prev => {
+      if (prev.includes(connId)) return prev
+      return [...prev, connId]
+    })
+  }, [])
+
+  // Remove connection from session when disconnected
+  const untrackConnection = useCallback((connId) => {
+    setSessionConnections(prev => prev.filter(id => id !== connId))
+  }, [])
 
   // Derived state
   const currentTab = useMemo(() => tabs.find(t => t.id === activeTab), [tabs, activeTab])
@@ -132,6 +210,30 @@ export function TabProvider({ children }) {
     }
   }, [tabs, getConnectionById])
 
+  // Open index manager tab
+  const openIndexTab = useCallback((connectionId, database, collection) => {
+    const tabId = `indexes:${connectionId}.${database}.${collection}`
+    const existingTab = tabs.find(t => t.id === tabId)
+
+    if (existingTab) {
+      setActiveTab(tabId)
+    } else {
+      const conn = getConnectionById(connectionId)
+      const newTab = {
+        id: tabId,
+        type: 'indexes',
+        connectionId,
+        database,
+        collection,
+        label: collection,
+        color: conn?.color || DEFAULT_ACCENT_COLOR,
+        pinned: false,
+      }
+      setTabs(prev => [...prev, newTab])
+      setActiveTab(tabId)
+    }
+  }, [tabs, getConnectionById])
+
   // Convert insert tab to document tab after successful insert
   const convertInsertToDocumentTab = useCallback((tabId, document, documentId) => {
     const tab = tabs.find(t => t.id === tabId)
@@ -188,6 +290,21 @@ export function TabProvider({ children }) {
   const setTabDirty = useCallback((tabId, isDirty) => {
     setTabs(prev => prev.map(t =>
       t.id === tabId ? { ...t, dirty: isDirty } : t
+    ))
+  }, [])
+
+  // Mark a restored tab as activated (clears restored flag)
+  // Called when user explicitly runs a query on a restored tab
+  const markTabActivated = useCallback((tabId) => {
+    setTabs(prev => prev.map(t =>
+      t.id === tabId ? { ...t, restored: false } : t
+    ))
+  }, [])
+
+  // Update a tab's document (for document edit tabs after loading)
+  const updateTabDocument = useCallback((tabId, document) => {
+    setTabs(prev => prev.map(t =>
+      t.id === tabId ? { ...t, document, restored: false } : t
     ))
   }, [])
 
@@ -300,12 +417,15 @@ export function TabProvider({ children }) {
     openDocumentTab,
     openInsertTab,
     openSchemaTab,
+    openIndexTab,
     closeTab,
     pinTab,
     renameTab,
     reorderTabs,
     convertInsertToDocumentTab,
     setTabDirty,
+    markTabActivated,
+    updateTabDocument,
 
     // Bulk close operations
     closeTabsForConnection,
@@ -319,6 +439,11 @@ export function TabProvider({ children }) {
     previousTab,
     goToTab,
     closeActiveTab,
+
+    // Session persistence
+    sessionConnections,
+    trackConnection,
+    untrackConnection,
   }
 
   return (

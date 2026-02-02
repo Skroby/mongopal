@@ -3,7 +3,11 @@ import Editor from '@monaco-editor/react'
 import TableView from './TableView'
 import BulkActionBar from './BulkActionBar'
 import ActionableError from './ActionableError'
+import DocumentDiffView from './DocumentDiffView'
+import ExplainPanel from './ExplainPanel'
+import CSVExportButton from './CSVExportButton'
 import { useNotification } from './NotificationContext'
+import { useConnection } from './contexts/ConnectionContext'
 import { useTab } from './contexts/TabContext'
 import { useStatus } from './contexts/StatusContext'
 import { useOperation } from './contexts/OperationContext'
@@ -105,7 +109,7 @@ function QueryHistoryDropdown({ queryHistory, onSelect, onClose, historyRef }) {
   return (
     <div
       ref={historyRef}
-      className="absolute right-0 top-full mt-1 w-[500px] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 flex flex-col max-h-72"
+      className="absolute right-0 top-full mt-1 w-[500px] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-[100] flex flex-col max-h-72 isolate"
       onKeyDown={handleKeyDown}
     >
       {/* Filter input */}
@@ -117,6 +121,10 @@ function QueryHistoryDropdown({ queryHistory, onSelect, onClose, historyRef }) {
           placeholder="Type to filter history..."
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
         />
       </div>
       {/* History list */}
@@ -200,11 +208,26 @@ const CollapseIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
+const ExplainIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+  </svg>
+)
+
 export default function CollectionView({ connectionId, database, collection }) {
   const { notify } = useNotification()
-  const { openDocumentTab, openInsertTab } = useTab()
+  const { getConnectionById, activeConnections, connectingIds, connect } = useConnection()
+  const { openDocumentTab, openInsertTab, currentTab, markTabActivated } = useTab()
   const { updateDocumentStatus, clearStatus } = useStatus()
   const { startOperation, updateOperation, completeOperation } = useOperation()
+
+  // Get connection status
+  const connection = getConnectionById(connectionId)
+  const readOnly = connection?.readOnly || false
+  const isConnected = activeConnections.includes(connectionId)
+  const isConnecting = connectingIds.has(connectionId)
+  const isRestoredTab = currentTab?.restored === true
+
   const [query, setQuery] = useState(() => buildFullQuery(collection, '{}'))
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(false)
@@ -227,6 +250,15 @@ export default function CollectionView({ connectionId, database, collection }) {
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [bulkDeleteProgress, setBulkDeleteProgress] = useState({ done: 0, total: 0 })
   const [exporting, setExporting] = useState(false)
+
+  // Document comparison state
+  const [compareSourceDoc, setCompareSourceDoc] = useState(null)
+  const [showDiffView, setShowDiffView] = useState(false)
+  const [diffTargetDoc, setDiffTargetDoc] = useState(null)
+
+  // Explain plan state
+  const [explainResult, setExplainResult] = useState(null)
+  const [explaining, setExplaining] = useState(false)
 
   // Memoize JSON stringified documents for JSON view (expensive for large datasets)
   const documentsJson = useMemo(() => JSON.stringify(documents, null, 2), [documents])
@@ -269,9 +301,11 @@ export default function CollectionView({ connectionId, database, collection }) {
   }, [skip])
 
   // Load documents on mount and when collection/pagination changes
+  // Skip auto-execute if: not connected, connecting, or tab was restored from session
   useEffect(() => {
+    if (!isConnected || isConnecting || isRestoredTab) return
     executeQuery()
-  }, [connectionId, database, collection, skip, limit])
+  }, [connectionId, database, collection, skip, limit, isConnected, isConnecting, isRestoredTab])
 
   // Clear selection when query/pagination/collection changes
   useEffect(() => {
@@ -318,8 +352,35 @@ export default function CollectionView({ connectionId, database, collection }) {
     notify.info('Query cancelled')
   }
 
+  // Check if query contains write operations (for read-only mode protection)
+  const isWriteQuery = (queryText) => {
+    const writePatterns = [
+      /\.insert(?:One|Many)?\s*\(/i,
+      /\.update(?:One|Many)?\s*\(/i,
+      /\.delete(?:One|Many)?\s*\(/i,
+      /\.remove\s*\(/i,
+      /\.drop\s*\(/i,
+      /\.createIndex\s*\(/i,
+      /\.dropIndex\s*\(/i,
+      /\.replaceOne\s*\(/i,
+      /\.findOneAndUpdate\s*\(/i,
+      /\.findOneAndReplace\s*\(/i,
+      /\.findOneAndDelete\s*\(/i,
+      /\.bulkWrite\s*\(/i,
+      /\.save\s*\(/i,
+    ]
+    return writePatterns.some(pattern => pattern.test(queryText))
+  }
+
   const executeQuery = async () => {
     const currentQueryId = ++queryIdRef.current
+
+    // Block write operations in read-only mode
+    if (readOnly && isWriteQuery(query)) {
+      notify.error('Write operation blocked - connection is in read-only mode')
+      return
+    }
+
     setLoading(true)
     setError(null)
     try {
@@ -421,6 +482,30 @@ export default function CollectionView({ connectionId, database, collection }) {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       executeQuery()
+    }
+  }
+
+  // Explain the current query
+  const explainQuery = async () => {
+    if (!isSimpleFindQuery(query)) {
+      notify.warning('Explain is only available for simple find queries')
+      return
+    }
+
+    setExplaining(true)
+    setExplainResult(null)
+
+    try {
+      const filter = parseFilterFromQuery(query)
+      if (go?.ExplainQuery) {
+        const result = await go.ExplainQuery(connectionId, database, collection, filter)
+        setExplainResult(result)
+      }
+    } catch (err) {
+      const errorMsg = err?.message || 'Failed to explain query'
+      notify.error(getErrorSummary(errorMsg))
+    } finally {
+      setExplaining(false)
     }
   }
 
@@ -623,23 +708,27 @@ export default function CollectionView({ connectionId, database, collection }) {
                 ) : (
                   <button
                     className="btn btn-primary flex items-center gap-1.5"
-                    onClick={executeQuery}
+                    onClick={() => {
+                      if (isRestoredTab) markTabActivated(currentTab?.id)
+                      executeQuery()
+                    }}
                   >
                     <PlayIcon className="w-4 h-4" />
                     <span>Run</span>
                   </button>
                 )}
                 <button
-                  className="btn btn-secondary flex items-center gap-1.5"
+                  className={`btn btn-secondary flex items-center gap-1.5 ${readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
                   onClick={handleInsertDocument}
-                  title="Insert new document (Cmd+N)"
+                  disabled={readOnly}
+                  title={readOnly ? 'Read-only mode' : 'Insert new document (Cmd+N)'}
                 >
                   <PlusIcon className="w-4 h-4" />
                   <span>Insert</span>
                 </button>
               </div>
               <div className="flex items-center gap-1 overflow-visible">
-                <div className="relative overflow-visible">
+                <div className="relative z-20">
                   <button
                     className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
                     onClick={() => setShowHistory(!showHistory)}
@@ -656,6 +745,20 @@ export default function CollectionView({ connectionId, database, collection }) {
                     />
                   )}
                 </div>
+                <button
+                  className={`icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ${explaining ? 'animate-pulse' : ''}`}
+                  onClick={explainQuery}
+                  disabled={explaining || loading}
+                  title="Explain query plan"
+                >
+                  <ExplainIcon className="w-4 h-4" />
+                </button>
+                <CSVExportButton
+                  connectionId={connectionId}
+                  database={database}
+                  collection={collection}
+                  currentFilter={parseFilterFromQuery(query)}
+                />
                 <button
                   className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
                   onClick={() => setExpandedQuery(false)}
@@ -710,7 +813,7 @@ export default function CollectionView({ connectionId, database, collection }) {
             <div className="flex-1 relative overflow-visible">
               <input
                 type="text"
-                className="input pr-16 pl-3 font-mono text-sm !bg-zinc-900"
+                className="input pr-32 pl-3 font-mono text-sm !bg-zinc-900"
                 placeholder={`db.getCollection("${collection}").find({})`}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -727,9 +830,13 @@ export default function CollectionView({ connectionId, database, collection }) {
                     setExpandedQuery(true)
                   }
                 }}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
-              {/* History and expand buttons */}
-              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+              {/* History, explain, export, and expand buttons */}
+              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 z-20">
                 <div className="relative">
                   <button
                     className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
@@ -747,6 +854,20 @@ export default function CollectionView({ connectionId, database, collection }) {
                     />
                   )}
                 </div>
+                <button
+                  className={`icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ${explaining ? 'animate-pulse' : ''}`}
+                  onClick={explainQuery}
+                  disabled={explaining || loading}
+                  title="Explain query plan"
+                >
+                  <ExplainIcon className="w-4 h-4" />
+                </button>
+                <CSVExportButton
+                  connectionId={connectionId}
+                  database={database}
+                  collection={collection}
+                  currentFilter={parseFilterFromQuery(query)}
+                />
                 <button
                   className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
                   onClick={() => setExpandedQuery(true)}
@@ -767,16 +888,20 @@ export default function CollectionView({ connectionId, database, collection }) {
             ) : (
               <button
                 className="btn btn-primary flex items-center gap-1.5"
-                onClick={executeQuery}
+                onClick={() => {
+                  if (isRestoredTab) markTabActivated(currentTab?.id)
+                  executeQuery()
+                }}
               >
                 <PlayIcon className="w-4 h-4" />
                 <span>Run</span>
               </button>
             )}
             <button
-              className="btn btn-secondary flex items-center gap-1.5"
+              className={`btn btn-secondary flex items-center gap-1.5 ${readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
               onClick={handleInsertDocument}
-              title="Insert new document (Cmd+N)"
+              disabled={readOnly}
+              title={readOnly ? 'Read-only mode' : 'Insert new document (Cmd+N)'}
             >
               <PlusIcon className="w-4 h-4" />
               <span>Insert</span>
@@ -784,6 +909,16 @@ export default function CollectionView({ connectionId, database, collection }) {
           </div>
         )}
       </div>
+
+      {/* Read-only indicator */}
+      {readOnly && (
+        <div className="flex-shrink-0 px-3 py-1 bg-amber-900/20 border-b border-amber-800 text-amber-400 text-xs flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H9m3-10V4a1 1 0 00-1-1H9a1 1 0 00-1 1v3M5 8h14M5 8a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V10a2 2 0 00-2-2M5 8V6a2 2 0 012-2h2" />
+          </svg>
+          Read-only mode - Write operations are disabled for this connection
+        </div>
+      )}
 
       {/* View mode tabs and info */}
       <div className="flex-shrink-0 flex items-center justify-between px-3 py-1.5 border-b border-border bg-surface text-sm">
@@ -874,6 +1009,10 @@ export default function CollectionView({ connectionId, database, collection }) {
                   }
                 }}
                 onBlur={() => setGoToPage('')}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
               <span>/ {totalPages || 1}</span>
             </div>
@@ -909,9 +1048,54 @@ export default function CollectionView({ connectionId, database, collection }) {
         </div>
       )}
 
+      {/* Explain panel */}
+      {explainResult && (
+        <ExplainPanel
+          result={explainResult}
+          onClose={() => setExplainResult(null)}
+        />
+      )}
+
       {/* Document list with bulk action bar overlay */}
       <div className="flex-1 overflow-auto relative">
-        {loading ? (
+        {/* Connection states */}
+        {!isConnected && !isConnecting ? (
+          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+            <svg className="w-12 h-12 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            </svg>
+            <span>Not connected to database</span>
+            <button
+              onClick={() => connect(connectionId)}
+              className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium"
+            >
+              Connect
+            </button>
+          </div>
+        ) : isConnecting ? (
+          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-3">
+            <div className="spinner" />
+            <span>Connecting to database...</span>
+          </div>
+        ) : isRestoredTab && documents.length === 0 && !loading && !error ? (
+          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+            <svg className="w-12 h-12 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+            <span>Session restored</span>
+            <p className="text-sm text-zinc-500">Click Run to execute query</p>
+            <button
+              onClick={() => {
+                markTabActivated(currentTab?.id)
+                executeQuery()
+              }}
+              className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium flex items-center gap-2"
+            >
+              <PlayIcon className="w-4 h-4" />
+              Run Query
+            </button>
+          </div>
+        ) : loading ? (
           <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-3">
             <div className="spinner" />
             <span>Loading documents...</span>
@@ -927,6 +1111,16 @@ export default function CollectionView({ connectionId, database, collection }) {
             onDelete={handleDelete}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
+            onCompareSource={setCompareSourceDoc}
+            onCompareTo={(doc) => {
+              setDiffTargetDoc(doc)
+              setShowDiffView(true)
+            }}
+            compareSourceDoc={compareSourceDoc}
+            readOnly={readOnly}
+            connectionId={connectionId}
+            database={database}
+            collection={collection}
           />
         ) : viewMode === 'json' ? (
           <Editor
@@ -1096,6 +1290,23 @@ export default function CollectionView({ connectionId, database, collection }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Document Diff View */}
+      {showDiffView && compareSourceDoc && diffTargetDoc && (
+        <DocumentDiffView
+          sourceDocument={compareSourceDoc}
+          targetDocument={diffTargetDoc}
+          onClose={() => {
+            setShowDiffView(false)
+            setDiffTargetDoc(null)
+          }}
+          onSwap={() => {
+            const temp = compareSourceDoc
+            setCompareSourceDoc(diffTargetDoc)
+            setDiffTargetDoc(temp)
+          }}
+        />
       )}
     </div>
   )

@@ -133,7 +133,7 @@ select:focus-visible {
 
 /* Tab styles */
 .tab {
-  @apply flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400;
+  @apply relative flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400;
   @apply border-r border-zinc-700 border-b-2 border-b-transparent cursor-pointer;
   @apply hover:bg-zinc-800 hover:text-zinc-200 transition-colors;
   @apply focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-inset focus-visible:z-10;
@@ -348,11 +348,11 @@ select option {
 
 /* Window drag regions for Wails */
 .titlebar-drag {
-  -webkit-app-region: drag;
+  --wails-draggable: drag;
 }
 
 .titlebar-no-drag {
-  -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 /* Indeterminate progress bar animation */

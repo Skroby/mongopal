@@ -1,4 +1,4 @@
-.PHONY: help dev build clean install test test-frontend test-go test-watch test-integration test-integration-frontend test-integration-go test-all setup setup-quick install-hooks install-frontend generate doctor fmt lint
+.PHONY: help dev build clean install test test-unit test-unit-go test-unit-frontend test-watch test-integration test-integration-go test-integration-frontend test-coverage test-coverage-go test-coverage-frontend setup setup-quick install-hooks install-frontend generate doctor fmt lint
 
 # Ensure Go bin is in PATH
 GOBIN := $(shell go env GOPATH)/bin
@@ -37,14 +37,15 @@ help:
 	@echo "  build-linux    Build for Linux (amd64)"
 	@echo ""
 	@echo "Testing:"
-	@echo "  test           Run unit tests (frontend + Go) - used by commit hook"
-	@echo "  test-frontend  Run frontend unit tests"
-	@echo "  test-go        Run Go unit tests"
-	@echo "  test-watch     Run frontend tests in watch mode"
+	@echo "  test                      Run all tests (unit + integration)"
+	@echo "  test-unit                 Run all unit tests - used by commit hook"
+	@echo "  test-unit-go              Run Go unit tests only"
+	@echo "  test-unit-frontend        Run frontend unit tests only"
+	@echo "  test-watch                Run frontend tests in watch mode"
 	@echo "  test-integration          Run all integration tests (requires Docker)"
-	@echo "  test-integration-frontend Run frontend integration tests only"
 	@echo "  test-integration-go       Run Go integration tests only (requires Docker)"
-	@echo "  test-all                  Run all tests (unit + integration)"
+	@echo "  test-integration-frontend Run frontend integration tests only"
+	@echo "  test-coverage             Run all tests with coverage reports"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  fmt            Format Go and frontend code"
@@ -113,34 +114,37 @@ build-linux: generate
 # Testing
 # ===========================================
 
-# Run all tests
-test: test-frontend test-go
+# Run all tests (unit + integration)
+test: test-unit test-integration
 
-# Run frontend tests
-test-frontend: generate
+# Run all unit tests (used by commit hook)
+test-unit: test-unit-frontend test-unit-go
+
+# Run Go unit tests
+test-unit-go:
+	go test -v ./...
+
+# Run frontend unit tests
+test-unit-frontend: generate
 	cd frontend && npm test
 
 # Run frontend tests in watch mode
 test-watch:
 	cd frontend && npm run test:watch
 
-# Run Go tests
-test-go:
-	go test -v ./...
-
-# Run frontend integration tests (not in commit hook)
-test-integration-frontend: generate
-	cd frontend && npm run test:integration
+# Run all integration tests (requires Docker)
+test-integration: test-integration-frontend test-integration-go
 
 # Run Go integration tests (requires Docker)
 test-integration-go:
 	go test -v -tags=integration -timeout=5m ./...
 
-# Run all integration tests
-test-integration: test-integration-frontend test-integration-go
+# Run frontend integration tests
+test-integration-frontend: generate
+	cd frontend && npm run test:integration
 
-# Run all tests (unit + integration)
-test-all: test test-integration
+# Run all tests with coverage
+test-coverage: test-coverage-go test-coverage-frontend
 
 # Run Go tests with coverage
 test-coverage-go:
@@ -151,9 +155,6 @@ test-coverage-go:
 # Run frontend tests with coverage
 test-coverage-frontend: generate
 	cd frontend && npm run test:coverage
-
-# Run all tests with coverage
-test-coverage: test-coverage-go test-coverage-frontend
 
 # ===========================================
 # Utilities

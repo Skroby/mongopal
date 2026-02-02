@@ -12,9 +12,9 @@ import (
 
 // InvalidNameError represents a validation error for database or collection names.
 type InvalidNameError struct {
-	Type    string // "database" or "collection"
-	Name    string
-	Reason  string
+	Type   string // "database" or "collection"
+	Name   string
+	Reason string
 }
 
 func (e *InvalidNameError) Error() string {

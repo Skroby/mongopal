@@ -1,12 +1,16 @@
-import { useState, useEffect, useRef } from 'react'
-import Editor from '@monaco-editor/react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import Editor, { DiffEditor } from '@monaco-editor/react'
 import { useNotification } from './NotificationContext'
+import { useConnection } from './contexts/ConnectionContext'
 import { useTab } from './contexts/TabContext'
 import ConfirmDialog from './ConfirmDialog'
 import MonacoErrorBoundary from './MonacoErrorBoundary'
 import { getErrorSummary } from '../utils/errorParser'
 
 const go = window.go?.main?.App
+
+// Maximum number of history entries to keep
+const MAX_HISTORY_ENTRIES = 50
 
 // Icons
 const SaveIcon = ({ className = "w-4 h-4" }) => (
@@ -45,6 +49,24 @@ const RefreshIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
+const HistoryIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+)
+
+const ChevronDownIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+  </svg>
+)
+
+const RevertIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+  </svg>
+)
+
 // Format document ID for display (handles ObjectId, Binary, etc.)
 function formatDocId(docId) {
   if (!docId) return 'unknown'
@@ -71,11 +93,22 @@ export default function DocumentEditView({
   mode = 'edit', // 'edit' or 'insert'
   onInsertComplete,
   tabId,
+  readOnly = false,
 }) {
   const { notify } = useNotification()
-  const { setTabDirty } = useTab()
+  const { activeConnections, connectingIds, connect } = useConnection()
+  const { setTabDirty, markTabActivated, updateTabDocument, tabs } = useTab()
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
+  const historyDropdownRef = useRef(null)
+
+  // Get current tab to check if it was restored from session
+  const currentTab = tabs.find(t => t.id === tabId)
+  const isRestoredTab = currentTab?.restored === true
+
+  // Connection state
+  const isConnected = activeConnections.includes(connectionId)
+  const isConnecting = connectingIds.has(connectionId)
 
   const isInsertMode = mode === 'insert'
   const [content, setContent] = useState('')
@@ -87,8 +120,130 @@ export default function DocumentEditView({
   const [originalContent, setOriginalContent] = useState('')
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false)
 
+  // Document loading state (for restored sessions)
+  const [loadingDocument, setLoadingDocument] = useState(false)
+  const [loadedDocument, setLoadedDocument] = useState(null)
+  const [documentNotFound, setDocumentNotFound] = useState(false)
+
+  // Edit history state
+  const [editHistory, setEditHistory] = useState([]) // Array of { content, timestamp }
+  const [baselineEntry, setBaselineEntry] = useState(null) // Original document state
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false)
+  const [previewHistoryIndex, setPreviewHistoryIndex] = useState(null)
+  const lastSavedContentRef = useRef('')
+  const baselineSetRef = useRef(false) // Track if baseline has been set for this document
+  const lastDocumentIdRef = useRef(documentId) // Track document ID to detect changes
+
+  // Reset baseline tracking when document ID changes (different document opened)
+  useEffect(() => {
+    if (documentId !== lastDocumentIdRef.current) {
+      baselineSetRef.current = false
+      lastDocumentIdRef.current = documentId
+    }
+  }, [documentId])
+
+  // Close history dropdown on click outside
+  useEffect(() => {
+    if (!showHistoryDropdown) return
+    // Guard against document being null/undefined in Wails WebKit
+    if (typeof window === 'undefined' || !window.document) return
+    const handleClickOutside = (e) => {
+      if (historyDropdownRef.current && !historyDropdownRef.current.contains(e.target)) {
+        setShowHistoryDropdown(false)
+        setPreviewHistoryIndex(null)
+      }
+    }
+    window.document.addEventListener('mousedown', handleClickOutside)
+    return () => window.document.removeEventListener('mousedown', handleClickOutside)
+  }, [showHistoryDropdown])
+
+  // Add to history when content changes significantly (debounced)
+  useEffect(() => {
+    if (!content || content === lastSavedContentRef.current) return
+
+    const timer = setTimeout(() => {
+      // Only add if content has changed from last saved state
+      if (content !== lastSavedContentRef.current) {
+        setEditHistory(prev => {
+          // Don't add duplicate entries
+          if (prev.length > 0 && prev[0].content === content) {
+            return prev
+          }
+          const newEntry = {
+            content,
+            timestamp: Date.now(),
+          }
+          // Keep one slot for baseline, so limit to MAX_HISTORY_ENTRIES - 1
+          return [newEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES - 1)
+        })
+        lastSavedContentRef.current = content
+      }
+    }, 2000) // Add to history after 2 seconds of inactivity
+
+    return () => clearTimeout(timer)
+  }, [content])
+
+  // Format timestamp for display
+  const formatTimestamp = (ts) => {
+    const date = new Date(ts)
+    const now = new Date()
+    const diffMs = now - date
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins} min ago`
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+    return date.toLocaleTimeString()
+  }
+
+  // Combined history entries including baseline at the end
+  const allHistoryEntries = useMemo(() => {
+    if (!baselineEntry) return editHistory
+    return [...editHistory, baselineEntry]
+  }, [editHistory, baselineEntry])
+
+  // Revert to a history entry
+  const revertToHistory = (index) => {
+    const entry = allHistoryEntries[index]
+    if (entry) {
+      setContent(entry.content)
+      editorRef.current?.setValue(entry.content)
+      setShowHistoryDropdown(false)
+      setPreviewHistoryIndex(null)
+      notify.info(entry.isBaseline ? 'Reverted to baseline' : 'Reverted to previous state')
+    }
+  }
+
+  // Load document from database (for restored sessions or when connection restored)
+  const loadDocument = async () => {
+    if (!documentId || !go?.GetDocument) return
+
+    setLoadingDocument(true)
+    setDocumentNotFound(false)
+    try {
+      const jsonStr = await go.GetDocument(connectionId, database, collection, documentId)
+      const doc = JSON.parse(jsonStr)
+      // Store in tab context so it persists across tab switches
+      if (updateTabDocument) updateTabDocument(tabId, doc)
+    } catch (err) {
+      const errorMsg = err?.message || String(err)
+      if (errorMsg.toLowerCase().includes('not found') || errorMsg.toLowerCase().includes('no document')) {
+        setDocumentNotFound(true)
+        notify.error('Document not found in database')
+      } else {
+        notify.error(getErrorSummary(errorMsg))
+      }
+    } finally {
+      setLoadingDocument(false)
+    }
+  }
+
   // Format the document ID for display
   const displayId = isInsertMode ? 'New Document' : formatDocId(documentId)
+
+  // Use the document from props, or loaded document for restored sessions
+  const effectiveDocument = document || loadedDocument
 
   // Initialize content from document or empty for insert mode
   useEffect(() => {
@@ -97,13 +252,27 @@ export default function DocumentEditView({
       setContent(initial)
       setOriginalContent(initial)
       setHasChanges(false)
-    } else if (document) {
-      const formatted = JSON.stringify(document, null, 2)
+      // Set baseline only once for insert mode
+      if (!baselineSetRef.current) {
+        setBaselineEntry({ content: initial, timestamp: Date.now(), isBaseline: true })
+        setEditHistory([])
+        lastSavedContentRef.current = initial
+        baselineSetRef.current = true
+      }
+    } else if (effectiveDocument) {
+      const formatted = JSON.stringify(effectiveDocument, null, 2)
       setContent(formatted)
       setOriginalContent(formatted)
       setHasChanges(false)
+      // Set baseline only once when document first loads
+      if (!baselineSetRef.current) {
+        setBaselineEntry({ content: formatted, timestamp: Date.now(), isBaseline: true })
+        setEditHistory([])
+        lastSavedContentRef.current = formatted
+        baselineSetRef.current = true
+      }
     }
-  }, [document, isInsertMode])
+  }, [effectiveDocument, isInsertMode])
 
   // Track changes and update tab dirty state
   useEffect(() => {
@@ -344,48 +513,102 @@ export default function DocumentEditView({
             <span className="text-amber-400 text-xs flex-shrink-0">(modified)</span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
-            className="btn btn-ghost flex items-center gap-1.5 text-xs"
+            className="btn btn-ghost p-1.5"
             onClick={openFind}
             title="Find (Cmd+F)"
           >
-            <SearchIcon className="w-3.5 h-3.5" />
-            Find
+            <SearchIcon className="w-4 h-4" />
           </button>
           <button
-            className="btn btn-ghost flex items-center gap-1.5 text-xs"
+            className="btn btn-ghost p-1.5"
             onClick={handleCopy}
             title="Copy to clipboard"
           >
-            <CopyIcon className="w-3.5 h-3.5" />
-            Copy
+            <CopyIcon className="w-4 h-4" />
           </button>
           <button
-            className="btn btn-ghost flex items-center gap-1.5 text-xs"
+            className="btn btn-ghost p-1.5"
             onClick={handleFormat}
             title="Format JSON"
           >
-            <FormatIcon className="w-3.5 h-3.5" />
-            Format
+            <FormatIcon className="w-4 h-4" />
           </button>
           {!isInsertMode && (
-            <button
-              className="btn btn-ghost flex items-center gap-1.5 text-xs"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              title="Reload from database"
-            >
-              <RefreshIcon className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
+            <>
+              <div className="relative" ref={historyDropdownRef}>
+                <button
+                  className={`btn btn-ghost p-1.5 flex items-center gap-1 ${allHistoryEntries.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  onClick={() => allHistoryEntries.length > 0 && setShowHistoryDropdown(!showHistoryDropdown)}
+                  disabled={allHistoryEntries.length === 0}
+                  title={allHistoryEntries.length > 0 ? `${allHistoryEntries.length} history entries` : 'No history yet'}
+                >
+                  <HistoryIcon className="w-4 h-4" />
+                  {allHistoryEntries.length > 0 && (
+                    <span className="text-xs text-zinc-400">({allHistoryEntries.length})</span>
+                  )}
+                </button>
+
+                {showHistoryDropdown && (
+                  <div className="absolute right-0 top-full mt-1 w-80 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 max-h-64 overflow-auto">
+                    <div className="px-3 py-2 border-b border-zinc-700 text-xs text-zinc-400 sticky top-0 bg-zinc-800">
+                      Edit History - Click to preview, double-click to revert
+                    </div>
+                    {allHistoryEntries.map((entry, idx) => (
+                      <button
+                        key={idx}
+                        className={`w-full px-3 py-2 text-left text-sm border-b border-zinc-700 last:border-0 hover:bg-zinc-700 flex items-center justify-between ${previewHistoryIndex === idx ? 'bg-zinc-600' : ''}`}
+                        onClick={() => setPreviewHistoryIndex(previewHistoryIndex === idx ? null : idx)}
+                        onDoubleClick={() => revertToHistory(idx)}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-zinc-300 flex items-center gap-2">
+                            {entry.isBaseline ? (
+                              <span className="text-amber-400">Baseline</span>
+                            ) : (
+                              formatTimestamp(entry.timestamp)
+                            )}
+                          </div>
+                          <div className="text-xs text-zinc-500 truncate">
+                            {entry.content.slice(0, 50)}...
+                          </div>
+                        </div>
+                        {previewHistoryIndex === idx && (
+                          <button
+                            className="ml-2 p-1 hover:bg-zinc-600 rounded flex items-center gap-1 text-xs text-accent"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              revertToHistory(idx)
+                            }}
+                            title="Revert to this state"
+                          >
+                            <RevertIcon className="w-3.5 h-3.5" />
+                            Revert
+                          </button>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                className="btn btn-ghost p-1.5"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                title="Reload from database"
+              >
+                <RefreshIcon className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </>
           )}
           {isInsertMode ? (
             <button
-              className="btn btn-primary flex items-center gap-1.5 text-xs"
+              className={`btn btn-primary flex items-center gap-1.5 text-xs ${readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
               onClick={handleInsert}
-              disabled={inserting}
-              title="Insert document (Cmd+Enter)"
+              disabled={inserting || readOnly}
+              title={readOnly ? 'Read-only mode' : 'Insert document (Cmd+Enter)'}
             >
               <PlusIcon className="w-3.5 h-3.5" />
               {inserting ? 'Inserting...' : 'Insert'}
@@ -393,15 +616,17 @@ export default function DocumentEditView({
           ) : (
             <button
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded font-medium transition-colors ${
-                saved
+                readOnly
+                  ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                  : saved
                   ? 'bg-green-600 text-white'
                   : hasChanges && !saving
                   ? 'bg-accent text-zinc-900 hover:bg-accent/90'
                   : 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
               }`}
               onClick={handleSave}
-              disabled={saving || saved || !hasChanges}
-              title="Save (Cmd+S)"
+              disabled={saving || saved || !hasChanges || readOnly}
+              title={readOnly ? 'Read-only mode' : 'Save (Cmd+S)'}
             >
               {saved ? (
                 <>
@@ -411,7 +636,7 @@ export default function DocumentEditView({
               ) : (
                 <>
                   <SaveIcon className="w-3.5 h-3.5" />
-                  {saving ? 'Saving...' : 'Save'}
+                  {saving ? 'Saving...' : readOnly ? 'Read-only' : 'Save'}
                 </>
               )}
             </button>
@@ -419,31 +644,81 @@ export default function DocumentEditView({
         </div>
       </div>
 
-      {/* Monaco Editor */}
+      {/* Monaco Editor or Connection States */}
       <div className="flex-1 overflow-hidden">
-        <MonacoErrorBoundary value={content} onChange={(value) => setContent(value || '')} readOnly={isInsertMode && saving}>
-          <Editor
-            height="100%"
-            language="json"
-            theme="vs-dark"
-            value={content}
-            onChange={(value) => setContent(value || '')}
-            onMount={handleEditorDidMount}
-            options={{
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              fontSize: 13,
-              lineNumbers: 'on',
-              folding: true,
-              renderWhitespace: 'selection',
-              wordWrap: 'on',
-              automaticLayout: true,
-              tabSize: 2,
-              insertSpaces: true,
-              formatOnPaste: true,
-            }}
-          />
-        </MonacoErrorBoundary>
+        {/* Connection states for edit mode (not insert mode) */}
+        {!isInsertMode && !isConnected && !isConnecting ? (
+          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+            <svg className="w-12 h-12 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            </svg>
+            <span>Not connected to database</span>
+            <button
+              onClick={() => connect(connectionId)}
+              className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium"
+            >
+              Connect
+            </button>
+          </div>
+        ) : !isInsertMode && isConnecting ? (
+          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-3">
+            <div className="spinner" />
+            <span>Connecting to database...</span>
+          </div>
+        ) : !isInsertMode && documentNotFound ? (
+          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+            <svg className="w-12 h-12 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>Document not found</span>
+            <p className="text-sm text-zinc-500">The document may have been deleted</p>
+          </div>
+        ) : !isInsertMode && loadingDocument ? (
+          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-3">
+            <div className="spinner" />
+            <span>Loading document...</span>
+          </div>
+        ) : !isInsertMode && !effectiveDocument ? (
+          // Connected but document not loaded yet (restored session or connection was restored externally)
+          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+            <svg className="w-12 h-12 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span>{isRestoredTab ? 'Session restored' : 'Document not loaded'}</span>
+            <p className="text-sm text-zinc-500">Click Load to fetch document from database</p>
+            <button
+              onClick={loadDocument}
+              className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium flex items-center gap-2"
+            >
+              <RefreshIcon className="w-4 h-4" />
+              Load Document
+            </button>
+          </div>
+        ) : (
+          <MonacoErrorBoundary value={content} onChange={(value) => setContent(value || '')} readOnly={isInsertMode && saving}>
+            <Editor
+              height="100%"
+              language="json"
+              theme="vs-dark"
+              value={content}
+              onChange={(value) => setContent(value || '')}
+              onMount={handleEditorDidMount}
+              options={{
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                fontSize: 13,
+                lineNumbers: 'on',
+                folding: true,
+                renderWhitespace: 'selection',
+                wordWrap: 'on',
+                automaticLayout: true,
+                tabSize: 2,
+                insertSpaces: true,
+                formatOnPaste: true,
+              }}
+            />
+          </MonacoErrorBoundary>
+        )}
       </div>
 
       {/* Refresh confirmation dialog */}

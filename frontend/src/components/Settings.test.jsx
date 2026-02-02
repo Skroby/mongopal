@@ -24,6 +24,7 @@ describe('Settings', () => {
         confirmDelete: true,
         wordWrap: true,
         showLineNumbers: true,
+        freezeIdColumn: false,
       })
     })
 
@@ -52,6 +53,7 @@ describe('Settings', () => {
         confirmDelete: true,
         wordWrap: true,
         showLineNumbers: true,
+        freezeIdColumn: false,
       })
     })
   })
@@ -132,11 +134,12 @@ describe('Settings', () => {
   })
 
   describe('toggle options', () => {
+    // Order: freezeIdColumn[0], autoFormat[1], wordWrap[2], showLineNumbers[3], confirmDelete[4]
     it('toggles autoFormat and persists', () => {
       render(<Settings onClose={mockOnClose} />)
 
       const checkboxes = screen.getAllByRole('checkbox')
-      const autoFormatCheckbox = checkboxes[0] // First checkbox is autoFormat
+      const autoFormatCheckbox = checkboxes[1] // autoFormat is now index 1
 
       expect(autoFormatCheckbox).toBeChecked()
 
@@ -152,8 +155,8 @@ describe('Settings', () => {
       render(<Settings onClose={mockOnClose} />)
 
       const checkboxes = screen.getAllByRole('checkbox')
-      // Order: autoFormat[0], wordWrap[1], showLineNumbers[2], confirmDelete[3]
-      const wordWrapCheckbox = checkboxes[1]
+      // Order: freezeIdColumn[0], autoFormat[1], wordWrap[2], showLineNumbers[3], confirmDelete[4]
+      const wordWrapCheckbox = checkboxes[2]
 
       expect(wordWrapCheckbox).toBeChecked()
 
@@ -169,8 +172,8 @@ describe('Settings', () => {
       render(<Settings onClose={mockOnClose} />)
 
       const checkboxes = screen.getAllByRole('checkbox')
-      // Order: autoFormat[0], wordWrap[1], showLineNumbers[2], confirmDelete[3]
-      const showLineNumbersCheckbox = checkboxes[2]
+      // Order: freezeIdColumn[0], autoFormat[1], wordWrap[2], showLineNumbers[3], confirmDelete[4]
+      const showLineNumbersCheckbox = checkboxes[3]
 
       expect(showLineNumbersCheckbox).toBeChecked()
 
@@ -186,8 +189,8 @@ describe('Settings', () => {
       render(<Settings onClose={mockOnClose} />)
 
       const checkboxes = screen.getAllByRole('checkbox')
-      // Order: autoFormat[0], wordWrap[1], showLineNumbers[2], confirmDelete[3]
-      const confirmDeleteCheckbox = checkboxes[3]
+      // Order: freezeIdColumn[0], autoFormat[1], wordWrap[2], showLineNumbers[3], confirmDelete[4]
+      const confirmDeleteCheckbox = checkboxes[4]
 
       expect(confirmDeleteCheckbox).toBeChecked()
 
@@ -222,7 +225,12 @@ describe('Settings', () => {
       // Verify reset
       expect(screen.getByRole('combobox')).toHaveValue('50')
       const checkboxes = screen.getAllByRole('checkbox')
-      checkboxes.forEach(cb => expect(cb).toBeChecked())
+      // freezeIdColumn[0] defaults to false, rest default to true
+      expect(checkboxes[0]).not.toBeChecked() // freezeIdColumn
+      expect(checkboxes[1]).toBeChecked() // autoFormat
+      expect(checkboxes[2]).toBeChecked() // wordWrap
+      expect(checkboxes[3]).toBeChecked() // showLineNumbers
+      expect(checkboxes[4]).toBeChecked() // confirmDelete
 
       // Verify persisted
       const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
@@ -269,12 +277,13 @@ describe('Settings', () => {
 
       expect(screen.getByRole('combobox')).toHaveValue('100')
 
-      // New order: autoFormat[0], wordWrap[1], showLineNumbers[2], confirmDelete[3]
+      // New order: freezeIdColumn[0], autoFormat[1], wordWrap[2], showLineNumbers[3], confirmDelete[4]
       const checkboxes = screen.getAllByRole('checkbox')
-      expect(checkboxes[0]).not.toBeChecked() // autoFormat
-      expect(checkboxes[1]).not.toBeChecked() // wordWrap
-      expect(checkboxes[2]).toBeChecked() // showLineNumbers
-      expect(checkboxes[3]).toBeChecked() // confirmDelete
+      expect(checkboxes[0]).not.toBeChecked() // freezeIdColumn (default false)
+      expect(checkboxes[1]).not.toBeChecked() // autoFormat
+      expect(checkboxes[2]).not.toBeChecked() // wordWrap
+      expect(checkboxes[3]).toBeChecked() // showLineNumbers
+      expect(checkboxes[4]).toBeChecked() // confirmDelete
     })
   })
 

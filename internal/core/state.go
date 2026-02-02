@@ -24,12 +24,12 @@ type AppState struct {
 	Folders          []types.Folder           // Connection folders
 	ConfigDir        string                   // Config directory path
 	Mu               sync.RWMutex
-	CancelMu         sync.Mutex               // Mutex for export/import cancel functions
-	ExportCancel     context.CancelFunc       // Cancel function for ongoing export
-	ImportCancel     context.CancelFunc       // Cancel function for ongoing import
-	Ctx              context.Context          // Wails context
-	DisableEvents    bool                     // Disable event emission (for tests)
-	Emitter          EventEmitter             // Event emitter for UI notifications
+	CancelMu         sync.Mutex         // Mutex for export/import cancel functions
+	ExportCancel     context.CancelFunc // Cancel function for ongoing export
+	ImportCancel     context.CancelFunc // Cancel function for ongoing import
+	Ctx              context.Context    // Wails context
+	DisableEvents    bool               // Disable event emission (for tests)
+	Emitter          EventEmitter       // Event emitter for UI notifications
 }
 
 // NewAppState creates a new AppState with initialized maps.

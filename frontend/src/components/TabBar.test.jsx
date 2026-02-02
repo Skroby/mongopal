@@ -378,6 +378,90 @@ describe('TabBar', () => {
 
       expect(mockCloseTab).toHaveBeenCalledWith('tab-1')
     })
+
+    it('shows Close Others and Close All options', () => {
+      useTab.mockReturnValue({
+        ...defaultMockContext,
+        tabs: [
+          { id: 'tab-1', type: 'collection', label: 'users', pinned: false },
+          { id: 'tab-2', type: 'collection', label: 'orders', pinned: false },
+        ],
+        activeTab: 'tab-1',
+      })
+
+      render(<TabBar />)
+      const tab = screen.getByText('users').closest('.tab')
+      fireEvent.contextMenu(tab)
+
+      expect(screen.getByText('Close Others')).toBeInTheDocument()
+      expect(screen.getByText('Close All')).toBeInTheDocument()
+    })
+
+    it('closes all other unpinned tabs when Close Others is clicked', () => {
+      useTab.mockReturnValue({
+        ...defaultMockContext,
+        tabs: [
+          { id: 'tab-1', type: 'collection', label: 'users', pinned: false },
+          { id: 'tab-2', type: 'collection', label: 'orders', pinned: false },
+          { id: 'tab-3', type: 'collection', label: 'products', pinned: false },
+          { id: 'tab-4', type: 'collection', label: 'pinned-tab', pinned: true },
+        ],
+        activeTab: 'tab-1',
+      })
+
+      render(<TabBar />)
+      const tab = screen.getByText('users').closest('.tab')
+      fireEvent.contextMenu(tab)
+      fireEvent.click(screen.getByText('Close Others'))
+
+      // Should close tab-2 and tab-3 (unpinned others), but not tab-1 (right-clicked) or tab-4 (pinned)
+      expect(mockCloseTab).toHaveBeenCalledWith('tab-2')
+      expect(mockCloseTab).toHaveBeenCalledWith('tab-3')
+      expect(mockCloseTab).toHaveBeenCalledTimes(2)
+    })
+
+    it('closes all unpinned tabs when Close All is clicked', () => {
+      useTab.mockReturnValue({
+        ...defaultMockContext,
+        tabs: [
+          { id: 'tab-1', type: 'collection', label: 'users', pinned: false },
+          { id: 'tab-2', type: 'collection', label: 'orders', pinned: false },
+          { id: 'tab-3', type: 'collection', label: 'products', pinned: false },
+          { id: 'tab-4', type: 'collection', label: 'pinned-tab', pinned: true },
+        ],
+        activeTab: 'tab-1',
+      })
+
+      render(<TabBar />)
+      const tab = screen.getByText('users').closest('.tab')
+      fireEvent.contextMenu(tab)
+      fireEvent.click(screen.getByText('Close All'))
+
+      // Should close all unpinned tabs (tab-1, tab-2, tab-3), but not tab-4 (pinned)
+      expect(mockCloseTab).toHaveBeenCalledWith('tab-1')
+      expect(mockCloseTab).toHaveBeenCalledWith('tab-2')
+      expect(mockCloseTab).toHaveBeenCalledWith('tab-3')
+      expect(mockCloseTab).toHaveBeenCalledTimes(3)
+    })
+
+    it('does not close pinned tabs when Close All is clicked', () => {
+      useTab.mockReturnValue({
+        ...defaultMockContext,
+        tabs: [
+          { id: 'tab-1', type: 'collection', label: 'users', pinned: true },
+          { id: 'tab-2', type: 'collection', label: 'orders', pinned: true },
+        ],
+        activeTab: 'tab-1',
+      })
+
+      render(<TabBar />)
+      const tab = screen.getByText('users').closest('.tab')
+      fireEvent.contextMenu(tab)
+      fireEvent.click(screen.getByText('Close All'))
+
+      // No tabs should be closed (all are pinned)
+      expect(mockCloseTab).not.toHaveBeenCalled()
+    })
   })
 
   describe('drag and drop', () => {

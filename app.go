@@ -27,7 +27,12 @@ type ConnectionStatus = types.ConnectionStatus
 type DatabaseInfo = types.DatabaseInfo
 type CollectionInfo = types.CollectionInfo
 type CollectionExportInfo = types.CollectionExportInfo
+type CollectionStats = types.CollectionStats
 type IndexInfo = types.IndexInfo
+type IndexOptions = types.IndexOptions
+type ExplainResult = types.ExplainResult
+type QueryPlannerResult = types.QueryPlannerResult
+type ExecutionStatsResult = types.ExecutionStatsResult
 type QueryOptions = types.QueryOptions
 type QueryResult = types.QueryResult
 type SchemaField = types.SchemaField
@@ -48,6 +53,7 @@ type CollectionsImportPreview = types.CollectionsImportPreview
 type CollectionsImportPreviewDatabase = types.CollectionsImportPreviewDatabase
 type CollectionsImportPreviewItem = types.CollectionsImportPreviewItem
 type ScriptResult = types.ScriptResult
+type CSVExportOptions = types.CSVExportOptions
 
 // =============================================================================
 // App - Thin Facade for Wails Bindings
@@ -223,6 +229,14 @@ func (a *App) ListIndexes(connID, dbName, collName string) ([]IndexInfo, error) 
 	return a.database.ListIndexes(connID, dbName, collName)
 }
 
+func (a *App) CreateIndex(connID, dbName, collName string, keys map[string]int, opts IndexOptions) error {
+	return a.database.CreateIndex(connID, dbName, collName, keys, opts)
+}
+
+func (a *App) DropIndex(connID, dbName, collName, indexName string) error {
+	return a.database.DropIndex(connID, dbName, collName, indexName)
+}
+
 func (a *App) DropDatabase(connID, dbName string) error {
 	return a.database.DropDatabase(connID, dbName)
 }
@@ -241,6 +255,14 @@ func (a *App) GetDatabasesForExport(connID string) ([]DatabaseInfo, error) {
 
 func (a *App) GetCollectionsForExport(connID, dbName string) ([]CollectionExportInfo, error) {
 	return a.database.GetCollectionsForExport(connID, dbName)
+}
+
+func (a *App) GetCollectionStats(connID, dbName, collName string) (*CollectionStats, error) {
+	return a.database.GetCollectionStats(connID, dbName, collName)
+}
+
+func (a *App) ExplainQuery(connID, dbName, collName, filter string) (*ExplainResult, error) {
+	return a.database.ExplainQuery(connID, dbName, collName, filter)
 }
 
 // =============================================================================
@@ -301,6 +323,10 @@ func (a *App) ExportCollections(connID, dbName string, collNames []string) error
 
 func (a *App) ExportDocumentsAsZip(entries []DocumentExportEntry, defaultFilename string) error {
 	return a.export.ExportDocumentsAsZip(entries, defaultFilename)
+}
+
+func (a *App) ExportCollectionAsCSV(connID, dbName, collName, defaultFilename string, opts CSVExportOptions) error {
+	return a.export.ExportCollectionAsCSV(connID, dbName, collName, defaultFilename, opts)
 }
 
 // =============================================================================

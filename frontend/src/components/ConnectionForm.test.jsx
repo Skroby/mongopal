@@ -70,10 +70,10 @@ describe('ConnectionForm', () => {
     it('renders color picker with all colors', () => {
       render(<ConnectionForm {...defaultProps} />)
 
-      expect(screen.getByText('Color')).toBeInTheDocument()
-      // 8 color buttons (using radio role for accessibility)
+      expect(screen.getByText('Tab Color')).toBeInTheDocument()
+      // 9 color buttons including "no color" option (using radio role for accessibility)
       const colorButtons = screen.getAllByRole('radio')
-      expect(colorButtons.length).toBe(8)
+      expect(colorButtons.length).toBe(9)
     })
   })
 
@@ -122,10 +122,10 @@ describe('ConnectionForm', () => {
 
       const colorButtons = screen.getAllByRole('radio')
 
-      // First button (green) should be selected by default
+      // First button (no color) should be selected by default
       expect(colorButtons[0]).toHaveClass('scale-110')
 
-      // Click second color (blue)
+      // Click second color (green)
       fireEvent.click(colorButtons[1])
       expect(colorButtons[1]).toHaveClass('scale-110')
       expect(colorButtons[0]).not.toHaveClass('scale-110')
@@ -179,7 +179,7 @@ describe('ConnectionForm', () => {
           expect.objectContaining({
             name: 'Test Server',
             uri: 'mongodb://localhost:27017',
-            color: '#4CC38A',
+            color: '',
             folderId: '',
           }),
           '' // password
