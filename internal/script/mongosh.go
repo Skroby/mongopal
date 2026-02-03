@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/peternagy/mongopal/internal/storage"
@@ -60,16 +61,22 @@ func (s *Service) ExecuteScript(connID, script string) (*types.ScriptResult, err
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	// Security: Pass script via stdin to avoid exposing URI with password in process listings.
+	// We use --nodb mode and connect() within the script.
+	wrappedScript := buildWrappedScript(uri, "", script)
+
 	// Build command arguments
 	args := []string{
-		uri,
+		"--nodb",  // Don't connect automatically (we'll use connect() in script)
 		"--quiet", // Suppress connection messages
 		"--norc",  // Don't load .mongoshrc.js
-		"--eval", script,
 	}
 
 	// Create command
 	cmd := exec.CommandContext(ctx, shellPath, args...)
+
+	// Pass script via stdin
+	cmd.Stdin = strings.NewReader(wrappedScript)
 
 	// Capture stdout and stderr
 	var stdout, stderr bytes.Buffer
@@ -103,6 +110,25 @@ func (s *Service) ExecuteScript(connID, script string) (*types.ScriptResult, err
 	}
 
 	return result, nil
+}
+
+// buildWrappedScript creates a script that connects first, then runs the user script.
+// This keeps the URI out of the command line arguments.
+func buildWrappedScript(uri, dbName, userScript string) string {
+	var sb strings.Builder
+	// Escape backticks and backslashes in URI for JavaScript string
+	escapedURI := strings.ReplaceAll(uri, "\\", "\\\\")
+	escapedURI = strings.ReplaceAll(escapedURI, "`", "\\`")
+
+	if dbName != "" {
+		// Connect to specific database
+		sb.WriteString(fmt.Sprintf("db = connect(`%s`);\n", escapedURI))
+	} else {
+		// Connect without specific database - use 'test' as default
+		sb.WriteString(fmt.Sprintf("db = connect(`%s`);\n", escapedURI))
+	}
+	sb.WriteString(userScript)
+	return sb.String()
 }
 
 // ExecuteScriptWithDatabase executes a script against a specific database.
@@ -140,16 +166,21 @@ func (s *Service) ExecuteScriptWithDatabase(connID, dbName, script string) (*typ
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	// Security: Pass script via stdin to avoid exposing URI with password in process listings.
+	wrappedScript := buildWrappedScript(uriWithDB, dbName, script)
+
 	// Build command arguments
 	args := []string{
-		uriWithDB,
+		"--nodb",  // Don't connect automatically (we'll use connect() in script)
 		"--quiet",
 		"--norc",
-		"--eval", script,
 	}
 
 	// Create command
 	cmd := exec.CommandContext(ctx, shellPath, args...)
+
+	// Pass script via stdin
+	cmd.Stdin = strings.NewReader(wrappedScript)
 
 	// Capture stdout and stderr
 	var stdout, stderr bytes.Buffer

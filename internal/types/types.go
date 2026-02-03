@@ -181,7 +181,8 @@ type DocumentExportEntry struct {
 
 // ExportProgress represents the progress of an export/import operation.
 type ExportProgress struct {
-	Phase           string `json:"phase"` // "exporting" | "importing" | "previewing"
+	ExportID        string `json:"exportId,omitempty"` // Unique export ID for tracking concurrent exports
+	Phase           string `json:"phase"`              // "exporting" | "importing" | "previewing"
 	Database        string `json:"database"`
 	Collection      string `json:"collection"`
 	Current         int64  `json:"current"`
@@ -222,11 +223,12 @@ type ImportPreviewDatabase struct {
 
 // CollectionImportResult contains import results for a single collection.
 type CollectionImportResult struct {
-	Name                string `json:"name"`
-	DocumentsInserted   int64  `json:"documentsInserted"`
-	DocumentsSkipped    int64  `json:"documentsSkipped"`
-	DocumentsParseError int64  `json:"documentsParseError,omitempty"` // Docs that failed to parse
-	CurrentCount        int64  `json:"currentCount,omitempty"`        // For dry-run: docs currently in target
+	Name                string   `json:"name"`
+	DocumentsInserted   int64    `json:"documentsInserted"`
+	DocumentsSkipped    int64    `json:"documentsSkipped"`
+	DocumentsParseError int64    `json:"documentsParseError,omitempty"` // Docs that failed to parse
+	CurrentCount        int64    `json:"currentCount,omitempty"`        // For dry-run: docs currently in target
+	IndexErrors         []string `json:"indexErrors,omitempty"`         // Errors from index creation
 }
 
 // DatabaseImportResult contains import results for a single database.
@@ -304,6 +306,7 @@ type CSVExportOptions struct {
 	IncludeHeaders bool   `json:"includeHeaders"` // Whether to include column headers
 	FlattenArrays  bool   `json:"flattenArrays"`  // If true, join arrays with semicolon; if false, create JSON representation
 	Filter         string `json:"filter"`         // Optional query filter in Extended JSON format
+	FilePath       string `json:"filePath"`       // Pre-selected file path; if provided, skip save dialog
 }
 
 // =============================================================================
@@ -315,4 +318,21 @@ type ScriptResult struct {
 	Output   string `json:"output"`
 	Error    string `json:"error,omitempty"`
 	ExitCode int    `json:"exitCode"`
+}
+
+// =============================================================================
+// Saved Query Types
+// =============================================================================
+
+// SavedQuery represents a saved MongoDB query.
+type SavedQuery struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description,omitempty"`
+	ConnectionID string    `json:"connectionId"`
+	Database     string    `json:"database"`
+	Collection   string    `json:"collection"`
+	Query        string    `json:"query"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }

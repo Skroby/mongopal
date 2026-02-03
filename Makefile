@@ -1,4 +1,4 @@
-.PHONY: help dev build clean install test test-unit test-unit-go test-unit-frontend test-watch test-integration test-integration-go test-integration-frontend test-coverage test-coverage-go test-coverage-frontend setup setup-quick install-hooks install-frontend generate doctor fmt lint
+.PHONY: help dev build clean install test test-unit test-unit-go test-unit-frontend test-watch test-integration test-integration-go test-integration-frontend test-coverage test-coverage-go test-coverage-frontend setup setup-quick install-hooks install-frontend generate doctor fmt lint frontend-dist
 
 # Ensure Go bin is in PATH
 GOBIN := $(shell go env GOPATH)/bin
@@ -85,7 +85,14 @@ install:
 # Development
 # ===========================================
 
-dev: generate
+# Ensure frontend dist exists (Go embed requires it)
+frontend-dist:
+	@if [ ! -d "frontend/dist" ]; then \
+		echo "Building frontend (first run)..."; \
+		cd frontend && npm run build; \
+	fi
+
+dev: generate frontend-dist
 	$(GOBIN)/wails dev
 
 # ===========================================

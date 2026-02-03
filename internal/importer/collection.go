@@ -541,8 +541,10 @@ func (s *Service) ImportCollections(connID, dbName string, opts types.ImportOpti
 						}
 					}
 					indexOpts := options.Index()
+					indexName := ""
 					// Add options if present
 					if name, ok := idx["name"].(string); ok {
+						indexName = name
 						indexOpts.SetName(name)
 					}
 					if unique, ok := idx["unique"].(bool); ok && unique {
@@ -552,11 +554,18 @@ func (s *Service) ImportCollections(connID, dbName string, opts types.ImportOpti
 						indexOpts.SetSparse(true)
 					}
 					ctx, cancel := core.ContextWithTimeout()
-					coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+					_, indexErr := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
 						Keys:    keyDoc,
 						Options: indexOpts,
 					})
 					cancel()
+
+					// Track index creation errors
+					if indexErr != nil {
+						errMsg := fmt.Sprintf("Failed to create index '%s': %v", indexName, indexErr)
+						collResult.IndexErrors = append(collResult.IndexErrors, errMsg)
+						result.Errors = append(result.Errors, fmt.Sprintf("[%s] %s", collName, errMsg))
+					}
 				}
 			}
 		}

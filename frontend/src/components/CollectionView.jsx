@@ -6,6 +6,11 @@ import ActionableError from './ActionableError'
 import DocumentDiffView from './DocumentDiffView'
 import ExplainPanel from './ExplainPanel'
 import CSVExportButton from './CSVExportButton'
+import MonacoErrorBoundary from './MonacoErrorBoundary'
+import SavedQueriesDropdown from './SavedQueriesDropdown'
+import SaveQueryModal from './SaveQueryModal'
+import SavedQueriesManager from './SavedQueriesManager'
+import { loadSettings } from './Settings'
 import { useNotification } from './NotificationContext'
 import { useConnection } from './contexts/ConnectionContext'
 import { useTab } from './contexts/TabContext'
@@ -214,6 +219,12 @@ const ExplainIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
+const SaveIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+  </svg>
+)
+
 export default function CollectionView({ connectionId, database, collection }) {
   const { notify } = useNotification()
   const { getConnectionById, activeConnections, connectingIds, connect } = useConnection()
@@ -259,6 +270,11 @@ export default function CollectionView({ connectionId, database, collection }) {
   // Explain plan state
   const [explainResult, setExplainResult] = useState(null)
   const [explaining, setExplaining] = useState(false)
+
+  // Saved queries state
+  const [showSaveQueryModal, setShowSaveQueryModal] = useState(false)
+  const [showSavedQueriesManager, setShowSavedQueriesManager] = useState(false)
+  const [savedQueriesRefreshKey, setSavedQueriesRefreshKey] = useState(0)
 
   // Memoize JSON stringified documents for JSON view (expensive for large datasets)
   const documentsJson = useMemo(() => JSON.stringify(documents, null, 2), [documents])
@@ -383,6 +399,26 @@ export default function CollectionView({ connectionId, database, collection }) {
 
     setLoading(true)
     setError(null)
+
+    // Get timeout setting
+    const settings = loadSettings()
+    const timeoutMs = settings.queryTimeout ? settings.queryTimeout * 1000 : 0
+    let timeoutId = null
+
+    // Set up timeout if configured
+    if (timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        // Cancel the query by incrementing queryIdRef
+        if (currentQueryId === queryIdRef.current) {
+          queryIdRef.current++
+          setLoading(false)
+          const timeoutSec = settings.queryTimeout
+          setError(`Query timed out after ${timeoutSec} seconds. You can increase the timeout in Settings.`)
+          notify.error(`Query timed out after ${timeoutSec}s`)
+        }
+      }, timeoutMs)
+    }
+
     try {
       // Check if this is a simple find query we can handle with Go driver
       if (isSimpleFindQuery(query)) {
@@ -472,6 +508,10 @@ export default function CollectionView({ connectionId, database, collection }) {
       setDocuments([])
       setTotal(0)
     } finally {
+      // Clear timeout if set
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
       // Only update loading if this is still the current query
       if (currentQueryId === queryIdRef.current) {
         setLoading(false)
@@ -707,20 +747,23 @@ export default function CollectionView({ connectionId, database, collection }) {
                   </button>
                 ) : (
                   <button
-                    className="btn btn-primary flex items-center gap-1.5"
+                    className={`btn btn-primary flex items-center gap-1.5 ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
                     onClick={() => {
+                      if (!isConnected) return
                       if (isRestoredTab) markTabActivated(currentTab?.id)
                       executeQuery()
                     }}
+                    disabled={!isConnected}
+                    title={!isConnected ? 'Connect to database first' : 'Run query'}
                   >
                     <PlayIcon className="w-4 h-4" />
                     <span>Run</span>
                   </button>
                 )}
                 <button
-                  className={`btn btn-secondary flex items-center gap-1.5 ${readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`btn btn-secondary flex items-center gap-1.5 ${readOnly || !isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
                   onClick={handleInsertDocument}
-                  disabled={readOnly}
+                  disabled={readOnly || !isConnected}
                   title={readOnly ? 'Read-only mode' : 'Insert new document (Cmd+N)'}
                 >
                   <PlusIcon className="w-4 h-4" />
@@ -728,7 +771,22 @@ export default function CollectionView({ connectionId, database, collection }) {
                 </button>
               </div>
               <div className="flex items-center gap-1 overflow-visible">
-                <div className="relative z-20">
+                <SavedQueriesDropdown
+                  connectionId={connectionId}
+                  database={database}
+                  collection={collection}
+                  onSelectQuery={(q) => setQuery(buildFullQuery(collection, q))}
+                  onManageQueries={() => setShowSavedQueriesManager(true)}
+                  refreshTrigger={savedQueriesRefreshKey}
+                />
+                <button
+                  className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-accent"
+                  onClick={() => setShowSaveQueryModal(true)}
+                  title="Save current query"
+                >
+                  <SaveIcon className="w-4 h-4" />
+                </button>
+                <div className="relative z-40">
                   <button
                     className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
                     onClick={() => setShowHistory(!showHistory)}
@@ -746,10 +804,10 @@ export default function CollectionView({ connectionId, database, collection }) {
                   )}
                 </div>
                 <button
-                  className={`icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ${explaining ? 'animate-pulse' : ''}`}
+                  className={`icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ${explaining ? 'animate-pulse' : ''} ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
                   onClick={explainQuery}
-                  disabled={explaining || loading}
-                  title="Explain query plan"
+                  disabled={explaining || loading || !isConnected}
+                  title={!isConnected ? 'Connect to database first' : 'Explain query plan'}
                 >
                   <ExplainIcon className="w-4 h-4" />
                 </button>
@@ -758,6 +816,7 @@ export default function CollectionView({ connectionId, database, collection }) {
                   database={database}
                   collection={collection}
                   currentFilter={parseFilterFromQuery(query)}
+                  disabled={!isConnected}
                 />
                 <button
                   className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
@@ -836,7 +895,7 @@ export default function CollectionView({ connectionId, database, collection }) {
                 spellCheck={false}
               />
               {/* History, explain, export, and expand buttons */}
-              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 z-20">
+              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 z-40">
                 <div className="relative">
                   <button
                     className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
@@ -855,10 +914,10 @@ export default function CollectionView({ connectionId, database, collection }) {
                   )}
                 </div>
                 <button
-                  className={`icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ${explaining ? 'animate-pulse' : ''}`}
+                  className={`icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ${explaining ? 'animate-pulse' : ''} ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
                   onClick={explainQuery}
-                  disabled={explaining || loading}
-                  title="Explain query plan"
+                  disabled={explaining || loading || !isConnected}
+                  title={!isConnected ? 'Connect to database first' : 'Explain query plan'}
                 >
                   <ExplainIcon className="w-4 h-4" />
                 </button>
@@ -867,6 +926,7 @@ export default function CollectionView({ connectionId, database, collection }) {
                   database={database}
                   collection={collection}
                   currentFilter={parseFilterFromQuery(query)}
+                  disabled={!isConnected}
                 />
                 <button
                   className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
@@ -887,21 +947,24 @@ export default function CollectionView({ connectionId, database, collection }) {
               </button>
             ) : (
               <button
-                className="btn btn-primary flex items-center gap-1.5"
+                className={`btn btn-primary flex items-center gap-1.5 ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
                 onClick={() => {
+                  if (!isConnected) return
                   if (isRestoredTab) markTabActivated(currentTab?.id)
                   executeQuery()
                 }}
+                disabled={!isConnected}
+                title={!isConnected ? 'Connect to database first' : 'Run query'}
               >
                 <PlayIcon className="w-4 h-4" />
                 <span>Run</span>
               </button>
             )}
             <button
-              className={`btn btn-secondary flex items-center gap-1.5 ${readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`btn btn-secondary flex items-center gap-1.5 ${readOnly || !isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
               onClick={handleInsertDocument}
-              disabled={readOnly}
-              title={readOnly ? 'Read-only mode' : 'Insert new document (Cmd+N)'}
+              disabled={readOnly || !isConnected}
+              title={!isConnected ? 'Connect to database first' : readOnly ? 'Read-only mode' : 'Insert new document (Cmd+N)'}
             >
               <PlusIcon className="w-4 h-4" />
               <span>Insert</span>
@@ -1123,42 +1186,46 @@ export default function CollectionView({ connectionId, database, collection }) {
             collection={collection}
           />
         ) : viewMode === 'json' ? (
-          <Editor
-            height="100%"
-            language="json"
-            theme="vs-dark"
-            value={documentsJson}
-            options={{
-              readOnly: true,
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              fontSize: 13,
-              lineNumbers: 'on',
-              folding: true,
-              wordWrap: 'on',
-              automaticLayout: true,
-              tabSize: 2,
-            }}
-          />
+          <MonacoErrorBoundary>
+            <Editor
+              height="100%"
+              language="json"
+              theme="vs-dark"
+              value={documentsJson}
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                fontSize: 13,
+                lineNumbers: 'on',
+                folding: true,
+                wordWrap: 'on',
+                automaticLayout: true,
+                tabSize: 2,
+              }}
+            />
+          </MonacoErrorBoundary>
         ) : (
           /* Raw view - unmodified mongosh output */
-          <Editor
-            height="100%"
-            language="javascript"
-            theme="vs-dark"
-            value={rawOutput || JSON.stringify(documents, null, 2)}
-            options={{
-              readOnly: true,
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              fontSize: 13,
-              lineNumbers: 'on',
-              folding: true,
-              wordWrap: 'on',
-              automaticLayout: true,
-              tabSize: 2,
-            }}
-          />
+          <MonacoErrorBoundary>
+            <Editor
+              height="100%"
+              language="javascript"
+              theme="vs-dark"
+              value={rawOutput || JSON.stringify(documents, null, 2)}
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                fontSize: 13,
+                lineNumbers: 'on',
+                folding: true,
+                wordWrap: 'on',
+                automaticLayout: true,
+                tabSize: 2,
+              }}
+            />
+          </MonacoErrorBoundary>
         )}
 
         {/* Bulk Action Bar - positioned at bottom of scroll container */}
@@ -1308,6 +1375,30 @@ export default function CollectionView({ connectionId, database, collection }) {
           }}
         />
       )}
+
+      {/* Save Query Modal */}
+      <SaveQueryModal
+        isOpen={showSaveQueryModal}
+        onClose={() => setShowSaveQueryModal(false)}
+        connectionId={connectionId}
+        database={database}
+        collection={collection}
+        query={parseFilterFromQuery(query)}
+        onSaved={() => setSavedQueriesRefreshKey((k) => k + 1)}
+      />
+
+      {/* Saved Queries Manager Modal */}
+      <SavedQueriesManager
+        isOpen={showSavedQueriesManager}
+        onClose={() => setShowSavedQueriesManager(false)}
+        connectionId={connectionId}
+        database={database}
+        collection={collection}
+        onQuerySelected={(savedQuery) => {
+          setQuery(buildFullQuery(savedQuery.collection, savedQuery.query))
+        }}
+        onQueriesChanged={() => setSavedQueriesRefreshKey((k) => k + 1)}
+      />
     </div>
   )
 }

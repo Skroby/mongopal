@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
 import { useNotification } from './NotificationContext'
-import { useOperation } from './contexts/OperationContext'
+import { useExportQueue } from './contexts/ExportQueueContext'
 import { useProgressETA } from '../hooks/useProgressETA'
 import ConfirmDialog from './ConfirmDialog'
 
-const go = window.go?.main?.App
+// Access go at call time, not module load time (bindings may not be ready yet)
+const getGo = () => window.go?.main?.App
 
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B'
@@ -26,7 +27,7 @@ function formatCount(count) {
 
 export default function ExportCollectionsModal({ connectionId, connectionName, databaseName, onClose }) {
   const { notify } = useNotification()
-  const { startOperation, updateOperation, completeOperation } = useOperation()
+  const { trackZipExport, updateTrackedExport, completeTrackedExport, removeTrackedExport } = useExportQueue()
   const { recordProgress, getETA, reset: resetETA } = useProgressETA()
   const [collections, setCollections] = useState([])
   const [loading, setLoading] = useState(true)
@@ -35,9 +36,11 @@ export default function ExportCollectionsModal({ connectionId, connectionName, d
   const [progress, setProgress] = useState(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const lastClickedIndex = useRef(null)
-  const operationId = useRef(null)
+  const exportId = useRef(null)
   const totalDocsRef = useRef(0)
   const processedDocsRef = useRef(0)
+  const filePathRef = useRef(null)
+  const maxProgressRef = useRef(0) // Track max progress to prevent backwards jumps
 
   useEffect(() => {
     loadCollections()
@@ -55,10 +58,14 @@ export default function ExportCollectionsModal({ connectionId, connectionName, d
         recordProgress(data.processedDocs)
       }
 
-      // Update global operation indicator
-      if (operationId.current) {
-        let progressPercent = null
-        let label = `Exporting ${databaseName}...`
+      // Store file path for completion
+      if (data.filePath) {
+        filePathRef.current = data.filePath
+      }
+
+      // Update export manager
+      if (exportId.current) {
+        let progressPercent = 0
 
         if (data.total > 0 && data.current > 0) {
           progressPercent = Math.min(100, Math.round((data.current / data.total) * 100))
@@ -66,31 +73,37 @@ export default function ExportCollectionsModal({ connectionId, connectionName, d
           progressPercent = Math.round(((data.collectionIndex - 1) / data.collectionTotal) * 100)
         }
 
-        if (data.collection) {
-          label = `Exporting ${data.collection}...`
-        }
-
-        updateOperation(operationId.current, { progress: progressPercent, label })
+        updateTrackedExport(exportId.current, {
+          phase: 'downloading',
+          progress: progressPercent,
+          current: data.current || 0,
+          total: data.total || 0,
+          currentItem: data.collection,
+          itemIndex: data.collectionIndex || 0,
+          itemTotal: data.collectionTotal || 0,
+        })
       }
     })
-    const unsubComplete = EventsOn('export:complete', () => {
+    const unsubComplete = EventsOn('export:complete', (data) => {
+      // Only handle if this modal initiated the export
+      if (!exportId.current) return
       setExporting(false)
       setProgress(null)
       notify.success('Export completed successfully')
-      if (operationId.current) {
-        completeOperation(operationId.current)
-        operationId.current = null
-      }
+      completeTrackedExport(exportId.current, data?.filePath || filePathRef.current)
+      exportId.current = null
+      filePathRef.current = null
       onClose()
     })
     const unsubCancelled = EventsOn('export:cancelled', () => {
+      // Only handle if this modal initiated the export
+      if (!exportId.current) return
       setExporting(false)
       setProgress(null)
       notify.info('Export cancelled')
-      if (operationId.current) {
-        completeOperation(operationId.current)
-        operationId.current = null
-      }
+      removeTrackedExport(exportId.current)
+      exportId.current = null
+      filePathRef.current = null
     })
 
     return () => {
@@ -98,7 +111,7 @@ export default function ExportCollectionsModal({ connectionId, connectionName, d
       if (unsubComplete) unsubComplete()
       if (unsubCancelled) unsubCancelled()
     }
-  }, [databaseName, updateOperation, completeOperation])
+  }, [databaseName, updateTrackedExport, completeTrackedExport, removeTrackedExport])
 
   // Handle Escape key to close modal (shows confirmation if export in progress)
   useEffect(() => {
@@ -132,15 +145,17 @@ export default function ExportCollectionsModal({ connectionId, connectionName, d
     setShowCancelConfirm(false)
     setExporting(false)
     setProgress(null)
-    go?.CancelExport?.()
-    if (operationId.current) {
-      completeOperation(operationId.current)
-      operationId.current = null
+    getGo()?.CancelExport?.()
+    if (exportId.current) {
+      removeTrackedExport(exportId.current)
+      exportId.current = null
+      filePathRef.current = null
     }
   }
 
   const loadCollections = async () => {
     try {
+      const go = getGo()
       if (go?.GetCollectionsForExport) {
         const colls = await go.GetCollectionsForExport(connectionId, databaseName)
         setCollections(colls || [])
@@ -209,18 +224,19 @@ export default function ExportCollectionsModal({ connectionId, connectionName, d
     resetETA()
     totalDocsRef.current = 0
     processedDocsRef.current = 0
+    filePathRef.current = null
+    maxProgressRef.current = 0
 
-    // Register global operation
-    operationId.current = startOperation({
-      type: 'export',
-      label: `Exporting ${databaseName}...`,
-      progress: null,
-      destructive: false,
-      active: true,
-    })
+    // Track in export manager
+    exportId.current = trackZipExport(
+      connectionId,
+      databaseName,
+      Array.from(selectedColls),
+      `${databaseName} (${selectedColls.size} collections)`
+    )
 
     try {
-      await go?.ExportCollections(connectionId, databaseName, Array.from(selectedColls))
+      await getGo()?.ExportCollections(connectionId, databaseName, Array.from(selectedColls))
     } catch (err) {
       // Don't show error for cancellation - the event handler shows info toast
       const errMsg = err?.message || String(err)
@@ -230,9 +246,10 @@ export default function ExportCollectionsModal({ connectionId, connectionName, d
       }
       setExporting(false)
       setProgress(null)
-      if (operationId.current) {
-        completeOperation(operationId.current)
-        operationId.current = null
+      if (exportId.current) {
+        removeTrackedExport(exportId.current)
+        exportId.current = null
+        filePathRef.current = null
       }
     }
   }
@@ -243,28 +260,30 @@ export default function ExportCollectionsModal({ connectionId, connectionName, d
   }
 
   const getProgressPercent = () => {
-    if (!progress) return 0
+    if (!progress) return maxProgressRef.current
 
-    const collTotal = progress.collectionTotal || 0
-    const collIndex = progress.collectionIndex || 0
+    // Use processedDocs/totalDocs for accurate progress (same as ExportQueueContext)
+    const processedDocs = progress.processedDocs || processedDocsRef.current || 0
+    const totalDocs = progress.totalDocs || totalDocsRef.current || 0
 
-    if (collTotal === 0) return 0
-
-    // Calculate base progress from completed collections
-    const completedCollections = Math.max(0, collIndex - 1)
-    const baseProgress = (completedCollections / collTotal) * 100
-
-    // Calculate current collection progress based on document count
-    let currentCollProgress = 0
-    if (progress.total > 0 && progress.current >= 0) {
-      // We have document-level progress for current collection
-      currentCollProgress = (progress.current / progress.total) / collTotal * 100
-    } else if (collIndex > 0) {
-      // Collection started but no document progress yet - show minimal progress
-      currentCollProgress = (0.05 / collTotal) * 100 // 5% of one collection slice
+    let percent = 0
+    if (totalDocs > 0) {
+      percent = Math.min(100, Math.round((processedDocs / totalDocs) * 100))
+    } else {
+      // Fallback to collection index if no doc counts available
+      const collTotal = progress.collectionTotal || 0
+      const collIndex = progress.collectionIndex || 0
+      if (collTotal > 0 && collIndex > 0) {
+        // Use (collIndex - 1) since collIndex is 1-based and represents "currently processing"
+        percent = Math.round(((collIndex - 1) / collTotal) * 100)
+      }
     }
 
-    return Math.min(100, baseProgress + currentCollProgress)
+    // Never allow progress to go backwards
+    percent = Math.max(percent, maxProgressRef.current)
+    maxProgressRef.current = percent
+
+    return percent
   }
 
   return (
@@ -396,6 +415,15 @@ export default function ExportCollectionsModal({ connectionId, connectionName, d
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-border flex justify-end gap-2">
+          {exporting && (
+            <button
+              className="btn btn-ghost mr-auto"
+              onClick={onClose}
+              title="Hide this dialog and continue in background"
+            >
+              Hide
+            </button>
+          )}
           <button
             className="btn btn-ghost"
             onClick={handleCancelClick}

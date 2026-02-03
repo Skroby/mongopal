@@ -96,10 +96,11 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 		filePath += ".zip"
 	}
 
-	// Create cancellable context for the export operation
+	// Create cancellable context with unique export ID
+	exportID := fmt.Sprintf("db-%s-%d", connID, time.Now().UnixNano())
 	exportCtx, exportCancel := context.WithCancel(context.Background())
-	s.state.SetExportCancel(exportCancel)
-	defer s.state.ClearExportCancel()
+	s.state.SetExportCancel(exportID, exportCancel)
+	defer s.state.ClearExportCancel(exportID)
 
 	// Create zip file
 	zipFile, err := os.Create(filePath)
@@ -162,7 +163,7 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 		// Check for cancellation
 		select {
 		case <-exportCtx.Done():
-			s.state.EmitEvent("export:cancelled", nil)
+			s.state.EmitEvent("export:cancelled", map[string]interface{}{"exportId": exportID})
 			// Clean up partial file
 			zipWriter.Close()
 			zipFile.Close()
@@ -189,6 +190,7 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 
 			// Emit progress
 			s.state.EmitEvent("export:progress", types.ExportProgress{
+				ExportID:      exportID,
 				Phase:         "exporting",
 				Database:      dbName,
 				Collection:    collName,
@@ -254,6 +256,7 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 				// Emit progress periodically
 				if docCount%1000 == 0 {
 					s.state.EmitEvent("export:progress", types.ExportProgress{
+						ExportID:      exportID,
 						Phase:         "exporting",
 						Database:      dbName,
 						Collection:    collName,
@@ -270,6 +273,20 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 			// Update cumulative processed count
 			processedDocs += docCount
 
+			// Emit final progress for this collection (ensures no jumps between collections)
+			s.state.EmitEvent("export:progress", types.ExportProgress{
+				ExportID:      exportID,
+				Phase:         "exporting",
+				Database:      dbName,
+				Collection:    collName,
+				Current:       docCount,
+				Total:         estimatedCount,
+				DatabaseIndex: dbIdx + 1,
+				DatabaseTotal: totalDatabases,
+				ProcessedDocs: processedDocs,
+				TotalDocs:     totalDocs,
+			})
+
 			// Emit warning if documents were skipped
 			if skippedDocs > 0 {
 				s.state.EmitEvent("export:warning", map[string]interface{}{
@@ -282,7 +299,7 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 			if cancelled {
 				docCursor.Close(ctx)
 				cancel()
-				s.state.EmitEvent("export:cancelled", nil)
+				s.state.EmitEvent("export:cancelled", map[string]interface{}{"exportId": exportID})
 				zipWriter.Close()
 				zipFile.Close()
 				os.Remove(filePath)
@@ -343,14 +360,25 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 	manifestData, _ := json.MarshalIndent(manifest, "", "  ")
 	manifestWriter.Write(manifestData)
 
-	s.state.EmitEvent("export:complete", nil)
+	// Emit 100% progress before complete
+	s.state.EmitEvent("export:progress", types.ExportProgress{
+		ExportID:      exportID,
+		Phase:         "finalizing",
+		Database:      "",
+		Collection:    "",
+		Current:       processedDocs,
+		Total:         totalDocs,
+		DatabaseIndex: totalDatabases,
+		DatabaseTotal: totalDatabases,
+		ProcessedDocs: processedDocs,
+		TotalDocs:     totalDocs,
+	})
+
+	s.state.EmitEvent("export:complete", map[string]interface{}{"exportId": exportID, "filePath": filePath})
 	return nil
 }
 
-// CancelExport cancels an ongoing export operation.
+// CancelExport cancels all ongoing export operations.
 func (s *Service) CancelExport() {
-	cancel := s.state.GetExportCancel()
-	if cancel != nil {
-		cancel()
-	}
+	s.state.CancelExport("") // Empty string cancels all exports
 }

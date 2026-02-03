@@ -54,6 +54,7 @@ type CollectionsImportPreviewDatabase = types.CollectionsImportPreviewDatabase
 type CollectionsImportPreviewItem = types.CollectionsImportPreviewItem
 type ScriptResult = types.ScriptResult
 type CSVExportOptions = types.CSVExportOptions
+type SavedQuery = types.SavedQuery
 
 // =============================================================================
 // App - Thin Facade for Wails Bindings
@@ -66,6 +67,7 @@ type App struct {
 	credential *credential.Service
 	connStore  *storage.ConnectionService
 	folderSvc  *storage.FolderService
+	querySvc   *storage.QueryService
 	connection *connection.Service
 	database   *database.Service
 	document   *document.Service
@@ -107,6 +109,7 @@ func (a *App) startup(ctx context.Context) {
 	// Initialize all services
 	a.connStore = storage.NewConnectionService(a.state, a.storage, a.credential)
 	a.folderSvc = storage.NewFolderService(a.state, a.storage)
+	a.querySvc = storage.NewQueryService(configDir)
 	a.connection = connection.NewService(a.state, a.connStore)
 	a.database = database.NewService(a.state)
 	a.document = document.NewService(a.state)
@@ -329,6 +332,14 @@ func (a *App) ExportCollectionAsCSV(connID, dbName, collName, defaultFilename st
 	return a.export.ExportCollectionAsCSV(connID, dbName, collName, defaultFilename, opts)
 }
 
+func (a *App) GetCSVSavePath(defaultFilename string) (string, error) {
+	return a.export.GetCSVSavePath(defaultFilename)
+}
+
+func (a *App) RevealInFinder(filePath string) error {
+	return a.export.RevealInFinder(filePath)
+}
+
 // =============================================================================
 // Import Methods
 // =============================================================================
@@ -375,4 +386,24 @@ func (a *App) ExecuteScript(connID, scriptContent string) (*ScriptResult, error)
 
 func (a *App) ExecuteScriptWithDatabase(connID, dbName, scriptContent string) (*ScriptResult, error) {
 	return a.script.ExecuteScriptWithDatabase(connID, dbName, scriptContent)
+}
+
+// =============================================================================
+// Saved Query Methods
+// =============================================================================
+
+func (a *App) SaveQuery(query SavedQuery) (SavedQuery, error) {
+	return a.querySvc.SaveQuery(query)
+}
+
+func (a *App) GetSavedQuery(queryID string) (SavedQuery, error) {
+	return a.querySvc.GetQuery(queryID)
+}
+
+func (a *App) ListSavedQueries(connectionID, database, collection string) ([]SavedQuery, error) {
+	return a.querySvc.ListQueries(connectionID, database, collection)
+}
+
+func (a *App) DeleteSavedQuery(queryID string) error {
+	return a.querySvc.DeleteQuery(queryID)
 }

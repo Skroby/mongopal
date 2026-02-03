@@ -20,6 +20,7 @@ describe('Settings', () => {
 
       expect(settings).toEqual({
         queryLimit: 50,
+        queryTimeout: 30,
         autoFormat: true,
         confirmDelete: true,
         wordWrap: true,
@@ -49,6 +50,7 @@ describe('Settings', () => {
 
       expect(settings).toEqual({
         queryLimit: 50,
+        queryTimeout: 30,
         autoFormat: true,
         confirmDelete: true,
         wordWrap: true,
@@ -79,8 +81,17 @@ describe('Settings', () => {
       render(<Settings onClose={mockOnClose} />)
 
       expect(screen.getByText('Default query limit')).toBeInTheDocument()
-      const select = screen.getByRole('combobox')
-      expect(select).toHaveValue('50')
+      // First combobox is queryLimit, second is queryTimeout
+      const selects = screen.getAllByRole('combobox')
+      expect(selects[0]).toHaveValue('50')
+    })
+
+    it('renders query timeout dropdown with default value', () => {
+      render(<Settings onClose={mockOnClose} />)
+
+      expect(screen.getByText('Query timeout')).toBeInTheDocument()
+      const selects = screen.getAllByRole('combobox')
+      expect(selects[1]).toHaveValue('30')
     })
 
     it('renders all toggle options', () => {
@@ -109,7 +120,8 @@ describe('Settings', () => {
     it('changes query limit and persists to localStorage', () => {
       render(<Settings onClose={mockOnClose} />)
 
-      const select = screen.getByRole('combobox')
+      const selects = screen.getAllByRole('combobox')
+      const select = selects[0] // queryLimit is first
       fireEvent.change(select, { target: { value: '100' } })
 
       expect(select).toHaveValue('100')
@@ -124,12 +136,46 @@ describe('Settings', () => {
       const options = screen.getAllByRole('option')
       const values = options.map(o => o.value)
 
+      // Query limit options
       expect(values).toContain('10')
       expect(values).toContain('25')
       expect(values).toContain('50')
       expect(values).toContain('100')
       expect(values).toContain('200')
       expect(values).toContain('500')
+      // Query timeout options
+      expect(values).toContain('0') // No timeout
+      expect(values).toContain('15')
+      expect(values).toContain('30')
+      expect(values).toContain('60')
+    })
+  })
+
+  describe('query timeout', () => {
+    it('changes query timeout and persists to localStorage', () => {
+      render(<Settings onClose={mockOnClose} />)
+
+      const selects = screen.getAllByRole('combobox')
+      const select = selects[1] // queryTimeout is second
+      fireEvent.change(select, { target: { value: '60' } })
+
+      expect(select).toHaveValue('60')
+
+      const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
+      expect(saved.queryTimeout).toBe(60)
+    })
+
+    it('allows disabling timeout', () => {
+      render(<Settings onClose={mockOnClose} />)
+
+      const selects = screen.getAllByRole('combobox')
+      const select = selects[1]
+      fireEvent.change(select, { target: { value: '0' } })
+
+      expect(select).toHaveValue('0')
+
+      const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
+      expect(saved.queryTimeout).toBe(0)
     })
   })
 
@@ -208,6 +254,7 @@ describe('Settings', () => {
       // First change some settings
       localStorage.setItem('mongopal-settings', JSON.stringify({
         queryLimit: 200,
+        queryTimeout: 120,
         autoFormat: false,
         confirmDelete: false,
         wordWrap: false,
@@ -217,13 +264,16 @@ describe('Settings', () => {
       render(<Settings onClose={mockOnClose} />)
 
       // Verify settings are loaded
-      expect(screen.getByRole('combobox')).toHaveValue('200')
+      const selects = screen.getAllByRole('combobox')
+      expect(selects[0]).toHaveValue('200')
+      expect(selects[1]).toHaveValue('120')
 
       // Click reset
       fireEvent.click(screen.getByText('Reset to defaults'))
 
       // Verify reset
-      expect(screen.getByRole('combobox')).toHaveValue('50')
+      expect(selects[0]).toHaveValue('50')
+      expect(selects[1]).toHaveValue('30')
       const checkboxes = screen.getAllByRole('checkbox')
       // freezeIdColumn[0] defaults to false, rest default to true
       expect(checkboxes[0]).not.toBeChecked() // freezeIdColumn
@@ -235,6 +285,7 @@ describe('Settings', () => {
       // Verify persisted
       const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
       expect(saved.queryLimit).toBe(50)
+      expect(saved.queryTimeout).toBe(30)
       expect(saved.autoFormat).toBe(true)
     })
   })
@@ -267,6 +318,7 @@ describe('Settings', () => {
     it('loads saved settings on render', () => {
       localStorage.setItem('mongopal-settings', JSON.stringify({
         queryLimit: 100,
+        queryTimeout: 60,
         autoFormat: false,
         confirmDelete: true,
         wordWrap: false,
@@ -275,7 +327,9 @@ describe('Settings', () => {
 
       render(<Settings onClose={mockOnClose} />)
 
-      expect(screen.getByRole('combobox')).toHaveValue('100')
+      const selects = screen.getAllByRole('combobox')
+      expect(selects[0]).toHaveValue('100')
+      expect(selects[1]).toHaveValue('60')
 
       // New order: freezeIdColumn[0], autoFormat[1], wordWrap[2], showLineNumbers[3], confirmDelete[4]
       const checkboxes = screen.getAllByRole('checkbox')

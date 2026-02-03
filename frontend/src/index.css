@@ -174,16 +174,16 @@ select:focus-visible {
 }
 
 /* Select/Dropdown styles */
-select {
-  @apply bg-zinc-800 border border-zinc-700 rounded;
+select,
+select.input {
+  @apply border border-zinc-700 rounded;
   @apply text-zinc-100;
   @apply focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none;
   @apply transition-colors cursor-pointer;
-  @apply appearance-none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2371717a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 0.5rem center;
-  background-repeat: no-repeat;
-  background-size: 1.25rem 1.25rem;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background: #27272a url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2371717a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") right 0.5rem center / 1.25rem 1.25rem no-repeat;
   padding-right: 2rem;
 }
 

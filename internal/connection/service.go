@@ -32,6 +32,12 @@ func NewService(state *core.AppState, connStore *storage.ConnectionService) *Ser
 
 // Connect establishes a connection to a saved MongoDB instance.
 func (s *Service) Connect(connID string) error {
+	// Prevent concurrent connection attempts for the same ID
+	if err := s.state.StartConnecting(connID); err != nil {
+		return err
+	}
+	defer s.state.FinishConnecting(connID)
+
 	uri, err := s.connStore.GetConnectionURI(connID)
 	if err != nil {
 		return err

@@ -1,9 +1,11 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
+// Configure Monaco to use local files (must be before any Editor imports)
+import './monacoConfig'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { NotificationProvider } from './components/NotificationContext'
-import { ConnectionProvider, TabProvider, StatusProvider, OperationProvider } from './components/contexts'
+import { ConnectionProvider, TabProvider, StatusProvider, OperationProvider, ExportQueueProvider } from './components/contexts'
 import './index.css'
 
 const container = document.getElementById('root')
@@ -17,7 +19,9 @@ root.render(
           <TabProvider>
             <StatusProvider>
               <OperationProvider>
-                <App />
+                <ExportQueueProvider>
+                  <App />
+                </ExportQueueProvider>
               </OperationProvider>
             </StatusProvider>
           </TabProvider>

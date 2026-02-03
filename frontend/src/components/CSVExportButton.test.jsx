@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { NotificationProvider } from './NotificationContext'
+import { ExportQueueProvider } from './contexts/ExportQueueContext'
 import CSVExportButton from './CSVExportButton'
 
-// Mock the go object with dynamic implementation
+// Mock EventsOn/EventsOff
+vi.mock('../../wailsjs/runtime/runtime', () => ({
+  EventsOn: vi.fn(() => vi.fn()),
+  EventsOff: vi.fn(),
+}))
+
+// Mock the go object
 let mockExportCollectionAsCSV = vi.fn()
 
 beforeEach(() => {
@@ -22,8 +29,14 @@ afterEach(() => {
   delete window.go
 })
 
-const renderWithProvider = (component) => {
-  return render(<NotificationProvider>{component}</NotificationProvider>)
+const renderWithProviders = (component) => {
+  return render(
+    <NotificationProvider>
+      <ExportQueueProvider>
+        {component}
+      </ExportQueueProvider>
+    </NotificationProvider>
+  )
 }
 
 describe('CSVExportButton', () => {
@@ -35,185 +48,46 @@ describe('CSVExportButton', () => {
   }
 
   it('renders CSV export icon button', () => {
-    renderWithProvider(<CSVExportButton {...defaultProps} />)
+    renderWithProviders(<CSVExportButton {...defaultProps} />)
     expect(screen.getByTitle('Export as CSV')).toBeInTheDocument()
   })
 
-  it('shows options popover when button is clicked', () => {
-    renderWithProvider(<CSVExportButton {...defaultProps} />)
+  it('opens dialog when button is clicked', () => {
+    renderWithProviders(<CSVExportButton {...defaultProps} />)
 
-    // Click the icon button to open options
     fireEvent.click(screen.getByTitle('Export as CSV'))
 
-    expect(screen.getByText('Export Now')).toBeInTheDocument()
-    expect(screen.getByText('Export Options')).toBeInTheDocument()
+    expect(screen.getByText('Export as CSV')).toBeInTheDocument()
     expect(screen.getByText('Delimiter')).toBeInTheDocument()
-    expect(screen.getByText('Include column headers')).toBeInTheDocument()
-    expect(screen.getByText('Flatten arrays (join with ;)')).toBeInTheDocument()
   })
 
-  it('exports CSV with default options on Export Now click', async () => {
-    mockExportCollectionAsCSV.mockResolvedValue(undefined)
-    renderWithProvider(<CSVExportButton {...defaultProps} />)
+  it('shows collection info in dialog header', () => {
+    renderWithProviders(<CSVExportButton {...defaultProps} />)
 
-    // Open popup
     fireEvent.click(screen.getByTitle('Export as CSV'))
 
-    // Click Export Now
-    await act(async () => {
-      fireEvent.click(screen.getByText('Export Now'))
-    })
-
-    await waitFor(() => {
-      expect(mockExportCollectionAsCSV).toHaveBeenCalledWith(
-        'conn1',
-        'testdb',
-        'testcoll',
-        expect.stringContaining('testcoll-'),
-        expect.objectContaining({
-          delimiter: ',',
-          includeHeaders: true,
-          flattenArrays: true,
-          filter: '',
-        })
-      )
-    })
+    expect(screen.getByText('testdb.testcoll')).toBeInTheDocument()
   })
 
-  it('allows changing delimiter option', async () => {
-    renderWithProvider(<CSVExportButton {...defaultProps} />)
+  it('closes dialog when Cancel is clicked', async () => {
+    renderWithProviders(<CSVExportButton {...defaultProps} />)
 
-    // Open options
     fireEvent.click(screen.getByTitle('Export as CSV'))
+    expect(screen.getByText('Export as CSV')).toBeInTheDocument()
 
-    // Change delimiter
-    const select = screen.getByDisplayValue('Comma (,)')
-    fireEvent.change(select, { target: { value: ';' } })
-
-    // Export with options
-    mockExportCollectionAsCSV.mockResolvedValue(undefined)
-    await act(async () => {
-      fireEvent.click(screen.getByText('Export with Options'))
-    })
-
-    await waitFor(() => {
-      expect(mockExportCollectionAsCSV).toHaveBeenCalledWith(
-        'conn1',
-        'testdb',
-        'testcoll',
-        expect.any(String),
-        expect.objectContaining({
-          delimiter: ';',
-        })
-      )
-    })
-  })
-
-  it('allows toggling headers option', async () => {
-    renderWithProvider(<CSVExportButton {...defaultProps} />)
-
-    // Open options
-    fireEvent.click(screen.getByTitle('Export as CSV'))
-
-    // Toggle headers off
-    fireEvent.click(screen.getByText('Include column headers'))
-
-    // Export with options
-    mockExportCollectionAsCSV.mockResolvedValue(undefined)
-    await act(async () => {
-      fireEvent.click(screen.getByText('Export with Options'))
-    })
-
-    await waitFor(() => {
-      expect(mockExportCollectionAsCSV).toHaveBeenCalledWith(
-        'conn1',
-        'testdb',
-        'testcoll',
-        expect.any(String),
-        expect.objectContaining({
-          includeHeaders: false,
-        })
-      )
-    })
-  })
-
-  it('shows filter option when currentFilter is present', () => {
-    renderWithProvider(<CSVExportButton {...defaultProps} currentFilter='{"status": "active"}' />)
-
-    // Open options
-    fireEvent.click(screen.getByTitle('Export as CSV'))
-
-    expect(screen.getByText('Apply current filter')).toBeInTheDocument()
-  })
-
-  it('does not show filter option when currentFilter is empty', () => {
-    renderWithProvider(<CSVExportButton {...defaultProps} currentFilter="{}" />)
-
-    // Open options
-    fireEvent.click(screen.getByTitle('Export as CSV'))
-
-    expect(screen.queryByText('Apply current filter')).not.toBeInTheDocument()
-  })
-
-  it('applies filter when option is checked', async () => {
-    const filter = '{"status": "active"}'
-    renderWithProvider(<CSVExportButton {...defaultProps} currentFilter={filter} />)
-
-    // Open options
-    fireEvent.click(screen.getByTitle('Export as CSV'))
-
-    // Enable filter
-    fireEvent.click(screen.getByText('Apply current filter'))
-
-    // Export with options
-    mockExportCollectionAsCSV.mockResolvedValue(undefined)
-    await act(async () => {
-      fireEvent.click(screen.getByText('Export with Options'))
-    })
-
-    await waitFor(() => {
-      expect(mockExportCollectionAsCSV).toHaveBeenCalledWith(
-        'conn1',
-        'testdb',
-        'testcoll',
-        expect.any(String),
-        expect.objectContaining({
-          filter: filter,
-        })
-      )
-    })
-  })
-
-  it('closes popover when clicking outside', async () => {
-    renderWithProvider(
-      <div>
-        <CSVExportButton {...defaultProps} />
-        <div data-testid="outside">Outside</div>
-      </div>
-    )
-
-    // Open options
-    fireEvent.click(screen.getByTitle('Export as CSV'))
-
-    expect(screen.getByText('Delimiter')).toBeInTheDocument()
-
-    // Click outside
-    fireEvent.mouseDown(screen.getByTestId('outside'))
+    fireEvent.click(screen.getByText('Cancel'))
 
     await waitFor(() => {
       expect(screen.queryByText('Delimiter')).not.toBeInTheDocument()
     })
   })
 
-  it('closes popover when Escape is pressed', async () => {
-    renderWithProvider(<CSVExportButton {...defaultProps} />)
+  it('closes dialog when Escape is pressed', async () => {
+    renderWithProviders(<CSVExportButton {...defaultProps} />)
 
-    // Open options
     fireEvent.click(screen.getByTitle('Export as CSV'))
+    expect(screen.getByText('Export as CSV')).toBeInTheDocument()
 
-    expect(screen.getByText('Delimiter')).toBeInTheDocument()
-
-    // Press Escape
     fireEvent.keyDown(window, { key: 'Escape' })
 
     await waitFor(() => {
@@ -221,46 +95,55 @@ describe('CSVExportButton', () => {
     })
   })
 
-  it('shows exporting state during export', async () => {
-    let resolveExport
-    mockExportCollectionAsCSV.mockImplementation(() => new Promise(resolve => { resolveExport = resolve }))
-    renderWithProvider(<CSVExportButton {...defaultProps} />)
+  it('shows filter option when currentFilter is present', () => {
+    renderWithProviders(<CSVExportButton {...defaultProps} currentFilter='{"status": "active"}' />)
 
-    // Open popup and click Export Now
     fireEvent.click(screen.getByTitle('Export as CSV'))
 
-    await act(async () => {
-      fireEvent.click(screen.getByText('Export Now'))
-    })
-
-    // Button should have animate-pulse class during export
-    const button = screen.getByTitle('Export as CSV')
-    expect(button.className).toContain('animate-pulse')
-
-    // Cleanup
-    await act(async () => {
-      resolveExport()
-    })
+    expect(screen.getByText('Apply current filter')).toBeInTheDocument()
   })
 
-  it('disables main button during export', async () => {
-    let resolveExport
-    mockExportCollectionAsCSV.mockImplementation(() => new Promise(resolve => { resolveExport = resolve }))
-    renderWithProvider(<CSVExportButton {...defaultProps} />)
+  it('does not show filter option when currentFilter is empty', () => {
+    renderWithProviders(<CSVExportButton {...defaultProps} currentFilter="{}" />)
 
-    // Open popup and click Export Now
     fireEvent.click(screen.getByTitle('Export as CSV'))
 
-    await act(async () => {
-      fireEvent.click(screen.getByText('Export Now'))
-    })
+    expect(screen.queryByText('Apply current filter')).not.toBeInTheDocument()
+  })
 
-    // Main button should be disabled
-    expect(screen.getByTitle('Export as CSV')).toBeDisabled()
+  it('shows delimiter options', () => {
+    renderWithProviders(<CSVExportButton {...defaultProps} />)
 
-    // Cleanup
-    await act(async () => {
-      resolveExport()
-    })
+    fireEvent.click(screen.getByTitle('Export as CSV'))
+
+    const select = screen.getByDisplayValue('Comma (,)')
+    expect(select).toBeInTheDocument()
+  })
+
+  it('shows include headers and flatten arrays options', () => {
+    renderWithProviders(<CSVExportButton {...defaultProps} />)
+
+    fireEvent.click(screen.getByTitle('Export as CSV'))
+
+    expect(screen.getByText('Include headers')).toBeInTheDocument()
+    expect(screen.getByText('Flatten arrays')).toBeInTheDocument()
+  })
+
+  it('has Add to Queue button in dialog', () => {
+    renderWithProviders(<CSVExportButton {...defaultProps} />)
+
+    fireEvent.click(screen.getByTitle('Export as CSV'))
+
+    expect(screen.getByRole('button', { name: 'Add to Queue' })).toBeInTheDocument()
+  })
+
+  it('shows Save to field with Browse button', () => {
+    renderWithProviders(<CSVExportButton {...defaultProps} />)
+
+    fireEvent.click(screen.getByTitle('Export as CSV'))
+
+    expect(screen.getByText('Save to')).toBeInTheDocument()
+    expect(screen.getByText('Browse...')).toBeInTheDocument()
+    expect(screen.getByText('Choose location...')).toBeInTheDocument()
   })
 })

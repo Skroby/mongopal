@@ -637,7 +637,9 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 							}
 
 							indexOpts := options.Index()
+							indexName := ""
 							if name, ok := idx["name"].(string); ok {
+								indexName = name
 								indexOpts.SetName(name)
 							}
 							if unique, ok := idx["unique"].(bool); ok && unique {
@@ -648,13 +650,16 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 							}
 
 							ctx, cancel := core.ContextWithTimeout()
-							_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+							_, indexErr := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
 								Keys:    keyDoc,
 								Options: indexOpts,
 							})
 							cancel()
-							if err != nil {
-								// Index might already exist, ignore error
+							if indexErr != nil {
+								// Track index creation errors instead of silently ignoring
+								errMsg := fmt.Sprintf("Failed to create index '%s': %v", indexName, indexErr)
+								collResult.IndexErrors = append(collResult.IndexErrors, errMsg)
+								result.Errors = append(result.Errors, fmt.Sprintf("[%s.%s] %s", dbName, collName, errMsg))
 							}
 						}
 					}

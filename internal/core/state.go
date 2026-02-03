@@ -19,26 +19,56 @@ const DefaultConnectTimeout = 10 * time.Second
 
 // AppState holds the shared application state.
 type AppState struct {
-	Clients          map[string]*mongo.Client // Active connections by ID
-	SavedConnections []types.SavedConnection  // In-memory cache of saved connections
-	Folders          []types.Folder           // Connection folders
-	ConfigDir        string                   // Config directory path
+	Clients          map[string]*mongo.Client        // Active connections by ID
+	Connecting       map[string]bool                 // Connection IDs currently being connected (to prevent races)
+	SavedConnections []types.SavedConnection         // In-memory cache of saved connections
+	Folders          []types.Folder                  // Connection folders
+	ConfigDir        string                          // Config directory path
 	Mu               sync.RWMutex
-	CancelMu         sync.Mutex         // Mutex for export/import cancel functions
-	ExportCancel     context.CancelFunc // Cancel function for ongoing export
-	ImportCancel     context.CancelFunc // Cancel function for ongoing import
-	Ctx              context.Context    // Wails context
-	DisableEvents    bool               // Disable event emission (for tests)
-	Emitter          EventEmitter       // Event emitter for UI notifications
+	CancelMu         sync.Mutex                      // Mutex for export/import cancel functions
+	ExportCancels    map[string]context.CancelFunc   // Cancel functions for ongoing exports (keyed by export ID)
+	ImportCancel     context.CancelFunc              // Cancel function for ongoing import
+	Ctx              context.Context                 // Wails context
+	DisableEvents    bool                            // Disable event emission (for tests)
+	Emitter          EventEmitter                    // Event emitter for UI notifications
 }
 
 // NewAppState creates a new AppState with initialized maps.
 func NewAppState() *AppState {
 	return &AppState{
 		Clients:          make(map[string]*mongo.Client),
+		Connecting:       make(map[string]bool),
 		SavedConnections: []types.SavedConnection{},
 		Folders:          []types.Folder{},
+		ExportCancels:    make(map[string]context.CancelFunc),
 	}
+}
+
+// ConnectionInProgressError is returned when a connection attempt is already in progress.
+type ConnectionInProgressError struct {
+	ConnID string
+}
+
+func (e *ConnectionInProgressError) Error() string {
+	return "connection attempt already in progress for " + e.ConnID
+}
+
+// StartConnecting marks a connection as being connected. Returns error if already connecting.
+func (s *AppState) StartConnecting(connID string) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	if s.Connecting[connID] {
+		return &ConnectionInProgressError{ConnID: connID}
+	}
+	s.Connecting[connID] = true
+	return nil
+}
+
+// FinishConnecting marks a connection attempt as finished.
+func (s *AppState) FinishConnecting(connID string) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	delete(s.Connecting, connID)
 }
 
 // GetClient returns the MongoDB client for a connection, or error if not connected.
@@ -102,28 +132,38 @@ func ContextWithConnectTimeout() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), DefaultConnectTimeout)
 }
 
-// SetExportCancel safely sets the export cancel function.
-func (s *AppState) SetExportCancel(cancel context.CancelFunc) {
+// SetExportCancel safely sets an export cancel function by ID.
+func (s *AppState) SetExportCancel(exportID string, cancel context.CancelFunc) {
 	s.CancelMu.Lock()
 	defer s.CancelMu.Unlock()
-	s.ExportCancel = cancel
+	s.ExportCancels[exportID] = cancel
 }
 
-// ClearExportCancel safely clears the export cancel function and calls it.
-func (s *AppState) ClearExportCancel() {
+// ClearExportCancel safely removes an export cancel function by ID (does NOT call it).
+func (s *AppState) ClearExportCancel(exportID string) {
 	s.CancelMu.Lock()
 	defer s.CancelMu.Unlock()
-	if s.ExportCancel != nil {
-		s.ExportCancel()
-		s.ExportCancel = nil
+	delete(s.ExportCancels, exportID)
+}
+
+// CancelExport cancels an export by ID, or all exports if ID is empty.
+func (s *AppState) CancelExport(exportID string) {
+	s.CancelMu.Lock()
+	defer s.CancelMu.Unlock()
+	if exportID == "" {
+		// Cancel all exports
+		for id, cancel := range s.ExportCancels {
+			if cancel != nil {
+				cancel()
+			}
+			delete(s.ExportCancels, id)
+		}
+	} else if cancel, ok := s.ExportCancels[exportID]; ok {
+		if cancel != nil {
+			cancel()
+		}
+		delete(s.ExportCancels, exportID)
 	}
-}
-
-// GetExportCancel safely gets the export cancel function.
-func (s *AppState) GetExportCancel() context.CancelFunc {
-	s.CancelMu.Lock()
-	defer s.CancelMu.Unlock()
-	return s.ExportCancel
 }
 
 // SetImportCancel safely sets the import cancel function.

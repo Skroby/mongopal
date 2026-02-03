@@ -285,6 +285,18 @@ export default function TableView({
     document.removeEventListener('mouseup', handleResizeEnd)
   }, [handleResizeMove])
 
+  // Cleanup resize listeners on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      // If component unmounts during resize, clean up listeners
+      if (resizingRef.current) {
+        document.removeEventListener('mousemove', handleResizeMove)
+        document.removeEventListener('mouseup', handleResizeEnd)
+        resizingRef.current = null
+      }
+    }
+  }, [handleResizeMove, handleResizeEnd])
+
   // Toggle column expansion
   const toggleColumnExpansion = useCallback((columnPath) => {
     setExpandedColumns(prev => {

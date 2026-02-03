@@ -27,6 +27,7 @@ const SettingsSection = ({ title, children, isFirst = false }) => (
 
 const defaultSettings = {
   queryLimit: 50,
+  queryTimeout: 30, // seconds, 0 = no timeout
   autoFormat: true,
   confirmDelete: true,
   wordWrap: true,
@@ -157,6 +158,27 @@ export default function Settings({ onClose }) {
               </select>
               <p className="mt-1 text-xs text-zinc-400">
                 Number of documents to fetch per page
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-1">
+                Query timeout
+              </label>
+              <select
+                className="input"
+                value={settings.queryTimeout}
+                onChange={(e) => handleChange('queryTimeout', parseInt(e.target.value, 10))}
+              >
+                <option value={0}>No timeout</option>
+                <option value={15}>15 seconds</option>
+                <option value={30}>30 seconds</option>
+                <option value={60}>1 minute</option>
+                <option value={120}>2 minutes</option>
+                <option value={300}>5 minutes</option>
+              </select>
+              <p className="mt-1 text-xs text-zinc-400">
+                Cancel queries that take longer than this
               </p>
             </div>
           </SettingsSection>

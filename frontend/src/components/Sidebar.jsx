@@ -1673,31 +1673,31 @@ export default function Sidebar({
         }}
       >
         {filteredConnections.length === 0 && folders.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm">
+          <div className="flex-1 flex items-center justify-center px-6 py-8">
             {connections.length === 0 ? (
-              <div className="space-y-4">
-                <div className="w-12 h-12 mx-auto rounded-full bg-zinc-800 flex items-center justify-center">
-                  <ServerIcon className="w-6 h-6 text-accent" />
+              <div className="space-y-5 text-center max-w-[220px]">
+                <div className="w-14 h-14 mx-auto rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
+                  <ServerIcon className="w-7 h-7 text-accent" />
                 </div>
                 <div>
-                  <h3 className="text-zinc-200 font-medium mb-1">Welcome to MongoPal</h3>
-                  <p className="text-zinc-400 text-xs leading-relaxed">
+                  <h3 className="text-zinc-100 font-semibold text-base mb-2">Welcome to MongoPal</h3>
+                  <p className="text-zinc-400 text-sm leading-relaxed">
                     Get started by adding your first MongoDB connection to explore databases and collections.
                   </p>
                 </div>
                 <button
-                  className="btn btn-primary w-full"
+                  className="btn btn-primary w-full py-2.5"
                   onClick={onAddConnection}
                 >
                   <PlusIcon className="w-4 h-4 mr-2" />
                   Add Your First Connection
                 </button>
-                <p className="text-zinc-600 text-xs">
+                <p className="text-zinc-500 text-xs">
                   Tip: You can also press Ctrl+N to add a connection
                 </p>
               </div>
             ) : (
-              <p className="text-zinc-400">No matching connections</p>
+              <p className="text-zinc-400 text-sm">No matching connections</p>
             )}
           </div>
         ) : (

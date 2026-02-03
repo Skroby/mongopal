@@ -20,6 +20,7 @@ import { useConnection } from './components/contexts/ConnectionContext'
 import { useTab } from './components/contexts/TabContext'
 import { useStatus } from './components/contexts/StatusContext'
 import { useOperation } from './components/contexts/OperationContext'
+import ExportManager from './components/ExportManager'
 
 // Constants
 const DEFAULT_SIDEBAR_WIDTH = 260
@@ -29,6 +30,9 @@ const BINDINGS_CHECK_DELAY = 2000 // ms to wait before showing bindings error
 
 // Wails runtime bindings will be available at window.go
 const go = window.go?.main?.App
+
+// Detect platform for OS-specific UI adjustments
+const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
 
 function App() {
   const { notify } = useNotification()
@@ -257,7 +261,7 @@ function App() {
   if (bindingsError) {
     return (
       <div className="h-screen flex flex-col bg-surface">
-        <div className="h-7 bg-surface-secondary titlebar-drag flex-shrink-0" />
+        {isMac && <div className="h-7 bg-surface-secondary titlebar-drag flex-shrink-0" />}
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center p-8 max-w-md">
             <div className="text-red-500 text-4xl mb-4">⚠</div>
@@ -279,8 +283,8 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-surface">
-      {/* macOS title bar spacer */}
-      <div className="h-7 bg-surface-secondary titlebar-drag flex-shrink-0" />
+      {/* macOS title bar spacer - only needed on macOS for traffic light buttons */}
+      {isMac && <div className="h-7 bg-surface-secondary titlebar-drag flex-shrink-0" />}
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
@@ -423,6 +427,8 @@ function App() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Export manager */}
+          <ExportManager />
           {/* Global operation indicator */}
           {activeOperations.length > 0 && (
             <>
