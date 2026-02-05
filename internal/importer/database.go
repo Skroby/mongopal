@@ -365,7 +365,9 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 	// Create cancellable context for the import operation
 	importCtx, importCancel := context.WithCancel(context.Background())
 	s.state.SetImportCancel(importCancel)
+	s.state.ResetImportPause() // Reset pause state at start
 	defer s.state.ClearImportCancel()
+	defer s.state.ResetImportPause()
 
 	// Filter databases if specified
 	selectedDbs := make(map[string]bool)
@@ -514,8 +516,14 @@ func (s *Service) ImportDatabases(connID string, opts types.ImportOptions) (*typ
 
 			cancelled := false
 			for scanner.Scan() {
-				// Check for cancellation periodically
+				// Check for pause/cancellation periodically
 				if current%100 == 0 {
+					// Wait if paused (also checks for cancellation)
+					if !s.state.WaitIfImportPaused(importCtx) {
+						cancelled = true
+						break
+					}
+					// Also check context directly
 					select {
 					case <-importCtx.Done():
 						cancelled = true
@@ -686,4 +694,21 @@ func (s *Service) CancelImport() {
 	if cancel != nil {
 		cancel()
 	}
+}
+
+// PauseImport pauses the current import operation.
+func (s *Service) PauseImport() {
+	s.state.PauseImport()
+	s.state.EmitEvent("import:paused", nil)
+}
+
+// ResumeImport resumes a paused import operation.
+func (s *Service) ResumeImport() {
+	s.state.ResumeImport()
+	s.state.EmitEvent("import:resumed", nil)
+}
+
+// IsImportPaused returns whether import is currently paused.
+func (s *Service) IsImportPaused() bool {
+	return s.state.IsImportPaused()
 }

@@ -99,6 +99,12 @@ export function TabProvider({ children }) {
     const existingTab = tabs.find(t => t.id === tabId)
 
     if (existingTab) {
+      // If tab was restored from session, clear the flag so it auto-executes
+      if (existingTab.restored) {
+        setTabs(prev => prev.map(t =>
+          t.id === tabId ? { ...t, restored: false } : t
+        ))
+      }
       setActiveTab(tabId)
     } else {
       const conn = getConnectionById(connectionId)
@@ -147,6 +153,12 @@ export function TabProvider({ children }) {
     const existingTab = tabs.find(t => t.id === tabId)
 
     if (existingTab) {
+      // Clear restored flag if present
+      if (existingTab.restored) {
+        setTabs(prev => prev.map(t =>
+          t.id === tabId ? { ...t, restored: false } : t
+        ))
+      }
       setActiveTab(tabId)
     } else {
       const conn = getConnectionById(connectionId)
@@ -192,6 +204,12 @@ export function TabProvider({ children }) {
     const existingTab = tabs.find(t => t.id === tabId)
 
     if (existingTab) {
+      // Clear restored flag if present
+      if (existingTab.restored) {
+        setTabs(prev => prev.map(t =>
+          t.id === tabId ? { ...t, restored: false } : t
+        ))
+      }
       setActiveTab(tabId)
     } else {
       const conn = getConnectionById(connectionId)
@@ -216,6 +234,12 @@ export function TabProvider({ children }) {
     const existingTab = tabs.find(t => t.id === tabId)
 
     if (existingTab) {
+      // Clear restored flag if present
+      if (existingTab.restored) {
+        setTabs(prev => prev.map(t =>
+          t.id === tabId ? { ...t, restored: false } : t
+        ))
+      }
       setActiveTab(tabId)
     } else {
       const conn = getConnectionById(connectionId)

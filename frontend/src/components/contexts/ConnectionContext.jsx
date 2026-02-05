@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { useNotification } from '../NotificationContext'
+import { useDebugLog, DEBUG_CATEGORIES } from './DebugContext'
 import { getErrorSummary } from '../../utils/errorParser'
 
 const ConnectionContext = createContext(null)
@@ -8,6 +9,7 @@ const go = window.go?.main?.App
 
 export function ConnectionProvider({ children }) {
   const { notify } = useNotification()
+  const { log } = useDebugLog(DEBUG_CATEGORIES.CONNECTION)
 
   // Connection state
   const [connections, setConnections] = useState([])
@@ -46,14 +48,20 @@ export function ConnectionProvider({ children }) {
     if (connectingIds.has(connId)) return // This connection already in progress
     const conn = connections.find(c => c.id === connId)
     const connName = conn?.name || 'Unknown'
+    log(`Connecting to "${connName}"`, { connectionId: connId })
     setConnectingIds(prev => new Set(prev).add(connId))
+    const startTime = performance.now()
     try {
       if (go?.Connect) {
         await go.Connect(connId)
         setActiveConnections(prev => [...prev, connId])
+        const duration = Math.round(performance.now() - startTime)
+        log(`Connected to "${connName}" (${duration}ms)`, { connectionId: connId, duration })
         notify.success(`Connected to ${connName}`)
       }
     } catch (err) {
+      const duration = Math.round(performance.now() - startTime)
+      log(`Failed to connect to "${connName}" (${duration}ms)`, { connectionId: connId, error: err?.message || String(err), duration })
       console.error('Failed to connect:', err)
       notify.error(`${connName}: ${getErrorSummary(err?.message || String(err))}`)
     } finally {
@@ -63,20 +71,25 @@ export function ConnectionProvider({ children }) {
         return next
       })
     }
-  }, [connections, connectingIds, notify])
+  }, [connections, connectingIds, notify, log])
 
   const disconnect = useCallback(async (connId, onTabsClose) => {
+    const conn = connections.find(c => c.id === connId)
+    const connName = conn?.name || 'Unknown'
+    log(`Disconnecting from "${connName}"`, { connectionId: connId })
     try {
       if (go?.Disconnect) {
         await go.Disconnect(connId)
         setActiveConnections(prev => prev.filter(id => id !== connId))
+        log(`Disconnected from "${connName}"`, { connectionId: connId })
         onTabsClose?.(connId)
       }
     } catch (err) {
+      log(`Failed to disconnect from "${connName}"`, { connectionId: connId, error: err?.message || String(err) })
       console.error('Failed to disconnect:', err)
       notify.error(getErrorSummary(err?.message || String(err)))
     }
-  }, [notify])
+  }, [connections, notify, log])
 
   const disconnectAll = useCallback(async (onAllTabsClose) => {
     try {
@@ -108,19 +121,23 @@ export function ConnectionProvider({ children }) {
   }, [activeConnections, notify])
 
   const saveConnection = useCallback(async (conn, password) => {
+    const isNew = !conn.id
+    log(`${isNew ? 'Creating' : 'Updating'} connection "${conn.name}"`, { connectionId: conn.id, name: conn.name })
     try {
       if (go?.SaveConnection) {
         await go.SaveConnection(conn, password)
         await loadConnections()
+        log(`Connection "${conn.name}" saved`, { connectionId: conn.id })
         notify.success('Connection saved')
         return true
       }
     } catch (err) {
+      log(`Failed to save connection "${conn.name}"`, { connectionId: conn.id, error: err?.message || String(err) })
       console.error('Failed to save connection:', err)
       notify.error(getErrorSummary(err?.message || String(err)))
     }
     return false
-  }, [loadConnections, notify])
+  }, [loadConnections, notify, log])
 
   const deleteConnection = useCallback(async (connId) => {
     try {

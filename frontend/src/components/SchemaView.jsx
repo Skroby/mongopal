@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { useNotification } from './NotificationContext'
+import { useConnection } from './contexts/ConnectionContext'
+import { useTab } from './contexts/TabContext'
 import { toJsonSchema, getTypeColor, getOccurrenceColor } from '../utils/schemaUtils'
 
 const go = window.go?.main?.App
@@ -118,14 +120,23 @@ function SchemaFieldNode({ name, field, level = 0, defaultExpanded = true }) {
 
 export default function SchemaView({ connectionId, database, collection }) {
   const { notify } = useNotification()
+  const { activeConnections, connect, connectingIds } = useConnection()
+  const { currentTab, markTabActivated } = useTab()
+
+  const isConnected = activeConnections.includes(connectionId)
+  const isConnecting = connectingIds.has(connectionId)
+  const isRestoredTab = currentTab?.restored === true
+
   const [schema, setSchema] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [sampleSize, setSampleSize] = useState(10)
   const [viewMode, setViewMode] = useState('tree') // 'tree' | 'json' | 'jsonschema'
   const [progress, setProgress] = useState(null) // { current, total, phase }
 
   const loadSchema = async () => {
+    if (!isConnected) return
+
     setLoading(true)
     setError(null)
     setProgress(null)
@@ -151,9 +162,11 @@ export default function SchemaView({ connectionId, database, collection }) {
     return () => unsub?.()
   }, [])
 
+  // Load schema on mount, but skip if not connected or restored tab
   useEffect(() => {
+    if (!isConnected || isConnecting || isRestoredTab) return
     loadSchema()
-  }, [connectionId, database, collection])
+  }, [connectionId, database, collection, isConnected, isConnecting, isRestoredTab])
 
   const handleExport = async () => {
     if (!schema) return
@@ -184,6 +197,55 @@ export default function SchemaView({ connectionId, database, collection }) {
 
   const handleRefresh = () => {
     loadSchema()
+  }
+
+  // Connection states
+  if (!isConnected && !isConnecting) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+        <svg className="w-12 h-12 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+        </svg>
+        <span>Not connected to database</span>
+        <button
+          onClick={() => connect(connectionId)}
+          className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium"
+        >
+          Connect
+        </button>
+      </div>
+    )
+  }
+
+  if (isConnecting) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-3">
+        <div className="animate-spin rounded-full h-5 w-5 border-2 border-zinc-600 border-t-accent"></div>
+        <span>Connecting to database...</span>
+      </div>
+    )
+  }
+
+  // Restored tab - prompt to analyze
+  if (isRestoredTab && !schema && !loading && !error) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+        <svg className="w-12 h-12 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+        <span>Session restored</span>
+        <p className="text-sm text-zinc-500">Click to analyze collection schema</p>
+        <button
+          onClick={() => {
+            markTabActivated(currentTab?.id)
+            loadSchema()
+          }}
+          className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium"
+        >
+          Analyze Schema
+        </button>
+      </div>
+    )
   }
 
   if (loading) {

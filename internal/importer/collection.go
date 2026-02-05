@@ -262,7 +262,9 @@ func (s *Service) ImportCollections(connID, dbName string, opts types.ImportOpti
 	// Create cancellable context
 	importCtx, importCancel := context.WithCancel(context.Background())
 	s.state.SetImportCancel(importCancel)
+	s.state.ResetImportPause() // Reset pause state at start
 	defer s.state.ClearImportCancel()
+	defer s.state.ResetImportPause()
 
 	result := &types.ImportResult{
 		Databases: []types.DatabaseImportResult{},
@@ -398,8 +400,14 @@ func (s *Service) ImportCollections(connID, dbName string, opts types.ImportOpti
 			var docCount int64
 
 			for scanner.Scan() {
-				// Check for cancellation
+				// Check for pause/cancellation
 				if docCount%100 == 0 {
+					// Wait if paused (also checks for cancellation)
+					if !s.state.WaitIfImportPaused(importCtx) {
+						cancelled = true
+						break
+					}
+					// Also check context directly
 					select {
 					case <-importCtx.Done():
 						cancelled = true

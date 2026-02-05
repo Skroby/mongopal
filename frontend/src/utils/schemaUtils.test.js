@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toJsonSchema, getTypeColor, getOccurrenceColor } from './schemaUtils'
+import { toJsonSchema, getTypeColor, getOccurrenceColor, extractFieldPathsFromDocs } from './schemaUtils'
 
 describe('getTypeColor', () => {
   it('returns green for String type', () => {
@@ -542,5 +542,182 @@ describe('toJsonSchema', () => {
         { type: 'null' }
       ]
     })
+  })
+})
+
+describe('extractFieldPathsFromDocs', () => {
+  it('returns empty set for empty array', () => {
+    const result = extractFieldPathsFromDocs([])
+    expect(result).toBeInstanceOf(Set)
+    expect(result.size).toBe(0)
+  })
+
+  it('extracts top-level field names', () => {
+    const docs = [
+      { name: 'John', age: 30, email: 'john@example.com' }
+    ]
+    const result = extractFieldPathsFromDocs(docs)
+    expect(result.has('name')).toBe(true)
+    expect(result.has('age')).toBe(true)
+    expect(result.has('email')).toBe(true)
+  })
+
+  it('extracts nested field paths', () => {
+    const docs = [
+      {
+        user: {
+          name: 'John',
+          address: {
+            city: 'NYC',
+            zip: '10001'
+          }
+        }
+      }
+    ]
+    const result = extractFieldPathsFromDocs(docs)
+    expect(result.has('user')).toBe(true)
+    expect(result.has('user.name')).toBe(true)
+    expect(result.has('user.address')).toBe(true)
+    expect(result.has('user.address.city')).toBe(true)
+    expect(result.has('user.address.zip')).toBe(true)
+  })
+
+  it('merges fields from multiple documents', () => {
+    const docs = [
+      { name: 'John', age: 30 },
+      { name: 'Jane', email: 'jane@example.com' },
+      { name: 'Bob', phone: '555-1234' }
+    ]
+    const result = extractFieldPathsFromDocs(docs)
+    expect(result.has('name')).toBe(true)
+    expect(result.has('age')).toBe(true)
+    expect(result.has('email')).toBe(true)
+    expect(result.has('phone')).toBe(true)
+  })
+
+  it('skips MongoDB extended JSON type wrappers ($ keys)', () => {
+    const docs = [
+      {
+        _id: { $oid: '507f1f77bcf86cd799439011' },
+        createdAt: { $date: '2023-01-01T00:00:00Z' },
+        amount: { $numberLong: '123456' }
+      }
+    ]
+    const result = extractFieldPathsFromDocs(docs)
+    expect(result.has('_id')).toBe(true)
+    expect(result.has('createdAt')).toBe(true)
+    expect(result.has('amount')).toBe(true)
+    // Should NOT have the $ wrapper keys
+    expect(result.has('$oid')).toBe(false)
+    expect(result.has('$date')).toBe(false)
+    expect(result.has('$numberLong')).toBe(false)
+    expect(result.has('_id.$oid')).toBe(false)
+  })
+
+  it('does not recurse into extended JSON objects', () => {
+    const docs = [
+      {
+        binary: { $binary: { base64: 'YWJj', subType: '00' } }
+      }
+    ]
+    const result = extractFieldPathsFromDocs(docs)
+    expect(result.has('binary')).toBe(true)
+    // Should NOT recurse into the extended JSON
+    expect(result.has('binary.base64')).toBe(false)
+    expect(result.has('binary.subType')).toBe(false)
+  })
+
+  it('does not recurse into arrays', () => {
+    const docs = [
+      {
+        tags: ['mongodb', 'database'],
+        items: [{ name: 'item1' }, { name: 'item2' }]
+      }
+    ]
+    const result = extractFieldPathsFromDocs(docs)
+    expect(result.has('tags')).toBe(true)
+    expect(result.has('items')).toBe(true)
+    // Should NOT have array indices or nested array object fields
+    expect(result.has('tags.0')).toBe(false)
+    expect(result.has('items.name')).toBe(false)
+  })
+
+  it('handles null and undefined values gracefully', () => {
+    const docs = [
+      { name: 'John', address: null, phone: undefined }
+    ]
+    const result = extractFieldPathsFromDocs(docs)
+    expect(result.has('name')).toBe(true)
+    expect(result.has('address')).toBe(true)
+    expect(result.has('phone')).toBe(true)
+  })
+
+  it('handles deeply nested structures', () => {
+    const docs = [
+      {
+        level1: {
+          level2: {
+            level3: {
+              level4: {
+                value: 'deep'
+              }
+            }
+          }
+        }
+      }
+    ]
+    const result = extractFieldPathsFromDocs(docs)
+    expect(result.has('level1')).toBe(true)
+    expect(result.has('level1.level2')).toBe(true)
+    expect(result.has('level1.level2.level3')).toBe(true)
+    expect(result.has('level1.level2.level3.level4')).toBe(true)
+    expect(result.has('level1.level2.level3.level4.value')).toBe(true)
+  })
+
+  it('handles mixed content documents', () => {
+    const docs = [
+      {
+        _id: { $oid: '507f1f77bcf86cd799439011' },
+        name: 'Test',
+        metadata: {
+          created: { $date: '2023-01-01T00:00:00Z' },
+          tags: ['a', 'b'],
+          author: {
+            name: 'Admin',
+            email: 'admin@example.com'
+          }
+        }
+      }
+    ]
+    const result = extractFieldPathsFromDocs(docs)
+    expect(result.has('_id')).toBe(true)
+    expect(result.has('name')).toBe(true)
+    expect(result.has('metadata')).toBe(true)
+    expect(result.has('metadata.created')).toBe(true)
+    expect(result.has('metadata.tags')).toBe(true)
+    expect(result.has('metadata.author')).toBe(true)
+    expect(result.has('metadata.author.name')).toBe(true)
+    expect(result.has('metadata.author.email')).toBe(true)
+    // Should NOT have extended JSON internals
+    expect(result.has('metadata.created.$date')).toBe(false)
+  })
+
+  it('handles empty objects', () => {
+    const docs = [
+      { name: 'Test', empty: {} }
+    ]
+    const result = extractFieldPathsFromDocs(docs)
+    expect(result.has('name')).toBe(true)
+    expect(result.has('empty')).toBe(true)
+  })
+
+  it('handles documents with only _id', () => {
+    const docs = [
+      { _id: '123' },
+      { _id: '456' }
+    ]
+    const result = extractFieldPathsFromDocs(docs)
+    expect(result.has('_id')).toBe(true)
+    expect(result.size).toBe(1)
   })
 })

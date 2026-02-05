@@ -2,14 +2,21 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/peternagy/mongopal/internal/connection"
 	"github.com/peternagy/mongopal/internal/core"
 	"github.com/peternagy/mongopal/internal/credential"
 	"github.com/peternagy/mongopal/internal/database"
+	"github.com/peternagy/mongopal/internal/debug"
 	"github.com/peternagy/mongopal/internal/document"
 	"github.com/peternagy/mongopal/internal/export"
 	"github.com/peternagy/mongopal/internal/importer"
+	"github.com/peternagy/mongopal/internal/performance"
 	"github.com/peternagy/mongopal/internal/schema"
 	"github.com/peternagy/mongopal/internal/script"
 	"github.com/peternagy/mongopal/internal/storage"
@@ -55,6 +62,7 @@ type CollectionsImportPreviewItem = types.CollectionsImportPreviewItem
 type ScriptResult = types.ScriptResult
 type CSVExportOptions = types.CSVExportOptions
 type SavedQuery = types.SavedQuery
+type PerformanceMetrics = performance.Metrics
 
 // =============================================================================
 // App - Thin Facade for Wails Bindings
@@ -62,19 +70,22 @@ type SavedQuery = types.SavedQuery
 
 // App struct holds the application state and services
 type App struct {
-	state      *core.AppState
-	storage    *storage.Service
-	credential *credential.Service
-	connStore  *storage.ConnectionService
-	folderSvc  *storage.FolderService
-	querySvc   *storage.QueryService
-	connection *connection.Service
-	database   *database.Service
-	document   *document.Service
-	schema     *schema.Service
-	export     *export.Service
-	importer   *importer.Service
-	script     *script.Service
+	state       *core.AppState
+	storage     *storage.Service
+	credential  *credential.Service
+	connStore   *storage.ConnectionService
+	folderSvc   *storage.FolderService
+	querySvc    *storage.QueryService
+	favoriteSvc *storage.FavoriteService
+	dbMetaSvc   *storage.DatabaseMetadataService
+	connection  *connection.Service
+	database    *database.Service
+	document    *document.Service
+	schema      *schema.Service
+	export      *export.Service
+	importer    *importer.Service
+	script      *script.Service
+	performance *performance.Service
 }
 
 // NewApp creates a new App instance
@@ -95,6 +106,9 @@ func (a *App) startup(ctx context.Context) {
 	a.state.Ctx = ctx
 	a.state.Emitter = &core.WailsEventEmitter{Ctx: ctx}
 
+	// Initialize debug logger
+	debug.Init(ctx)
+
 	// Initialize config directory and storage
 	configDir := storage.InitConfigDir()
 	a.storage = storage.NewService(configDir)
@@ -110,6 +124,8 @@ func (a *App) startup(ctx context.Context) {
 	a.connStore = storage.NewConnectionService(a.state, a.storage, a.credential)
 	a.folderSvc = storage.NewFolderService(a.state, a.storage)
 	a.querySvc = storage.NewQueryService(configDir)
+	a.favoriteSvc = storage.NewFavoriteService(configDir)
+	a.dbMetaSvc = storage.NewDatabaseMetadataService(configDir)
 	a.connection = connection.NewService(a.state, a.connStore)
 	a.database = database.NewService(a.state)
 	a.document = document.NewService(a.state)
@@ -117,6 +133,7 @@ func (a *App) startup(ctx context.Context) {
 	a.export = export.NewService(a.state, a.connStore)
 	a.importer = importer.NewService(a.state, a.connStore)
 	a.script = script.NewService(a.connStore)
+	a.performance = performance.NewService(a.state)
 }
 
 // shutdown is called when the app is closing
@@ -169,7 +186,15 @@ func (a *App) GetSavedConnection(connID string) (SavedConnection, error) {
 }
 
 func (a *App) DeleteSavedConnection(connID string) error {
-	return a.connStore.DeleteSavedConnection(connID)
+	// Delete the connection
+	if err := a.connStore.DeleteSavedConnection(connID); err != nil {
+		return err
+	}
+	// Clean up associated data (ignore errors, these are secondary)
+	_ = a.favoriteSvc.RemoveFavoritesForConnection(connID)
+	_ = a.dbMetaSvc.RemoveMetadataForConnection(connID)
+	_ = a.querySvc.DeleteQueriesForConnection(connID)
+	return nil
 }
 
 func (a *App) DuplicateConnection(connID, newName string) (SavedConnection, error) {
@@ -221,7 +246,30 @@ func (a *App) MoveConnectionToFolder(connID, folderID string) error {
 // =============================================================================
 
 func (a *App) ListDatabases(connID string) ([]DatabaseInfo, error) {
-	return a.database.ListDatabases(connID)
+	databases, err := a.database.ListDatabases(connID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Collect database names for cleanup
+	dbNames := make([]string, len(databases))
+	for i, db := range databases {
+		dbNames[i] = db.Name
+	}
+
+	// Cleanup stale database metadata (databases that no longer exist)
+	_ = a.dbMetaSvc.CleanupStaleDatabases(connID, dbNames)
+
+	// Enrich with LastAccessedAt from metadata
+	for i := range databases {
+		databases[i].LastAccessedAt = a.dbMetaSvc.GetDatabaseLastAccessed(connID, databases[i].Name)
+	}
+
+	return databases, nil
+}
+
+func (a *App) UpdateDatabaseAccessed(connID, dbName string) error {
+	return a.dbMetaSvc.UpdateDatabaseAccessed(connID, dbName)
 }
 
 func (a *App) ListCollections(connID, dbName string) ([]CollectionInfo, error) {
@@ -320,6 +368,18 @@ func (a *App) CancelExport() {
 	a.export.CancelExport()
 }
 
+func (a *App) PauseExport() {
+	a.export.PauseExport()
+}
+
+func (a *App) ResumeExport() {
+	a.export.ResumeExport()
+}
+
+func (a *App) IsExportPaused() bool {
+	return a.export.IsExportPaused()
+}
+
 func (a *App) ExportCollections(connID, dbName string, collNames []string) error {
 	return a.export.ExportCollections(connID, dbName, collNames)
 }
@@ -358,6 +418,18 @@ func (a *App) ImportDatabases(connID string, opts ImportOptions) (*ImportResult,
 
 func (a *App) CancelImport() {
 	a.importer.CancelImport()
+}
+
+func (a *App) PauseImport() {
+	a.importer.PauseImport()
+}
+
+func (a *App) ResumeImport() {
+	a.importer.ResumeImport()
+}
+
+func (a *App) IsImportPaused() bool {
+	return a.importer.IsImportPaused()
 }
 
 func (a *App) PreviewCollectionsImportFile() (*CollectionsImportPreview, error) {
@@ -406,4 +478,82 @@ func (a *App) ListSavedQueries(connectionID, database, collection string) ([]Sav
 
 func (a *App) DeleteSavedQuery(queryID string) error {
 	return a.querySvc.DeleteQuery(queryID)
+}
+
+// =============================================================================
+// Performance Methods
+// =============================================================================
+
+func (a *App) GetPerformanceMetrics() *PerformanceMetrics {
+	return a.performance.GetMetrics()
+}
+
+func (a *App) ForceGC() {
+	a.performance.ForceGC()
+}
+
+// =============================================================================
+// Debug Methods
+// =============================================================================
+
+func (a *App) SetDebugEnabled(enabled bool) {
+	debug.SetEnabled(enabled)
+}
+
+func (a *App) SaveDebugLogs(jsonContent, defaultFilename string) error {
+	filePath, err := runtime.SaveFileDialog(a.state.Ctx, runtime.SaveDialogOptions{
+		DefaultFilename: defaultFilename,
+		Title:           "Save Debug Logs",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to open save dialog: %w", err)
+	}
+	if filePath == "" {
+		return nil // User cancelled
+	}
+
+	if !strings.HasSuffix(strings.ToLower(filePath), ".json") {
+		filePath += ".json"
+	}
+
+	if err := os.WriteFile(filePath, []byte(jsonContent), 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
+}
+
+// =============================================================================
+// Collection Favorites Methods
+// =============================================================================
+
+func (a *App) AddFavorite(connID, dbName, collName string) error {
+	return a.favoriteSvc.AddFavorite(connID, dbName, collName)
+}
+
+func (a *App) RemoveFavorite(connID, dbName, collName string) error {
+	return a.favoriteSvc.RemoveFavorite(connID, dbName, collName)
+}
+
+func (a *App) ListFavorites() []string {
+	return a.favoriteSvc.ListFavorites()
+}
+
+// =============================================================================
+// Database Favorites Methods
+// =============================================================================
+
+func (a *App) AddDatabaseFavorite(connID, dbName string) error {
+	return a.favoriteSvc.AddDatabaseFavorite(connID, dbName)
+}
+
+func (a *App) RemoveDatabaseFavorite(connID, dbName string) error {
+	return a.favoriteSvc.RemoveDatabaseFavorite(connID, dbName)
+}
+
+func (a *App) ListDatabaseFavorites() []string {
+	return a.favoriteSvc.ListDatabaseFavorites()
 }

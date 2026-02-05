@@ -111,3 +111,41 @@ export function toJsonSchema(schemaResult) {
 
   return jsonSchema
 }
+
+/**
+ * Extract all field paths from documents, including nested paths.
+ * Used for progressive schema enrichment from query results.
+ * @param {Array<Object>} docs - Array of documents
+ * @returns {Set<string>} Set of field paths (e.g., 'name', 'address.city')
+ */
+export function extractFieldPathsFromDocs(docs) {
+  const fieldPaths = new Set()
+
+  function traverse(obj, prefix = '') {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return
+
+    for (const [key, value] of Object.entries(obj)) {
+      // Skip MongoDB extended JSON type wrappers
+      if (key.startsWith('$')) continue
+
+      const fullPath = prefix ? `${prefix}.${key}` : key
+      fieldPaths.add(fullPath)
+
+      // Recurse into nested objects (but not arrays or extended JSON)
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        // Check if it's an extended JSON type (has $ keys)
+        const keys = Object.keys(value)
+        const isExtendedJson = keys.length > 0 && keys.every(k => k.startsWith('$'))
+        if (!isExtendedJson) {
+          traverse(value, fullPath)
+        }
+      }
+    }
+  }
+
+  for (const doc of docs) {
+    traverse(doc)
+  }
+
+  return fieldPaths
+}

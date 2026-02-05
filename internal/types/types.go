@@ -47,9 +47,10 @@ type ConnectionStatus struct {
 
 // DatabaseInfo describes a MongoDB database.
 type DatabaseInfo struct {
-	Name       string `json:"name"`
-	SizeOnDisk int64  `json:"sizeOnDisk"`
-	Empty      bool   `json:"empty"`
+	Name           string    `json:"name"`
+	SizeOnDisk     int64     `json:"sizeOnDisk"`
+	Empty          bool      `json:"empty"`
+	LastAccessedAt time.Time `json:"lastAccessedAt,omitempty"`
 }
 
 // CollectionInfo describes a MongoDB collection.

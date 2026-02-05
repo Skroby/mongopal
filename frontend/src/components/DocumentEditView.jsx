@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import Editor, { DiffEditor } from '@monaco-editor/react'
+import Editor from '@monaco-editor/react'
+import MonacoDiffEditor from './MonacoDiffEditor'
 import { useNotification } from './NotificationContext'
 import { useConnection } from './contexts/ConnectionContext'
 import { useTab } from './contexts/TabContext'
@@ -11,6 +12,106 @@ const go = window.go?.main?.App
 
 // Maximum number of history entries to keep
 const MAX_HISTORY_ENTRIES = 50
+
+// Recursively sort object keys for consistent comparison
+function sortObjectKeys(obj) {
+  if (obj === null || typeof obj !== 'object') {
+    return obj
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(sortObjectKeys)
+  }
+  const sorted = {}
+  // Sort keys alphabetically, but keep _id first if present
+  const keys = Object.keys(obj).sort((a, b) => {
+    if (a === '_id') return -1
+    if (b === '_id') return 1
+    return a.localeCompare(b)
+  })
+  for (const key of keys) {
+    sorted[key] = sortObjectKeys(obj[key])
+  }
+  return sorted
+}
+
+// Sort JSON string keys for consistent diff comparison
+// Returns original string if parsing fails (invalid JSON)
+function sortJsonString(jsonStr) {
+  try {
+    const parsed = JSON.parse(jsonStr)
+    return JSON.stringify(sortObjectKeys(parsed), null, 2)
+  } catch {
+    return jsonStr
+  }
+}
+
+// Compute a human-readable diff summary between two JSON documents
+// Returns a string like "updated name", "added 2 fields", "removed status, updated count"
+// Exported for testing
+export function computeDiffSummary(oldContent, newContent) {
+  try {
+    const oldDoc = typeof oldContent === 'string' ? JSON.parse(oldContent) : oldContent
+    const newDoc = typeof newContent === 'string' ? JSON.parse(newContent) : newContent
+
+    const added = []
+    const removed = []
+    const updated = []
+
+    // Get all keys from both documents (excluding _id which shouldn't change)
+    const oldKeys = new Set(Object.keys(oldDoc).filter(k => k !== '_id'))
+    const newKeys = new Set(Object.keys(newDoc).filter(k => k !== '_id'))
+
+    // Find added fields (in new but not in old)
+    for (const key of newKeys) {
+      if (!oldKeys.has(key)) {
+        added.push(key)
+      }
+    }
+
+    // Find removed fields (in old but not in new)
+    for (const key of oldKeys) {
+      if (!newKeys.has(key)) {
+        removed.push(key)
+      }
+    }
+
+    // Find updated fields (in both but with different values)
+    for (const key of oldKeys) {
+      if (newKeys.has(key)) {
+        const oldVal = JSON.stringify(sortObjectKeys(oldDoc[key]))
+        const newVal = JSON.stringify(sortObjectKeys(newDoc[key]))
+        if (oldVal !== newVal) {
+          updated.push(key)
+        }
+      }
+    }
+
+    // No changes
+    if (added.length === 0 && removed.length === 0 && updated.length === 0) {
+      return 'no changes'
+    }
+
+    // Build summary parts
+    const parts = []
+
+    // If total changes are small (≤2), show field names
+    const totalChanges = added.length + removed.length + updated.length
+    if (totalChanges <= 2) {
+      if (updated.length > 0) parts.push(`updated ${updated.join(', ')}`)
+      if (added.length > 0) parts.push(`added ${added.join(', ')}`)
+      if (removed.length > 0) parts.push(`removed ${removed.join(', ')}`)
+    } else {
+      // Many changes - show counts
+      if (updated.length > 0) parts.push(`${updated.length} updated`)
+      if (added.length > 0) parts.push(`${added.length} added`)
+      if (removed.length > 0) parts.push(`${removed.length} removed`)
+    }
+
+    return parts.join(', ')
+  } catch {
+    return 'changes detected'
+  }
+}
 
 // Icons
 const SaveIcon = ({ className = "w-4 h-4" }) => (
@@ -126,11 +227,12 @@ export default function DocumentEditView({
   const [documentNotFound, setDocumentNotFound] = useState(false)
 
   // Edit history state
-  const [editHistory, setEditHistory] = useState([]) // Array of { content, timestamp }
+  const [editHistory, setEditHistory] = useState([]) // Array of { content, timestamp } - previous saves (not current)
   const [baselineEntry, setBaselineEntry] = useState(null) // Original document state
+  const [hasSavedOnce, setHasSavedOnce] = useState(false) // Track if at least one save occurred
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false)
   const [previewHistoryIndex, setPreviewHistoryIndex] = useState(null)
-  const lastSavedContentRef = useRef('')
+  const [historyDiffSideBySide, setHistoryDiffSideBySide] = useState(true)
   const baselineSetRef = useRef(false) // Track if baseline has been set for this document
   const lastDocumentIdRef = useRef(documentId) // Track document ID to detect changes
 
@@ -157,51 +259,101 @@ export default function DocumentEditView({
     return () => window.document.removeEventListener('mousedown', handleClickOutside)
   }, [showHistoryDropdown])
 
-  // Add to history when content changes significantly (debounced)
+  // Generate storage key for document history
+  const getHistoryStorageKey = () => {
+    const docIdStr = typeof documentId === 'object'
+      ? JSON.stringify(documentId)
+      : String(documentId)
+    return `mongopal:history:${connectionId}:${database}:${collection}:${docIdStr}`
+  }
+
+  // Load history from storage on mount
   useEffect(() => {
-    if (!content || content === lastSavedContentRef.current) return
+    if (!connectionId || !database || !collection || !documentId) return
 
-    const timer = setTimeout(() => {
-      // Only add if content has changed from last saved state
-      if (content !== lastSavedContentRef.current) {
-        setEditHistory(prev => {
-          // Don't add duplicate entries
-          if (prev.length > 0 && prev[0].content === content) {
-            return prev
-          }
-          const newEntry = {
-            content,
-            timestamp: Date.now(),
-          }
-          // Keep one slot for baseline, so limit to MAX_HISTORY_ENTRIES - 1
-          return [newEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES - 1)
-        })
-        lastSavedContentRef.current = content
+    try {
+      const key = getHistoryStorageKey()
+      const stored = sessionStorage.getItem(key)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setEditHistory(parsed)
+          setHasSavedOnce(true) // History exists, so saves occurred
+        }
       }
-    }, 2000) // Add to history after 2 seconds of inactivity
+    } catch (err) {
+      console.warn('[DocumentEditView] Failed to load history from storage:', err)
+    }
+  }, [connectionId, database, collection, documentId])
 
-    return () => clearTimeout(timer)
-  }, [content])
+  // Save history to storage when it changes
+  useEffect(() => {
+    if (!connectionId || !database || !collection || !documentId) return
+    if (editHistory.length === 0) return
 
-  // Format timestamp for display
+    try {
+      const key = getHistoryStorageKey()
+      sessionStorage.setItem(key, JSON.stringify(editHistory))
+    } catch (err) {
+      console.warn('[DocumentEditView] Failed to save history to storage:', err)
+    }
+  }, [editHistory, connectionId, database, collection, documentId])
+
+  // Add saved content to history (called from handleSave after successful save)
+  const addToHistory = (savedContent) => {
+    if (!savedContent) return
+
+    setEditHistory(prev => {
+      // Don't add duplicate entries (same content as most recent save)
+      if (prev.length > 0 && prev[0].content === savedContent) {
+        return prev
+      }
+      const newEntry = {
+        content: savedContent,
+        timestamp: Date.now(),
+      }
+      // Keep one slot for baseline, so limit to MAX_HISTORY_ENTRIES - 1
+      return [newEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES - 1)
+    })
+  }
+
+  // Format timestamp for display - returns { relative, exact } for tooltip support
   const formatTimestamp = (ts) => {
     const date = new Date(ts)
     const now = new Date()
     const diffMs = now - date
     const diffMins = Math.floor(diffMs / 60000)
     const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
 
-    if (diffMins < 1) return 'Just now'
-    if (diffMins < 60) return `${diffMins} min ago`
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
-    return date.toLocaleTimeString()
+    let relative
+    if (diffMins < 1) relative = 'Just now'
+    else if (diffMins < 60) relative = `${diffMins}m ago`
+    else if (diffHours < 24) relative = `${diffHours}h ago`
+    else if (diffDays < 7) relative = `${diffDays}d ago`
+    else relative = date.toLocaleDateString()
+
+    const exact = date.toLocaleString()
+    return { relative, exact }
   }
 
-  // Combined history entries including baseline at the end
+  // Get version label for history entry (V2, V3, etc. - Baseline is handled separately)
+  const getVersionLabel = (index, total) => {
+    // Index 0 is most recent save, last entry is baseline
+    // Version numbers: most recent = highest version
+    // V2 is first save after baseline, V3 is second save, etc.
+    const version = total - index
+    return `V${version}`
+  }
+
+  // Combined history entries - only include baseline if there are saved versions
+  // (baseline only makes sense to show when you have something to compare/revert from)
   const allHistoryEntries = useMemo(() => {
     if (!baselineEntry) return editHistory
+    // Only show history (including baseline) after at least one save
+    if (!hasSavedOnce) return []
     return [...editHistory, baselineEntry]
-  }, [editHistory, baselineEntry])
+  }, [editHistory, baselineEntry, hasSavedOnce])
 
   // Revert to a history entry
   const revertToHistory = (index) => {
@@ -255,8 +407,7 @@ export default function DocumentEditView({
       // Set baseline only once for insert mode
       if (!baselineSetRef.current) {
         setBaselineEntry({ content: initial, timestamp: Date.now(), isBaseline: true })
-        setEditHistory([])
-        lastSavedContentRef.current = initial
+        // Note: don't clear editHistory here - it may have been loaded from storage
         baselineSetRef.current = true
       }
     } else if (effectiveDocument) {
@@ -267,8 +418,7 @@ export default function DocumentEditView({
       // Set baseline only once when document first loads
       if (!baselineSetRef.current) {
         setBaselineEntry({ content: formatted, timestamp: Date.now(), isBaseline: true })
-        setEditHistory([])
-        lastSavedContentRef.current = formatted
+        // Note: don't clear editHistory here - it may have been loaded from storage
         baselineSetRef.current = true
       }
     }
@@ -397,6 +547,12 @@ export default function DocumentEditView({
       if (go?.UpdateDocument) {
         await go.UpdateDocument(connectionId, database, collection, documentId, currentContent)
         notify.success('Document saved')
+        // Add the PREVIOUS saved version to history (what we're replacing)
+        // Don't add if it's the baseline (that's shown separately in history)
+        if (originalContent && originalContent !== baselineEntry?.content) {
+          addToHistory(originalContent)
+        }
+        setHasSavedOnce(true)
         setOriginalContent(currentContent)
         setHasChanges(false)
         setSaving(false)
@@ -555,42 +711,131 @@ export default function DocumentEditView({
                     <div className="px-3 py-2 border-b border-zinc-700 text-xs text-zinc-400 sticky top-0 bg-zinc-800">
                       Edit History - Click to preview, double-click to revert
                     </div>
-                    {allHistoryEntries.map((entry, idx) => (
-                      <button
-                        key={idx}
-                        className={`w-full px-3 py-2 text-left text-sm border-b border-zinc-700 last:border-0 hover:bg-zinc-700 flex items-center justify-between ${previewHistoryIndex === idx ? 'bg-zinc-600' : ''}`}
-                        onClick={() => setPreviewHistoryIndex(previewHistoryIndex === idx ? null : idx)}
-                        onDoubleClick={() => revertToHistory(idx)}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="text-zinc-300 flex items-center gap-2">
-                            {entry.isBaseline ? (
-                              <span className="text-amber-400">Baseline</span>
-                            ) : (
-                              formatTimestamp(entry.timestamp)
-                            )}
+                    {allHistoryEntries.map((entry, idx) => {
+                      const ts = entry.isBaseline ? null : formatTimestamp(entry.timestamp)
+                      const versionLabel = entry.isBaseline ? 'Baseline' : getVersionLabel(idx, allHistoryEntries.length)
+                      return (
+                        <button
+                          key={idx}
+                          className={`w-full px-3 py-2 text-left text-sm border-b border-zinc-700 last:border-0 hover:bg-zinc-700 ${previewHistoryIndex === idx ? 'bg-zinc-600' : ''}`}
+                          onClick={() => {
+                            const newIndex = previewHistoryIndex === idx ? null : idx
+                            setPreviewHistoryIndex(newIndex)
+                            // Close dropdown when opening preview
+                            if (newIndex !== null) {
+                              setShowHistoryDropdown(false)
+                            }
+                          }}
+                          onDoubleClick={() => revertToHistory(idx)}
+                          title={ts ? ts.exact : 'Original document state'}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className={entry.isBaseline ? 'text-amber-400 font-medium' : 'text-zinc-300'}>
+                              {versionLabel}
+                            </span>
+                            <span className="text-xs text-zinc-500">
+                              {ts ? ts.relative : ''}
+                            </span>
                           </div>
-                          <div className="text-xs text-zinc-500 truncate">
-                            {entry.content.slice(0, 50)}...
+                          <div className="text-xs text-zinc-500 truncate mt-0.5">
+                            {computeDiffSummary(entry.content, content)}
                           </div>
-                        </div>
-                        {previewHistoryIndex === idx && (
-                          <button
-                            className="ml-2 p-1 hover:bg-zinc-600 rounded flex items-center gap-1 text-xs text-accent"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              revertToHistory(idx)
-                            }}
-                            title="Revert to this state"
-                          >
-                            <RevertIcon className="w-3.5 h-3.5" />
-                            Revert
-                          </button>
-                        )}
-                      </button>
-                    ))}
+                          {previewHistoryIndex === idx && (
+                            <div className="mt-1 flex justify-end">
+                              <button
+                                className="p-1 hover:bg-zinc-600 rounded flex items-center gap-1 text-xs text-accent"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  revertToHistory(idx)
+                                }}
+                                title="Revert to this state"
+                              >
+                                <RevertIcon className="w-3.5 h-3.5" />
+                                Revert
+                              </button>
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
+
+                {/* History diff preview */}
+                {previewHistoryIndex !== null && allHistoryEntries[previewHistoryIndex] && (() => {
+                  const previewEntry = allHistoryEntries[previewHistoryIndex]
+                  const previewTs = previewEntry.isBaseline ? null : formatTimestamp(previewEntry.timestamp)
+                  const previewVersionLabel = previewEntry.isBaseline ? 'Baseline' : getVersionLabel(previewHistoryIndex, allHistoryEntries.length)
+                  return (
+                  <div className="fixed inset-0 bg-black/70 z-40 flex items-center justify-center p-4" onClick={() => setPreviewHistoryIndex(null)}>
+                    <div className="w-full max-w-5xl h-[70vh] bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex-shrink-0 px-4 py-3 border-b border-zinc-700 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-sm font-medium text-zinc-200">History Preview</h3>
+                          <span className="text-xs text-zinc-500" title={previewTs ? previewTs.exact : 'Original document state'}>
+                            {previewVersionLabel}{previewTs ? ` (${previewTs.relative})` : ''} vs Current
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {/* View mode toggle */}
+                          <div className="flex items-center bg-zinc-800 rounded-md p-0.5">
+                            <button
+                              className={`p-1 rounded text-xs ${historyDiffSideBySide ? 'bg-zinc-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                              onClick={() => setHistoryDiffSideBySide(true)}
+                              title="Side by side"
+                            >
+                              Side
+                            </button>
+                            <button
+                              className={`p-1 rounded text-xs ${!historyDiffSideBySide ? 'bg-zinc-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                              onClick={() => setHistoryDiffSideBySide(false)}
+                              title="Stacked"
+                            >
+                              Stacked
+                            </button>
+                          </div>
+                          <button
+                            className="btn btn-primary text-xs flex items-center gap-1"
+                            onClick={() => revertToHistory(previewHistoryIndex)}
+                          >
+                            <RevertIcon className="w-3.5 h-3.5" />
+                            Restore this version
+                          </button>
+                          <button
+                            className="icon-btn p-1.5 hover:bg-zinc-700"
+                            onClick={() => setPreviewHistoryIndex(null)}
+                            title="Close preview (Escape)"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      {historyDiffSideBySide && (
+                        <div className="flex-shrink-0 flex border-b border-zinc-700 text-xs text-zinc-400">
+                          <div className="flex-1 px-4 py-1.5 border-r border-zinc-700 bg-red-900/10">
+                            <span className="text-red-400">Previous</span>
+                            <span className="ml-2">{previewVersionLabel}{previewTs ? ` (${previewTs.relative})` : ''}</span>
+                          </div>
+                          <div className="flex-1 px-4 py-1.5 bg-green-900/10">
+                            <span className="text-green-400">Current</span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex-1 overflow-hidden">
+                        <MonacoDiffEditor
+                          key={`diff-${previewHistoryIndex}-${historyDiffSideBySide}`}
+                          original={sortJsonString(previewEntry.content)}
+                          modified={sortJsonString(content)}
+                          language="json"
+                          renderSideBySide={historyDiffSideBySide}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  )
+                })()}
               </div>
 
               <button

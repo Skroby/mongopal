@@ -7,6 +7,8 @@ import {
   extractColumns,
   columnHasExpandableObjects,
   getDefaultColumnWidth,
+  loadHiddenColumns,
+  saveHiddenColumns,
 } from '../utils/tableViewUtils'
 import { loadSettings } from './Settings'
 
@@ -16,6 +18,9 @@ const BUFFER_ROWS = 10 // Number of rows to render above/below viewport
 
 // localStorage key for frozen columns per collection
 const FROZEN_COLUMNS_KEY = 'mongopal-frozen-columns'
+
+// localStorage key for masked columns per collection
+const MASKED_COLUMNS_KEY = 'mongopal-masked-columns'
 
 // Load frozen columns from localStorage for a specific collection
 function loadFrozenColumns(connectionId, database, collection) {
@@ -42,6 +47,34 @@ function saveFrozenColumns(connectionId, database, collection, frozenColumns) {
     localStorage.setItem(FROZEN_COLUMNS_KEY, JSON.stringify(data))
   } catch (err) {
     console.error('Failed to save frozen columns:', err)
+  }
+}
+
+// Load masked columns from localStorage for a specific collection
+export function loadMaskedColumns(connectionId, database, collection) {
+  try {
+    const stored = localStorage.getItem(MASKED_COLUMNS_KEY)
+    if (stored) {
+      const data = JSON.parse(stored)
+      const key = `${connectionId}:${database}:${collection}`
+      return new Set(data[key] || [])
+    }
+  } catch (err) {
+    console.error('Failed to load masked columns:', err)
+  }
+  return new Set()
+}
+
+// Save masked columns to localStorage for a specific collection
+export function saveMaskedColumns(connectionId, database, collection, maskedColumns) {
+  try {
+    const stored = localStorage.getItem(MASKED_COLUMNS_KEY)
+    const data = stored ? JSON.parse(stored) : {}
+    const key = `${connectionId}:${database}:${collection}`
+    data[key] = Array.from(maskedColumns)
+    localStorage.setItem(MASKED_COLUMNS_KEY, JSON.stringify(data))
+  } catch (err) {
+    console.error('Failed to save masked columns:', err)
   }
 }
 
@@ -139,6 +172,25 @@ const UnfreezeIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
+// EyeOffIcon used for both masking and hiding columns
+const EyeOffIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+  </svg>
+)
+// Alias for field masking feature
+const MaskIcon = EyeOffIcon
+
+const UnmaskIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+  </svg>
+)
+
+// Masked value display constant
+const MASKED_VALUE_DISPLAY = '\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF' // 8 filled circles
+
 export default function TableView({
   documents,
   onEdit,
@@ -152,6 +204,9 @@ export default function TableView({
   connectionId = '',
   database = '',
   collection = '',
+  hiddenColumns = new Set(),
+  onHiddenColumnsChange = () => {},
+  allAvailableColumns = [],
 }) {
   const [expandedColumns, setExpandedColumns] = useState(new Set())
   const rawColumns = useMemo(() => extractColumns(documents, expandedColumns), [documents, expandedColumns])
@@ -186,12 +241,38 @@ export default function TableView({
     setFrozenColumns(loaded)
   }, [connectionId, database, collection, settings.freezeIdColumn])
 
-  // Reorder columns so frozen columns appear first (Issue #4)
+  // Masked columns state - per collection persistence
+  const [maskedColumns, setMaskedColumns] = useState(() => {
+    return loadMaskedColumns(connectionId, database, collection)
+  })
+
+  // Reload masked columns when collection changes
+  useEffect(() => {
+    setMaskedColumns(loadMaskedColumns(connectionId, database, collection))
+  }, [connectionId, database, collection])
+
+  // Toggle mask on a column
+  const toggleMaskColumn = useCallback((column) => {
+    setMaskedColumns(prev => {
+      const next = new Set(prev)
+      if (next.has(column)) {
+        next.delete(column)
+      } else {
+        next.add(column)
+      }
+      saveMaskedColumns(connectionId, database, collection, next)
+      return next
+    })
+  }, [connectionId, database, collection])
+
+  // Reorder columns: filter out hidden, then put frozen first (Issue #4)
   const columns = useMemo(() => {
-    const frozen = rawColumns.filter(col => frozenColumns.has(col))
-    const unfrozen = rawColumns.filter(col => !frozenColumns.has(col))
+    // Filter out hidden columns for display (UI-side hiding for instant feedback)
+    const visible = rawColumns.filter(col => !hiddenColumns.has(col))
+    const frozen = visible.filter(col => frozenColumns.has(col))
+    const unfrozen = visible.filter(col => !frozenColumns.has(col))
     return [...frozen, ...unfrozen]
-  }, [rawColumns, frozenColumns])
+  }, [rawColumns, frozenColumns, hiddenColumns])
 
   // Toggle freeze on a column
   const toggleFreezeColumn = useCallback((column) => {
@@ -206,6 +287,29 @@ export default function TableView({
       return next
     })
   }, [connectionId, database, collection])
+
+  // Hide a column
+  const hideColumn = useCallback((column) => {
+    const next = new Set(hiddenColumns)
+    next.add(column)
+    onHiddenColumnsChange(next)
+  }, [hiddenColumns, onHiddenColumnsChange])
+
+  // Toggle column visibility
+  const toggleColumnVisibility = useCallback((column) => {
+    const next = new Set(hiddenColumns)
+    if (next.has(column)) {
+      next.delete(column)
+    } else {
+      next.add(column)
+    }
+    onHiddenColumnsChange(next)
+  }, [hiddenColumns, onHiddenColumnsChange])
+
+  // Show all hidden columns
+  const showAllColumns = useCallback(() => {
+    onHiddenColumnsChange(new Set())
+  }, [onHiddenColumnsChange])
 
   // Virtual scrolling state
   const [scrollTop, setScrollTop] = useState(0)
@@ -528,25 +632,28 @@ export default function TableView({
 
   if (documents.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-zinc-400">
-        No documents to display
+      <div className="h-full flex flex-col">
+        <div className="flex-1 flex items-center justify-center text-zinc-400">
+          No documents to display
+        </div>
       </div>
     )
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="h-full overflow-auto"
-      onScroll={handleScroll}
-    >
-      <div style={{ height: totalHeight, position: 'relative' }}>
-        <table
-          className="text-sm table-fixed"
-          role="grid"
-          aria-label="Documents table"
-          style={{ position: 'sticky', top: 0, zIndex: 20, width: totalTableWidth }}
-        >
+    <div className="h-full flex flex-col">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-auto"
+        onScroll={handleScroll}
+      >
+        <div style={{ height: totalHeight, position: 'relative' }}>
+          <table
+            className="text-sm table-fixed"
+            role="grid"
+            aria-label="Documents table"
+            style={{ position: 'sticky', top: 0, zIndex: 20, width: totalTableWidth }}
+          >
           {/* Colgroup to enforce column widths */}
           <colgroup>
             <col style={{ width: 52 }} />
@@ -578,6 +685,7 @@ export default function TableView({
                 const displayName = isSub ? col.split('.').pop() : col
                 const parentCol = isSub ? getParentColumn(col) : null
                 const isFrozen = frozenColumns.has(col)
+                const isMasked = maskedColumns.has(col)
                 const frozenOffset = isFrozen ? frozenColumnOffsets[col] : undefined
 
                 return (
@@ -603,8 +711,14 @@ export default function TableView({
                         <CollapseIcon className="w-3 h-3" />
                       </button>
                     )}
+                    {/* Masked column indicator */}
+                    {isMasked && (
+                      <span title="Column is masked">
+                        <MaskIcon className="w-3 h-3 text-amber-400" />
+                      </span>
+                    )}
                     {/* Column name */}
-                    <span className={isSub ? 'text-zinc-400' : ''}>{isSub ? `↳ ${displayName}` : displayName}</span>
+                    <span className={`${isSub ? 'text-zinc-400' : ''} ${isMasked ? 'text-amber-400/80' : ''}`}>{isSub ? `↳ ${displayName}` : displayName}</span>
                     {/* Expand button for expandable columns */}
                     {canExpand && !isExpanded && (
                       <button
@@ -685,6 +799,7 @@ export default function TableView({
                         const cellValue = getNestedValue(doc, col)
                         const isSub = isSubColumn(col)
                         const isFrozen = frozenColumns.has(col)
+                        const isMasked = maskedColumns.has(col)
                         const frozenOffset = isFrozen ? frozenColumnOffsets[col] : undefined
                         return (
                         <td
@@ -697,7 +812,11 @@ export default function TableView({
                           }}
                           onContextMenu={(e) => handleContextMenu(e, doc, col, cellValue)}
                         >
-                          {formatValue(cellValue)}
+                          {isMasked ? (
+                            <span className="text-zinc-500 select-none" title="Value is masked">{MASKED_VALUE_DISPLAY}</span>
+                          ) : (
+                            formatValue(cellValue)
+                          )}
                         </td>
                         )
                       })}
@@ -831,7 +950,7 @@ export default function TableView({
         </div>
       )}
 
-      {/* Header Context Menu (Column Freeze) */}
+      {/* Header Context Menu (Column Freeze & Mask) */}
       {headerContextMenu && (
         <div
           ref={headerMenuRef}
@@ -843,6 +962,41 @@ export default function TableView({
             top: headerContextMenu.y,
           }}
         >
+          {/* Mask/Unmask Column */}
+          <button
+            role="menuitem"
+            className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
+            onClick={() => {
+              toggleMaskColumn(headerContextMenu.column)
+              setHeaderContextMenu(null)
+            }}
+          >
+            {maskedColumns.has(headerContextMenu.column) ? (
+              <>
+                <UnmaskIcon className="w-4 h-4 text-zinc-400" />
+                Unmask Column
+              </>
+            ) : (
+              <>
+                <MaskIcon className="w-4 h-4 text-zinc-400" />
+                Mask Column
+              </>
+            )}
+          </button>
+          {/* Hide Column option */}
+          <button
+            role="menuitem"
+            className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
+            onClick={() => {
+              hideColumn(headerContextMenu.column)
+              setHeaderContextMenu(null)
+            }}
+          >
+            <EyeOffIcon className="w-4 h-4 text-zinc-400" />
+            Hide Column
+          </button>
+          <div className="border-t border-zinc-700 my-1" />
+          {/* Freeze/Unfreeze Column option */}
           <button
             role="menuitem"
             className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
@@ -863,25 +1017,42 @@ export default function TableView({
               </>
             )}
           </button>
-          {frozenColumnsList.length > 1 && (
+          {(frozenColumnsList.length > 1 || maskedColumns.size > 1) && (
             <>
               <div className="border-t border-zinc-700 my-1" />
-              <button
-                role="menuitem"
-                className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-400 hover:bg-zinc-700 flex items-center gap-2"
-                onClick={() => {
-                  setFrozenColumns(new Set())
-                  saveFrozenColumns(connectionId, database, collection, new Set())
-                  setHeaderContextMenu(null)
-                }}
-              >
-                <UnfreezeIcon className="w-4 h-4" />
-                Unfreeze All Columns
-              </button>
+              {frozenColumnsList.length > 1 && (
+                <button
+                  role="menuitem"
+                  className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-400 hover:bg-zinc-700 flex items-center gap-2"
+                  onClick={() => {
+                    setFrozenColumns(new Set())
+                    saveFrozenColumns(connectionId, database, collection, new Set())
+                    setHeaderContextMenu(null)
+                  }}
+                >
+                  <UnfreezeIcon className="w-4 h-4" />
+                  Unfreeze All Columns
+                </button>
+              )}
+              {maskedColumns.size > 1 && (
+                <button
+                  role="menuitem"
+                  className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-400 hover:bg-zinc-700 flex items-center gap-2"
+                  onClick={() => {
+                    setMaskedColumns(new Set())
+                    saveMaskedColumns(connectionId, database, collection, new Set())
+                    setHeaderContextMenu(null)
+                  }}
+                >
+                  <UnmaskIcon className="w-4 h-4" />
+                  Unmask All Columns
+                </button>
+              )}
             </>
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }

@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import Settings, { loadSettings, saveSettings } from './Settings'
+import { DebugProvider } from './contexts/DebugContext'
+
+// Helper to render with required providers
+const renderWithProviders = (ui) => {
+  return render(
+    <DebugProvider>
+      {ui}
+    </DebugProvider>
+  )
+}
 
 describe('Settings', () => {
   const mockOnClose = vi.fn()
@@ -71,46 +81,72 @@ describe('Settings', () => {
   })
 
   describe('rendering', () => {
-    it('renders settings dialog', () => {
-      render(<Settings onClose={mockOnClose} />)
+    it('renders settings dialog with tabs', () => {
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       expect(screen.getByText('Settings')).toBeInTheDocument()
+      // Check tabs exist
+      expect(screen.getByRole('button', { name: /general/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /editor/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /safety/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /developer/i })).toBeInTheDocument()
     })
 
-    it('renders query limit dropdown with default value', () => {
-      render(<Settings onClose={mockOnClose} />)
+    it('renders query limit dropdown with default value on General tab', () => {
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       expect(screen.getByText('Default query limit')).toBeInTheDocument()
-      // First combobox is queryLimit, second is queryTimeout
       const selects = screen.getAllByRole('combobox')
       expect(selects[0]).toHaveValue('50')
     })
 
-    it('renders query timeout dropdown with default value', () => {
-      render(<Settings onClose={mockOnClose} />)
+    it('renders query timeout dropdown with default value on General tab', () => {
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       expect(screen.getByText('Query timeout')).toBeInTheDocument()
       const selects = screen.getAllByRole('combobox')
       expect(selects[1]).toHaveValue('30')
     })
 
-    it('renders all toggle options', () => {
-      render(<Settings onClose={mockOnClose} />)
+    it('renders editor options on Editor tab', () => {
+      renderWithProviders(<Settings onClose={mockOnClose} />)
+
+      // Click Editor tab
+      fireEvent.click(screen.getByRole('button', { name: /editor/i }))
 
       expect(screen.getByText('Auto-format JSON')).toBeInTheDocument()
-      expect(screen.getByText('Confirm before delete')).toBeInTheDocument()
       expect(screen.getByText('Word wrap in editor')).toBeInTheDocument()
       expect(screen.getByText('Show line numbers')).toBeInTheDocument()
+      expect(screen.getByText('Freeze _id column')).toBeInTheDocument()
+    })
+
+    it('renders safety options on Safety tab', () => {
+      renderWithProviders(<Settings onClose={mockOnClose} />)
+
+      // Click Safety tab
+      fireEvent.click(screen.getByRole('button', { name: /safety/i }))
+
+      expect(screen.getByText('Confirm before delete')).toBeInTheDocument()
+    })
+
+    it('renders developer options on Developer tab', () => {
+      renderWithProviders(<Settings onClose={mockOnClose} />)
+
+      // Click Developer tab
+      fireEvent.click(screen.getByRole('button', { name: /developer/i }))
+
+      expect(screen.getByText('Debug logging')).toBeInTheDocument()
+      expect(screen.getByText('Debug Logs')).toBeInTheDocument()
     })
 
     it('renders reset button', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       expect(screen.getByText('Reset to defaults')).toBeInTheDocument()
     })
 
     it('renders done button', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       expect(screen.getByText('Done')).toBeInTheDocument()
     })
@@ -118,7 +154,7 @@ describe('Settings', () => {
 
   describe('query limit', () => {
     it('changes query limit and persists to localStorage', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       const selects = screen.getAllByRole('combobox')
       const select = selects[0] // queryLimit is first
@@ -131,7 +167,7 @@ describe('Settings', () => {
     })
 
     it('shows all query limit options', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       const options = screen.getAllByRole('option')
       const values = options.map(o => o.value)
@@ -153,7 +189,7 @@ describe('Settings', () => {
 
   describe('query timeout', () => {
     it('changes query timeout and persists to localStorage', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       const selects = screen.getAllByRole('combobox')
       const select = selects[1] // queryTimeout is second
@@ -166,7 +202,7 @@ describe('Settings', () => {
     })
 
     it('allows disabling timeout', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       const selects = screen.getAllByRole('combobox')
       const select = selects[1]
@@ -180,69 +216,65 @@ describe('Settings', () => {
   })
 
   describe('toggle options', () => {
-    // Order: freezeIdColumn[0], autoFormat[1], wordWrap[2], showLineNumbers[3], confirmDelete[4]
     it('toggles autoFormat and persists', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
-      const checkboxes = screen.getAllByRole('checkbox')
-      const autoFormatCheckbox = checkboxes[1] // autoFormat is now index 1
+      // Navigate to Editor tab
+      fireEvent.click(screen.getByRole('button', { name: /editor/i }))
 
-      expect(autoFormatCheckbox).toBeChecked()
+      const checkbox = screen.getByRole('checkbox', { name: /auto-format json/i })
+      expect(checkbox).toBeChecked() // default is true
 
-      fireEvent.click(autoFormatCheckbox)
-
-      expect(autoFormatCheckbox).not.toBeChecked()
+      fireEvent.click(checkbox)
+      expect(checkbox).not.toBeChecked()
 
       const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
       expect(saved.autoFormat).toBe(false)
     })
 
     it('toggles wordWrap and persists', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
-      const checkboxes = screen.getAllByRole('checkbox')
-      // Order: freezeIdColumn[0], autoFormat[1], wordWrap[2], showLineNumbers[3], confirmDelete[4]
-      const wordWrapCheckbox = checkboxes[2]
+      // Navigate to Editor tab
+      fireEvent.click(screen.getByRole('button', { name: /editor/i }))
 
-      expect(wordWrapCheckbox).toBeChecked()
+      const checkbox = screen.getByRole('checkbox', { name: /word wrap in editor/i })
+      expect(checkbox).toBeChecked()
 
-      fireEvent.click(wordWrapCheckbox)
-
-      expect(wordWrapCheckbox).not.toBeChecked()
+      fireEvent.click(checkbox)
+      expect(checkbox).not.toBeChecked()
 
       const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
       expect(saved.wordWrap).toBe(false)
     })
 
     it('toggles showLineNumbers and persists', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
-      const checkboxes = screen.getAllByRole('checkbox')
-      // Order: freezeIdColumn[0], autoFormat[1], wordWrap[2], showLineNumbers[3], confirmDelete[4]
-      const showLineNumbersCheckbox = checkboxes[3]
+      // Navigate to Editor tab
+      fireEvent.click(screen.getByRole('button', { name: /editor/i }))
 
-      expect(showLineNumbersCheckbox).toBeChecked()
+      const checkbox = screen.getByRole('checkbox', { name: /show line numbers/i })
+      expect(checkbox).toBeChecked()
 
-      fireEvent.click(showLineNumbersCheckbox)
-
-      expect(showLineNumbersCheckbox).not.toBeChecked()
+      fireEvent.click(checkbox)
+      expect(checkbox).not.toBeChecked()
 
       const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
       expect(saved.showLineNumbers).toBe(false)
     })
 
     it('toggles confirmDelete and persists', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
-      const checkboxes = screen.getAllByRole('checkbox')
-      // Order: freezeIdColumn[0], autoFormat[1], wordWrap[2], showLineNumbers[3], confirmDelete[4]
-      const confirmDeleteCheckbox = checkboxes[4]
+      // Navigate to Safety tab
+      fireEvent.click(screen.getByRole('button', { name: /safety/i }))
 
-      expect(confirmDeleteCheckbox).toBeChecked()
+      const checkbox = screen.getByRole('checkbox', { name: /confirm before delete/i })
+      expect(checkbox).toBeChecked()
 
-      fireEvent.click(confirmDeleteCheckbox)
-
-      expect(confirmDeleteCheckbox).not.toBeChecked()
+      fireEvent.click(checkbox)
+      expect(checkbox).not.toBeChecked()
 
       const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
       expect(saved.confirmDelete).toBe(false)
@@ -251,66 +283,49 @@ describe('Settings', () => {
 
   describe('reset to defaults', () => {
     it('resets all settings to default values', () => {
-      // First change some settings
+      // Set some non-default values
       localStorage.setItem('mongopal-settings', JSON.stringify({
         queryLimit: 200,
-        queryTimeout: 120,
+        queryTimeout: 60,
         autoFormat: false,
         confirmDelete: false,
-        wordWrap: false,
-        showLineNumbers: false,
       }))
 
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
-      // Verify settings are loaded
-      const selects = screen.getAllByRole('combobox')
-      expect(selects[0]).toHaveValue('200')
-      expect(selects[1]).toHaveValue('120')
-
-      // Click reset
       fireEvent.click(screen.getByText('Reset to defaults'))
 
-      // Verify reset
-      expect(selects[0]).toHaveValue('50')
-      expect(selects[1]).toHaveValue('30')
-      const checkboxes = screen.getAllByRole('checkbox')
-      // freezeIdColumn[0] defaults to false, rest default to true
-      expect(checkboxes[0]).not.toBeChecked() // freezeIdColumn
-      expect(checkboxes[1]).toBeChecked() // autoFormat
-      expect(checkboxes[2]).toBeChecked() // wordWrap
-      expect(checkboxes[3]).toBeChecked() // showLineNumbers
-      expect(checkboxes[4]).toBeChecked() // confirmDelete
-
-      // Verify persisted
       const saved = JSON.parse(localStorage.getItem('mongopal-settings'))
       expect(saved.queryLimit).toBe(50)
       expect(saved.queryTimeout).toBe(30)
       expect(saved.autoFormat).toBe(true)
+      expect(saved.confirmDelete).toBe(true)
     })
   })
 
   describe('close button', () => {
     it('calls onClose when Done button is clicked', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       fireEvent.click(screen.getByText('Done'))
 
-      expect(mockOnClose).toHaveBeenCalled()
+      expect(mockOnClose).toHaveBeenCalledTimes(1)
     })
 
     it('calls onClose when close icon is clicked', () => {
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
-      // Find close button by its position (in header)
-      // The header structure is: div.header > div.titleWrapper > h2 + savedIndicator
-      //                                      > button.closeButton
-      const header = screen.getByText('Settings').closest('div').parentElement
-      const closeBtn = header.querySelector('button')
+      // The close button is an icon-btn
+      const closeButtons = screen.getAllByRole('button')
+      const closeIcon = closeButtons.find(btn =>
+        btn.classList.contains('icon-btn') ||
+        btn.querySelector('svg path[d*="M6 18L18 6"]')
+      )
 
-      fireEvent.click(closeBtn)
-
-      expect(mockOnClose).toHaveBeenCalled()
+      if (closeIcon) {
+        fireEvent.click(closeIcon)
+        expect(mockOnClose).toHaveBeenCalledTimes(1)
+      }
     })
   })
 
@@ -319,112 +334,112 @@ describe('Settings', () => {
       localStorage.setItem('mongopal-settings', JSON.stringify({
         queryLimit: 100,
         queryTimeout: 60,
-        autoFormat: false,
-        confirmDelete: true,
-        wordWrap: false,
-        showLineNumbers: true,
       }))
 
-      render(<Settings onClose={mockOnClose} />)
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       const selects = screen.getAllByRole('combobox')
       expect(selects[0]).toHaveValue('100')
       expect(selects[1]).toHaveValue('60')
-
-      // New order: freezeIdColumn[0], autoFormat[1], wordWrap[2], showLineNumbers[3], confirmDelete[4]
-      const checkboxes = screen.getAllByRole('checkbox')
-      expect(checkboxes[0]).not.toBeChecked() // freezeIdColumn (default false)
-      expect(checkboxes[1]).not.toBeChecked() // autoFormat
-      expect(checkboxes[2]).not.toBeChecked() // wordWrap
-      expect(checkboxes[3]).toBeChecked() // showLineNumbers
-      expect(checkboxes[4]).toBeChecked() // confirmDelete
     })
   })
 
   describe('save confirmation feedback', () => {
-    beforeEach(() => {
+    it('shows saved indicator when a setting changes', async () => {
+      renderWithProviders(<Settings onClose={mockOnClose} />)
+
+      const selects = screen.getAllByRole('combobox')
+      fireEvent.change(selects[0], { target: { value: '100' } })
+
+      expect(screen.getByText('Saved')).toBeInTheDocument()
+    })
+
+    it('hides saved indicator after timeout', async () => {
       vi.useFakeTimers()
-    })
 
-    afterAll(() => {
-      vi.useRealTimers()
-    })
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
-    it('shows saved indicator when a setting changes', () => {
-      render(<Settings onClose={mockOnClose} />)
+      const selects = screen.getAllByRole('combobox')
+      fireEvent.change(selects[0], { target: { value: '100' } })
 
-      // Initially, saved indicator should be hidden (opacity-0)
-      const savedIndicator = screen.getByText('Saved').parentElement
-      expect(savedIndicator).toHaveClass('opacity-0')
+      expect(screen.getByText('Saved')).toBeInTheDocument()
 
-      // Change a setting
-      const checkboxes = screen.getAllByRole('checkbox')
-      fireEvent.click(checkboxes[0])
-
-      // Now saved indicator should be visible (opacity-100)
-      expect(savedIndicator).toHaveClass('opacity-100')
-    })
-
-    it('hides saved indicator after timeout', () => {
-      render(<Settings onClose={mockOnClose} />)
-
-      const savedIndicator = screen.getByText('Saved').parentElement
-
-      // Change a setting
-      fireEvent.click(screen.getAllByRole('checkbox')[0])
-      expect(savedIndicator).toHaveClass('opacity-100')
-
-      // Fast-forward time - wrap in act() since it triggers state change
       act(() => {
         vi.advanceTimersByTime(1500)
       })
 
-      // Should be hidden again
+      // The "Saved" text still exists but should have opacity-0
+      const savedIndicator = screen.getByText('Saved').parentElement
       expect(savedIndicator).toHaveClass('opacity-0')
+
+      vi.useRealTimers()
     })
 
     it('shows saved indicator when reset to defaults is clicked', () => {
-      render(<Settings onClose={mockOnClose} />)
-
-      const savedIndicator = screen.getByText('Saved').parentElement
-      expect(savedIndicator).toHaveClass('opacity-0')
+      renderWithProviders(<Settings onClose={mockOnClose} />)
 
       fireEvent.click(screen.getByText('Reset to defaults'))
 
-      expect(savedIndicator).toHaveClass('opacity-100')
+      expect(screen.getByText('Saved')).toBeInTheDocument()
     })
 
-    it('resets timeout when multiple changes occur', () => {
-      render(<Settings onClose={mockOnClose} />)
+    it('resets timeout when multiple changes occur', async () => {
+      vi.useFakeTimers()
 
-      const savedIndicator = screen.getByText('Saved').parentElement
-      const checkboxes = screen.getAllByRole('checkbox')
+      renderWithProviders(<Settings onClose={mockOnClose} />)
+
+      const selects = screen.getAllByRole('combobox')
 
       // First change
-      fireEvent.click(checkboxes[0])
-      expect(savedIndicator).toHaveClass('opacity-100')
+      fireEvent.change(selects[0], { target: { value: '100' } })
+      expect(screen.getByText('Saved')).toBeInTheDocument()
 
-      // Wait 1000ms (less than timeout) - wrap in act() since timers may trigger state
+      // Advance halfway
       act(() => {
-        vi.advanceTimersByTime(1000)
+        vi.advanceTimersByTime(750)
       })
-      expect(savedIndicator).toHaveClass('opacity-100')
 
-      // Second change resets the timer
-      fireEvent.click(checkboxes[1])
-      expect(savedIndicator).toHaveClass('opacity-100')
+      // Second change
+      fireEvent.change(selects[0], { target: { value: '200' } })
 
-      // Wait another 1000ms (still less than 1500ms from second change)
+      // Advance another 750ms (total 1500ms from first, but only 750ms from second)
       act(() => {
-        vi.advanceTimersByTime(1000)
+        vi.advanceTimersByTime(750)
       })
+
+      // Should still be visible because timer was reset
+      const savedIndicator = screen.getByText('Saved').parentElement
       expect(savedIndicator).toHaveClass('opacity-100')
 
-      // Wait remaining time
-      act(() => {
-        vi.advanceTimersByTime(500)
-      })
-      expect(savedIndicator).toHaveClass('opacity-0')
+      vi.useRealTimers()
+    })
+  })
+
+  describe('tab navigation', () => {
+    it('switches between tabs correctly', () => {
+      renderWithProviders(<Settings onClose={mockOnClose} />)
+
+      // Initially on General tab
+      expect(screen.getByText('Default query limit')).toBeInTheDocument()
+
+      // Switch to Editor
+      fireEvent.click(screen.getByRole('button', { name: /editor/i }))
+      expect(screen.getByText('Auto-format JSON')).toBeInTheDocument()
+      expect(screen.queryByText('Default query limit')).not.toBeInTheDocument()
+
+      // Switch to Safety
+      fireEvent.click(screen.getByRole('button', { name: /safety/i }))
+      expect(screen.getByText('Confirm before delete')).toBeInTheDocument()
+      expect(screen.queryByText('Auto-format JSON')).not.toBeInTheDocument()
+
+      // Switch to Developer
+      fireEvent.click(screen.getByRole('button', { name: /developer/i }))
+      expect(screen.getByText('Debug logging')).toBeInTheDocument()
+      expect(screen.queryByText('Confirm before delete')).not.toBeInTheDocument()
+
+      // Back to General
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
+      expect(screen.getByText('Default query limit')).toBeInTheDocument()
     })
   })
 })

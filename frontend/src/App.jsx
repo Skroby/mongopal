@@ -9,6 +9,7 @@ import IndexView from './components/IndexView'
 import ConnectionForm from './components/ConnectionForm'
 import Settings from './components/Settings'
 import KeyboardShortcuts from './components/KeyboardShortcuts'
+import PerformancePanel from './components/PerformancePanel'
 import ExportDatabasesModal from './components/ExportDatabasesModal'
 import ImportDatabasesModal from './components/ImportDatabasesModal'
 import ExportCollectionsModal from './components/ExportCollectionsModal'
@@ -75,6 +76,7 @@ function App() {
   const [editingConnection, setEditingConnection] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
+  const [showPerformance, setShowPerformance] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [exportModal, setExportModal] = useState(null) // { connectionId, connectionName }
   const [importModal, setImportModal] = useState(null) // { connectionId, connectionName }
@@ -330,55 +332,81 @@ function App() {
           {/* Tab bar */}
           <TabBar />
 
-          {/* Content area */}
-          <div className="flex-1 overflow-hidden">
-            {currentTab?.type === 'document' ? (
-              <DocumentEditView
-                key={currentTab.id}
-                tabId={currentTab.id}
-                connectionId={currentTab.connectionId}
-                database={currentTab.database}
-                collection={currentTab.collection}
-                document={currentTab.document}
-                documentId={currentTab.documentId}
-                onSave={() => {
-                  // Could refresh the collection tab if open
-                }}
-              />
-            ) : currentTab?.type === 'insert' ? (
-              <DocumentEditView
-                key={currentTab.id}
-                tabId={currentTab.id}
-                connectionId={currentTab.connectionId}
-                database={currentTab.database}
-                collection={currentTab.collection}
-                mode="insert"
-                onInsertComplete={(document, documentId) => {
-                  convertInsertToDocumentTab(currentTab.id, document, documentId)
-                }}
-              />
-            ) : currentTab?.type === 'schema' ? (
-              <SchemaView
-                key={currentTab.id}
-                connectionId={currentTab.connectionId}
-                database={currentTab.database}
-                collection={currentTab.collection}
-              />
-            ) : currentTab?.type === 'indexes' ? (
-              <IndexView
-                key={currentTab.id}
-                connectionId={currentTab.connectionId}
-                database={currentTab.database}
-                collection={currentTab.collection}
-              />
-            ) : currentTab ? (
-              <CollectionView
-                key={currentTab.id}
-                connectionId={currentTab.connectionId}
-                database={currentTab.database}
-                collection={currentTab.collection}
-              />
-            ) : (
+          {/* Content area - render all tabs, hide inactive ones to preserve state */}
+          <div className="flex-1 overflow-hidden relative">
+            {tabs.map(tab => {
+              const isActive = tab.id === activeTab
+              const tabStyle = isActive
+                ? { display: 'flex', flexDirection: 'column', height: '100%' }
+                : { display: 'none' }
+
+              if (tab.type === 'document') {
+                return (
+                  <div key={tab.id} style={tabStyle}>
+                    <DocumentEditView
+                      tabId={tab.id}
+                      connectionId={tab.connectionId}
+                      database={tab.database}
+                      collection={tab.collection}
+                      document={tab.document}
+                      documentId={tab.documentId}
+                      onSave={() => {
+                        // Could refresh the collection tab if open
+                      }}
+                    />
+                  </div>
+                )
+              } else if (tab.type === 'insert') {
+                return (
+                  <div key={tab.id} style={tabStyle}>
+                    <DocumentEditView
+                      tabId={tab.id}
+                      connectionId={tab.connectionId}
+                      database={tab.database}
+                      collection={tab.collection}
+                      mode="insert"
+                      onInsertComplete={(document, documentId) => {
+                        convertInsertToDocumentTab(tab.id, document, documentId)
+                      }}
+                    />
+                  </div>
+                )
+              } else if (tab.type === 'schema') {
+                return (
+                  <div key={tab.id} style={tabStyle}>
+                    <SchemaView
+                      connectionId={tab.connectionId}
+                      database={tab.database}
+                      collection={tab.collection}
+                    />
+                  </div>
+                )
+              } else if (tab.type === 'indexes') {
+                return (
+                  <div key={tab.id} style={tabStyle}>
+                    <IndexView
+                      connectionId={tab.connectionId}
+                      database={tab.database}
+                      collection={tab.collection}
+                    />
+                  </div>
+                )
+              } else {
+                // collection tab
+                return (
+                  <div key={tab.id} style={tabStyle}>
+                    <CollectionView
+                      connectionId={tab.connectionId}
+                      database={tab.database}
+                      collection={tab.collection}
+                      tabId={tab.id}
+                      restored={tab.restored}
+                    />
+                  </div>
+                )
+              }
+            })}
+            {tabs.length === 0 && (
               <div className="h-full flex items-center justify-center text-zinc-400">
                 <div className="text-center">
                   <p className="text-lg mb-2">No collection selected</p>
@@ -474,6 +502,15 @@ function App() {
           <NotificationHistoryButton />
           <button
             className="p-1 rounded hover:bg-zinc-700 hover:text-zinc-300"
+            onClick={() => setShowPerformance(true)}
+            title="Performance"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </button>
+          <button
+            className="p-1 rounded hover:bg-zinc-700 hover:text-zinc-300"
             onClick={() => setShowKeyboardShortcuts(true)}
             title="Keyboard Shortcuts (Cmd+?)"
           >
@@ -512,6 +549,11 @@ function App() {
       {/* Keyboard shortcuts modal */}
       {showKeyboardShortcuts && (
         <KeyboardShortcuts onClose={() => setShowKeyboardShortcuts(false)} />
+      )}
+
+      {/* Performance panel modal */}
+      {showPerformance && (
+        <PerformancePanel onClose={() => setShowPerformance(false)} />
       )}
 
       {/* Export databases modal */}

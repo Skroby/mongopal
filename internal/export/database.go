@@ -100,7 +100,9 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 	exportID := fmt.Sprintf("db-%s-%d", connID, time.Now().UnixNano())
 	exportCtx, exportCancel := context.WithCancel(context.Background())
 	s.state.SetExportCancel(exportID, exportCancel)
+	s.state.ResetExportPause() // Reset pause state at start
 	defer s.state.ClearExportCancel(exportID)
+	defer s.state.ResetExportPause()
 
 	// Create zip file
 	zipFile, err := os.Create(filePath)
@@ -227,8 +229,14 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 			var skippedDocs int64
 			cancelled := false
 			for docCursor.Next(ctx) {
-				// Check for cancellation periodically
+				// Check for pause/cancellation periodically
 				if docCount%100 == 0 {
+					// Wait if paused (also checks for cancellation)
+					if !s.state.WaitIfExportPaused(exportCtx) {
+						cancelled = true
+						break
+					}
+					// Also check context directly
 					select {
 					case <-exportCtx.Done():
 						cancelled = true
@@ -381,4 +389,21 @@ func (s *Service) ExportDatabases(connID string, dbNames []string) error {
 // CancelExport cancels all ongoing export operations.
 func (s *Service) CancelExport() {
 	s.state.CancelExport("") // Empty string cancels all exports
+}
+
+// PauseExport pauses the current export operation.
+func (s *Service) PauseExport() {
+	s.state.PauseExport()
+	s.state.EmitEvent("export:paused", nil)
+}
+
+// ResumeExport resumes a paused export operation.
+func (s *Service) ResumeExport() {
+	s.state.ResumeExport()
+	s.state.EmitEvent("export:resumed", nil)
+}
+
+// IsExportPaused returns whether export is currently paused.
+func (s *Service) IsExportPaused() bool {
+	return s.state.IsExportPaused()
 }

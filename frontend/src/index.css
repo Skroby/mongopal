@@ -371,3 +371,54 @@ select option {
 .progress-indeterminate {
   animation: progress-indeterminate 1.5s ease-in-out infinite;
 }
+
+/* Monaco Diff Editor - Manual decoration classes */
+.diff-line-modified {
+  background-color: rgba(34, 197, 94, 0.25) !important;
+}
+
+.diff-line-original {
+  background-color: rgba(239, 68, 68, 0.25) !important;
+}
+
+.diff-glyph-modified {
+  background-color: rgba(34, 197, 94, 0.8) !important;
+  width: 4px !important;
+  margin-left: 3px;
+}
+
+.diff-glyph-original {
+  background-color: rgba(239, 68, 68, 0.8) !important;
+  width: 4px !important;
+  margin-left: 3px;
+}
+
+/* Monaco native diff classes (in case they start working) */
+.monaco-diff-editor .line-insert,
+.monaco-diff-editor .line-insert .view-line {
+  background-color: rgba(34, 197, 94, 0.2) !important;
+}
+
+.monaco-diff-editor .line-delete,
+.monaco-diff-editor .line-delete .view-line {
+  background-color: rgba(239, 68, 68, 0.2) !important;
+}
+
+.monaco-diff-editor .char-insert {
+  background-color: rgba(34, 197, 94, 0.4) !important;
+}
+
+.monaco-diff-editor .char-delete {
+  background-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+/* Monaco hover widget - ensure it appears above other UI elements */
+.monaco-editor .monaco-hover {
+  z-index: 100 !important;
+}
+
+/* Monaco parameter hints and suggest widget */
+.monaco-editor .parameter-hints-widget,
+.monaco-editor .suggest-widget {
+  z-index: 100 !important;
+}

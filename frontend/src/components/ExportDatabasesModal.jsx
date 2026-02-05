@@ -38,6 +38,7 @@ export default function ExportDatabasesModal({ connectionId, connectionName, onC
   const [loading, setLoading] = useState(true)
   const [selectedDbs, setSelectedDbs] = useState(new Set())
   const [exporting, setExporting] = useState(false)
+  const [paused, setPaused] = useState(false)
   const [progress, setProgress] = useState(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
@@ -115,17 +116,26 @@ export default function ExportDatabasesModal({ connectionId, connectionName, onC
       // Only handle if this modal initiated the export
       if (!exportId.current) return
       setExporting(false)
+      setPaused(false)
       setProgress(null)
       notify.info('Export cancelled')
       removeTrackedExport(exportId.current)
       exportId.current = null
       filePathRef.current = null
     })
+    const unsubPaused = EventsOn('export:paused', () => {
+      setPaused(true)
+    })
+    const unsubResumed = EventsOn('export:resumed', () => {
+      setPaused(false)
+    })
 
     return () => {
       if (unsubProgress) unsubProgress()
       if (unsubComplete) unsubComplete()
       if (unsubCancelled) unsubCancelled()
+      if (unsubPaused) unsubPaused()
+      if (unsubResumed) unsubResumed()
     }
   }, [connectionName, updateTrackedExport, completeTrackedExport, removeTrackedExport])
 
@@ -181,12 +191,21 @@ export default function ExportDatabasesModal({ connectionId, connectionName, onC
   const confirmCancelExport = () => {
     setShowCancelConfirm(false)
     setExporting(false)
+    setPaused(false)
     setProgress(null)
     getGo()?.CancelExport?.()
     if (exportId.current) {
       removeTrackedExport(exportId.current)
       exportId.current = null
       filePathRef.current = null
+    }
+  }
+
+  const togglePause = () => {
+    if (paused) {
+      getGo()?.ResumeExport?.()
+    } else {
+      getGo()?.PauseExport?.()
     }
   }
 
@@ -346,6 +365,15 @@ export default function ExportDatabasesModal({ connectionId, connectionName, onC
           ) : exporting ? (
             <div className="p-4">
               <div className="mb-4">
+                {/* Paused indicator */}
+                {paused && (
+                  <div className="mb-3 p-2 bg-yellow-900/30 border border-yellow-700/50 rounded text-sm text-yellow-400 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Export paused
+                  </div>
+                )}
                 {/* Header with elapsed time and ETA */}
                 <div className="flex items-center justify-between text-sm mb-3">
                   <span className="text-zinc-300">
@@ -470,13 +498,39 @@ export default function ExportDatabasesModal({ connectionId, connectionName, onC
         {/* Footer */}
         <div className="px-4 py-3 border-t border-border flex justify-end gap-2">
           {exporting && (
-            <button
-              className="btn btn-ghost mr-auto"
-              onClick={onClose}
-              title="Hide this dialog and continue in background"
-            >
-              Hide
-            </button>
+            <>
+              {!paused && (
+                <button
+                  className="btn btn-ghost mr-auto"
+                  onClick={onClose}
+                  title="Hide this dialog and continue in background"
+                >
+                  Hide
+                </button>
+              )}
+              <button
+                className="btn btn-ghost inline-flex items-center"
+                onClick={togglePause}
+                title={paused ? 'Resume export' : 'Pause export'}
+              >
+                {paused ? (
+                  <>
+                    <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Resume
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Pause
+                  </>
+                )}
+              </button>
+            </>
           )}
           <button
             className="btn btn-ghost"

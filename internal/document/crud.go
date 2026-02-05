@@ -12,6 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/peternagy/mongopal/internal/core"
+	"github.com/peternagy/mongopal/internal/debug"
 	"github.com/peternagy/mongopal/internal/types"
 )
 
@@ -27,8 +28,21 @@ func NewService(state *core.AppState) *Service {
 
 // FindDocuments executes a query and returns paginated results.
 func (s *Service) FindDocuments(connID, dbName, collName, query string, opts types.QueryOptions) (*types.QueryResult, error) {
+	debug.LogQuery("Executing find query", map[string]interface{}{
+		"database":   dbName,
+		"collection": collName,
+		"query":      query,
+		"skip":       opts.Skip,
+		"limit":      opts.Limit,
+	})
+
 	client, err := s.state.GetClient(connID)
 	if err != nil {
+		debug.LogQuery("Query failed - no connection", map[string]interface{}{
+			"database":   dbName,
+			"collection": collName,
+			"error":      err.Error(),
+		})
 		return nil, err
 	}
 
@@ -43,6 +57,12 @@ func (s *Service) FindDocuments(connID, dbName, collName, query string, opts typ
 		filter = bson.M{}
 	} else {
 		if err := bson.UnmarshalExtJSON([]byte(query), true, &filter); err != nil {
+			debug.LogQuery("Query failed - invalid filter", map[string]interface{}{
+				"database":   dbName,
+				"collection": collName,
+				"query":      query,
+				"error":      err.Error(),
+			})
 			return nil, fmt.Errorf("invalid query: %w", err)
 		}
 	}
@@ -127,6 +147,14 @@ func (s *Service) FindDocuments(connID, dbName, collName, query string, opts typ
 		warnings = append(warnings, fmt.Sprintf("%d document(s) failed to marshal to JSON", marshalErrors))
 	}
 
+	debug.LogQuery("Query completed", map[string]interface{}{
+		"database":    dbName,
+		"collection":  collName,
+		"docCount":    len(documents),
+		"total":       total,
+		"queryTimeMs": queryTime,
+	})
+
 	return &types.QueryResult{
 		Documents:   documents,
 		Total:       total,
@@ -169,6 +197,12 @@ func (s *Service) GetDocument(connID, dbName, collName, docID string) (string, e
 // UpdateDocument replaces a document.
 // docID can be: Extended JSON, ObjectID hex, or plain string.
 func (s *Service) UpdateDocument(connID, dbName, collName, docID, jsonDoc string) error {
+	debug.LogDocument("Updating document", map[string]interface{}{
+		"database":   dbName,
+		"collection": collName,
+		"documentId": docID,
+	})
+
 	client, err := s.state.GetClient(connID)
 	if err != nil {
 		return err
@@ -180,6 +214,12 @@ func (s *Service) UpdateDocument(connID, dbName, collName, docID, jsonDoc string
 	// Parse the JSON document
 	var doc bson.M
 	if err := bson.UnmarshalExtJSON([]byte(jsonDoc), true, &doc); err != nil {
+		debug.LogDocument("Update failed - invalid JSON", map[string]interface{}{
+			"database":   dbName,
+			"collection": collName,
+			"documentId": docID,
+			"error":      err.Error(),
+		})
 		return fmt.Errorf("invalid JSON: %w", err)
 	}
 
@@ -195,18 +235,40 @@ func (s *Service) UpdateDocument(connID, dbName, collName, docID, jsonDoc string
 
 	result, err := coll.ReplaceOne(ctx, filter, doc)
 	if err != nil {
+		debug.LogDocument("Update failed", map[string]interface{}{
+			"database":   dbName,
+			"collection": collName,
+			"documentId": docID,
+			"error":      err.Error(),
+		})
 		return fmt.Errorf("failed to update document: %w", err)
 	}
 
 	if result.MatchedCount == 0 {
+		debug.LogDocument("Update failed - document not found", map[string]interface{}{
+			"database":   dbName,
+			"collection": collName,
+			"documentId": docID,
+		})
 		return fmt.Errorf("document not found")
 	}
+
+	debug.LogDocument("Document updated", map[string]interface{}{
+		"database":   dbName,
+		"collection": collName,
+		"documentId": docID,
+	})
 
 	return nil
 }
 
 // InsertDocument creates a new document.
 func (s *Service) InsertDocument(connID, dbName, collName, jsonDoc string) (string, error) {
+	debug.LogDocument("Inserting document", map[string]interface{}{
+		"database":   dbName,
+		"collection": collName,
+	})
+
 	client, err := s.state.GetClient(connID)
 	if err != nil {
 		return "", err
@@ -218,6 +280,11 @@ func (s *Service) InsertDocument(connID, dbName, collName, jsonDoc string) (stri
 	// Parse the JSON document
 	var doc bson.M
 	if err := bson.UnmarshalExtJSON([]byte(jsonDoc), true, &doc); err != nil {
+		debug.LogDocument("Insert failed - invalid JSON", map[string]interface{}{
+			"database":   dbName,
+			"collection": collName,
+			"error":      err.Error(),
+		})
 		return "", fmt.Errorf("invalid JSON: %w", err)
 	}
 
@@ -225,21 +292,41 @@ func (s *Service) InsertDocument(connID, dbName, collName, jsonDoc string) (stri
 
 	result, err := coll.InsertOne(ctx, doc)
 	if err != nil {
+		debug.LogDocument("Insert failed", map[string]interface{}{
+			"database":   dbName,
+			"collection": collName,
+			"error":      err.Error(),
+		})
 		return "", fmt.Errorf("failed to insert document: %w", err)
 	}
 
 	// Return the inserted ID as string
+	var insertedID string
 	switch id := result.InsertedID.(type) {
 	case primitive.ObjectID:
-		return id.Hex(), nil
+		insertedID = id.Hex()
 	default:
-		return fmt.Sprintf("%v", id), nil
+		insertedID = fmt.Sprintf("%v", id)
 	}
+
+	debug.LogDocument("Document inserted", map[string]interface{}{
+		"database":   dbName,
+		"collection": collName,
+		"documentId": insertedID,
+	})
+
+	return insertedID, nil
 }
 
 // DeleteDocument removes a document.
 // docID can be: Extended JSON (e.g., {"$oid":"..."} or {"$binary":...}), plain ObjectID hex, or string.
 func (s *Service) DeleteDocument(connID, dbName, collName, docID string) error {
+	debug.LogDocument("Deleting document", map[string]interface{}{
+		"database":   dbName,
+		"collection": collName,
+		"documentId": docID,
+	})
+
 	client, err := s.state.GetClient(connID)
 	if err != nil {
 		return err
@@ -255,12 +342,29 @@ func (s *Service) DeleteDocument(connID, dbName, collName, docID string) error {
 
 	result, err := coll.DeleteOne(ctx, filter)
 	if err != nil {
+		debug.LogDocument("Delete failed", map[string]interface{}{
+			"database":   dbName,
+			"collection": collName,
+			"documentId": docID,
+			"error":      err.Error(),
+		})
 		return fmt.Errorf("failed to delete document: %w", err)
 	}
 
 	if result.DeletedCount == 0 {
+		debug.LogDocument("Delete failed - document not found", map[string]interface{}{
+			"database":   dbName,
+			"collection": collName,
+			"documentId": docID,
+		})
 		return fmt.Errorf("document not found")
 	}
+
+	debug.LogDocument("Document deleted", map[string]interface{}{
+		"database":   dbName,
+		"collection": collName,
+		"documentId": docID,
+	})
 
 	return nil
 }

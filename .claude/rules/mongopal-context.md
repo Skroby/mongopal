@@ -28,7 +28,7 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | `internal/types` | All shared type definitions | `types.go` |
 | `internal/core` | App state and event emitter | `state.go`, `events.go` |
 | `internal/credential` | Password/keyring management | `keyring.go`, `uri.go` |
-| `internal/storage` | Config file I/O, connections, folders | `persistence.go`, `connections.go`, `folders.go` |
+| `internal/storage` | Config file I/O, connections, folders, favorites | `persistence.go`, `connections.go`, `folders.go`, `favorites.go` |
 | `internal/connection` | Connect, Disconnect, TestConnection | `service.go` |
 | `internal/database` | List databases/collections, drop operations | `listing.go`, `operations.go` |
 | `internal/document` | Document CRUD operations | `crud.go`, `parser.go` |
@@ -36,6 +36,7 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | `internal/export` | Database/collection export | `database.go`, `collection.go`, `documents.go` |
 | `internal/importer` | Database/collection import | `database.go`, `collection.go`, `helpers.go` |
 | `internal/script` | Mongosh script execution | `mongosh.go` |
+| `internal/performance` | Go runtime and connection metrics | `metrics.go` |
 
 ### Frontend Core
 | Purpose | File |
@@ -65,6 +66,7 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | Collection import modal | `frontend/src/components/ImportCollectionsModal.jsx` |
 | Keyboard shortcuts modal | `frontend/src/components/KeyboardShortcuts.jsx` |
 | Actionable error display | `frontend/src/components/ActionableError.jsx` |
+| Performance metrics panel | `frontend/src/components/PerformancePanel.jsx` |
 
 ### Contexts
 | Purpose | File |
@@ -73,6 +75,7 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | Tab state management | `frontend/src/components/contexts/TabContext.jsx` |
 | Status bar state | `frontend/src/components/contexts/StatusContext.jsx` |
 | Operation tracking (busy indicator) | `frontend/src/components/contexts/OperationContext.jsx` |
+| Debug logging (toggle via Settings) | `frontend/src/components/contexts/DebugContext.jsx` |
 
 ### Hooks
 | Purpose | File |
@@ -227,5 +230,23 @@ The backend uses a thin facade pattern:
 | Export | ExportDatabases, ExportCollections, ExportDocumentsAsZip | `internal/export` |
 | Import | ImportDatabases, ImportCollections, PreviewImportFile | `internal/importer` |
 | Script | ExecuteScript, CheckMongoshAvailable | `internal/script` |
+| Performance | GetPerformanceMetrics, ForceGC | `internal/performance` |
 
 > **Maintenance**: Update this file AND `README.md` when codebase structure changes.
+
+---
+
+## Required: Update Docs After Structural Changes
+
+After adding/removing/renaming files in these locations, you **MUST** update the documentation:
+
+| Changed Location | Update These Files |
+|------------------|-------------------|
+| `internal/*/` | This file + `README.md` |
+| `frontend/src/components/` | This file + `README.md` |
+| `frontend/src/components/contexts/` | This file + `README.md` |
+| `frontend/src/hooks/` | This file + `README.md` |
+| `frontend/src/utils/` | This file + `README.md` |
+| Root `*.go` files | This file + `README.md` |
+
+This is **not optional**. Do it in the same session as the structural change.

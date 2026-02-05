@@ -164,10 +164,63 @@ const SearchIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
+const ClearIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+  </svg>
+)
+
+// Helper component to highlight matching text in search results
+function HighlightedText({ text, searchQuery }) {
+  if (!searchQuery || !text) {
+    return <>{text}</>
+  }
+
+  const lowerText = text.toLowerCase()
+  const lowerQuery = searchQuery.toLowerCase()
+  const matchIndex = lowerText.indexOf(lowerQuery)
+
+  if (matchIndex === -1) {
+    return <>{text}</>
+  }
+
+  const before = text.slice(0, matchIndex)
+  const match = text.slice(matchIndex, matchIndex + searchQuery.length)
+  const after = text.slice(matchIndex + searchQuery.length)
+
+  return (
+    <>
+      {before}
+      <span className="bg-amber-500/30 text-amber-200 rounded px-0.5">{match}</span>
+      {after}
+    </>
+  )
+}
+
 const DisconnectIcon = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6" />
+  </svg>
+)
+
+const StarIcon = ({ className = "w-4 h-4", filled = false }) => (
+  <svg className={className} fill={filled ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+  </svg>
+)
+
+// Sort icon - AZ for alphabetical
+const SortAlphaIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h6l-3 8h6M9 20l3-16M15 4h6M15 8h6M15 12h6M15 16h4M15 20h2" />
+  </svg>
+)
+
+// Sort icon - Clock for last accessed
+const SortClockIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
   </svg>
 )
 
@@ -252,6 +305,9 @@ function TreeNode({
   color,
   connectionStatus, // 'connected' | 'connecting' | 'disconnected' | undefined
   statusTooltip, // Custom tooltip text for status indicator
+  // Favorite indicator
+  isFavorite,
+  onToggleFavorite,
   // Keyboard navigation props
   nodeId,
   isFocused,
@@ -268,6 +324,11 @@ function TreeNode({
   onDragLeave,
   onDrop,
   isDragOver,
+  // Drop indicator for reordering
+  dropIndicator, // 'above' | 'below' | null
+  // Search highlight props
+  searchQuery,
+  highlightLabel = false,
 }) {
   const nodeRef = useRef(null)
   // Check for children - handle arrays, fragments, and single elements
@@ -337,7 +398,7 @@ function TreeNode({
         data-expanded={hasChildren ? expanded : undefined}
         data-selected={selected}
         data-level={level + 1}
-        className={`tree-item ${selected ? 'selected' : ''} ${isFocused ? 'focused' : ''} ${isDragOver ? 'drag-over' : ''}`}
+        className={`tree-item group relative ${selected ? 'selected' : ''} ${isFocused ? 'focused' : ''} ${isDragOver ? 'drag-over' : ''} ${dropIndicator === 'above' ? 'drop-indicator-above' : ''} ${dropIndicator === 'below' ? 'drop-indicator-below' : ''}`}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={handleClick}
         onDoubleClick={onDoubleClick}
@@ -373,7 +434,29 @@ function TreeNode({
         >
           {icon}
         </span>
-        <span className="flex-1 truncate text-sm">{label}</span>
+        <span className="flex-1 truncate text-sm">
+          {highlightLabel && searchQuery ? (
+            <HighlightedText text={typeof label === 'string' ? label : ''} searchQuery={searchQuery} />
+          ) : (
+            label
+          )}
+        </span>
+        {onToggleFavorite !== undefined && (
+          <button
+            className={`icon-btn p-0.5 rounded flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${
+              isFavorite ? 'opacity-100 text-yellow-500' : 'hover:bg-zinc-600 text-zinc-500 hover:text-zinc-300'
+            }`}
+            tabIndex={-1}
+            aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleFavorite?.()
+            }}
+          >
+            <StarIcon className="w-3.5 h-3.5" filled={isFavorite} />
+          </button>
+        )}
         {count !== undefined && (
           <span className="text-xs text-zinc-400 flex-shrink-0" aria-label={`${count} documents`}>({count})</span>
         )}
@@ -415,6 +498,16 @@ function ConnectionNode({
   onExportCollections,
   onImportCollections,
   onError,
+  // Collection Favorites
+  favorites,
+  onToggleFavorite,
+  // Database Favorites
+  databaseFavorites,
+  onToggleDatabaseFavorite,
+  // Database sort mode: 'alpha' or 'lastAccessed'
+  dbSortMode = 'alpha',
+  // Callback when a database is accessed (for updating lastAccessedAt in parent state)
+  onDatabaseAccessed,
   // Keyboard navigation props
   focusedNodeId,
   onNodeFocus,
@@ -431,6 +524,11 @@ function ConnectionNode({
   onDragEnd,
   // Indentation level (0 for root, 1 for inside folder)
   level = 0,
+  // Search props
+  searchQuery = '',
+  connectionNameMatched = false, // True if the connection name itself matched the search
+  matchingDatabases = [], // List of database names that match the search
+  matchingCollections = {}, // Map of dbName -> [collNames] that match
 }) {
   // Use parent-controlled expansion state for keyboard navigation synchronization
   const expanded = expandedConnections?.[connection.id] ?? false
@@ -522,6 +620,10 @@ function ConnectionNode({
     setDbExpanded(dbName, !wasExpanded)
     if (!wasExpanded) {
       loadCollections(dbName)
+      // Track database access time for sorting by "last accessed"
+      go?.UpdateDatabaseAccessed(connection.id, dbName).catch(() => {})
+      // Update local state immediately for responsive sorting
+      onDatabaseAccessed?.(connection.id, dbName)
     }
   }
 
@@ -580,10 +682,16 @@ function ConnectionNode({
     e.preventDefault()
     e.stopPropagation()
     const isReadOnly = connection.readOnly
+    const dbFavoriteKey = `db:${connection.id}:${dbName}`
+    const isDbFavorite = databaseFavorites?.includes(dbFavoriteKey)
     const items = [
       { label: 'Refresh Collections', onClick: () => {
         loadCollections(dbName, true) // Force refresh
       }},
+      { type: 'separator' },
+      isDbFavorite
+        ? { label: 'Remove from Favorites', onClick: () => onToggleDatabaseFavorite?.(connection.id, dbName) }
+        : { label: 'Add to Favorites', onClick: () => onToggleDatabaseFavorite?.(connection.id, dbName) },
       { type: 'separator' },
       { label: 'Export Collections...', onClick: () => onExportCollections?.(dbName) },
     ]
@@ -602,9 +710,15 @@ function ConnectionNode({
     e.preventDefault()
     e.stopPropagation()
     const isReadOnly = connection.readOnly
+    const favoriteKey = `${connection.id}:${dbName}:${collName}`
+    const isFavorite = favorites?.has(favoriteKey)
     const items = [
       { label: 'Open Collection', onClick: () => onOpenCollection(connection.id, dbName, collName) },
       { label: 'View Schema...', onClick: () => onViewSchema(connection.id, dbName, collName) },
+      { type: 'separator' },
+      isFavorite
+        ? { label: 'Remove from Favorites', onClick: () => onToggleFavorite?.(connection.id, dbName, collName) }
+        : { label: 'Add to Favorites', onClick: () => onToggleFavorite?.(connection.id, dbName, collName) },
       { type: 'separator' },
       { label: 'Show Stats...', onClick: () => onShowStats?.(connection.id, dbName, collName) },
       { label: 'Manage Indexes...', onClick: () => onManageIndexes?.(connection.id, dbName, collName) },
@@ -627,9 +741,12 @@ function ConnectionNode({
         <span>Read-Only</span>
       </span>
     ) : null
-    if (isConnecting) return <>{connection.name}{ReadOnlyBadge} <span className="text-zinc-500">[connecting...]</span></>
-    if (isConnected) return <>{connection.name}{ReadOnlyBadge}</>
-    return <>{connection.name}{ReadOnlyBadge}</>
+    const nameWithHighlight = searchQuery ? (
+      <HighlightedText text={connection.name} searchQuery={searchQuery} />
+    ) : connection.name
+    if (isConnecting) return <>{nameWithHighlight}{ReadOnlyBadge} <span className="text-zinc-500">[connecting...]</span></>
+    if (isConnected) return <>{nameWithHighlight}{ReadOnlyBadge}</>
+    return <>{nameWithHighlight}{ReadOnlyBadge}</>
   }
 
   const connectionStatus = isConnecting ? 'connecting' : isConnected ? 'connected' : 'disconnected'
@@ -696,13 +813,56 @@ function ConnectionNode({
       onDragEnd={handleRowDragEnd}
     >
       {isConnected ? (
-        databases.map((db, dbIndex) => {
+        // Filter and sort databases: favorites first, then by sort mode (alpha or lastAccessed)
+        databases
+          .filter(db => {
+            if (!searchQuery) return true // No search = show all
+            if (connectionNameMatched) return true // Connection name matched = show all children
+            const dbMatchesSearch = matchingDatabases.includes(db.name)
+            const hasMatchingCollections = (matchingCollections[db.name] || []).length > 0
+            return dbMatchesSearch || hasMatchingCollections
+          })
+          .sort((a, b) => {
+            const aKey = `db:${connection.id}:${a.name}`
+            const bKey = `db:${connection.id}:${b.name}`
+            const aIsFav = databaseFavorites?.includes(aKey)
+            const bIsFav = databaseFavorites?.includes(bKey)
+
+            // Favorites come first
+            if (aIsFav !== bIsFav) return aIsFav ? -1 : 1
+
+            // Within same group (both favorites or both non-favorites), apply sort mode
+            if (dbSortMode === 'lastAccessed') {
+              const aAccessed = a.lastAccessedAt ? new Date(a.lastAccessedAt).getTime() : 0
+              const bAccessed = b.lastAccessedAt ? new Date(b.lastAccessedAt).getTime() : 0
+              if (aAccessed !== bAccessed) return bAccessed - aAccessed
+            }
+            // Fall back to alphabetical
+            return a.name.localeCompare(b.name)
+          })
+          .map((db, dbIndex, filteredDbs) => {
           const dbNodeId = `db:${connection.id}:${db.name}`
           const collections = dbData[db.name]?.collections || []
+          const dbMatchesSearch = matchingDatabases.includes(db.name)
+          const collectionsMatchingInDb = matchingCollections[db.name] || []
+
+          // Create label with potential highlighting
+          const dbLabel = searchQuery ? (
+            <HighlightedText text={db.name} searchQuery={searchQuery} />
+          ) : db.name
+
+          // Filter collections when searching: show matching ones, or all if connection/DB itself matched
+          const filteredCollections = searchQuery && !connectionNameMatched && !dbMatchesSearch && collectionsMatchingInDb.length > 0
+            ? collections.filter(c => collectionsMatchingInDb.includes(c.name))
+            : collections
+
+          const dbFavKey = `db:${connection.id}:${db.name}`
+          const isDbFavorite = databaseFavorites?.includes(dbFavKey)
+
           return (
             <TreeNode
               key={db.name}
-              label={db.name}
+              label={dbLabel}
               icon={<DatabaseIcon />}
               color={connection.color}
               level={level + 1}
@@ -716,16 +876,34 @@ function ConnectionNode({
               nodeId={dbNodeId}
               isFocused={focusedNodeId === dbNodeId}
               onFocus={() => onNodeFocus?.(dbNodeId)}
-              setSize={databases.length}
+              setSize={filteredDbs.length}
               posInSet={dbIndex + 1}
+              isFavorite={isDbFavorite}
+              onToggleFavorite={() => onToggleDatabaseFavorite?.(connection.id, db.name)}
             >
-              {collections.map((coll, collIndex) => {
+              {/* Sort collections with favorites at top */}
+              {[...filteredCollections].sort((a, b) => {
+                const aKey = `${connection.id}:${db.name}:${a.name}`
+                const bKey = `${connection.id}:${db.name}:${b.name}`
+                const aFav = favorites?.has(aKey) ? 1 : 0
+                const bFav = favorites?.has(bKey) ? 1 : 0
+                if (aFav !== bFav) return bFav - aFav // Favorites first
+                return a.name.localeCompare(b.name) // Then alphabetical
+              }).map((coll, collIndex) => {
                 const itemKey = `${connection.id}:${db.name}:${coll.name}`
                 const collNodeId = `coll:${connection.id}:${db.name}:${coll.name}`
+                const isFavorite = favorites?.has(itemKey)
+                const collMatchesSearch = collectionsMatchingInDb.includes(coll.name)
+
+                // Create label with potential highlighting
+                const collLabel = searchQuery ? (
+                  <HighlightedText text={coll.name} searchQuery={searchQuery} />
+                ) : coll.name
+
                 return (
                   <TreeNode
                     key={coll.name}
-                    label={coll.name}
+                    label={collLabel}
                     icon={<CollectionIcon />}
                     color={connection.color}
                     count={coll.count}
@@ -737,8 +915,10 @@ function ConnectionNode({
                     nodeId={collNodeId}
                     isFocused={focusedNodeId === collNodeId}
                     onFocus={() => onNodeFocus?.(collNodeId)}
-                    setSize={collections.length}
+                    setSize={filteredCollections.length}
                     posInSet={collIndex + 1}
+                    isFavorite={isFavorite}
+                    onToggleFavorite={() => onToggleFavorite?.(connection.id, db.name, coll.name)}
                   />
                 )
               })}
@@ -887,6 +1067,16 @@ export default function Sidebar({
   const draggingFolderIdRef = useRef(null) // Ref for synchronous access in drag handlers
   const [dragOverFolderId, setDragOverFolderId] = useState(null) // null means root, 'root' used for indication
   const [newSubfolderParentId, setNewSubfolderParentId] = useState(null) // For creating subfolder
+  const [favorites, setFavorites] = useState(new Set()) // Collection favorites as Set of keys
+  const [databaseFavorites, setDatabaseFavorites] = useState([]) // Database favorite keys
+  const [dbSortMode, setDbSortMode] = useState(() => {
+    // Load from localStorage, default to 'alpha' (alphabetical)
+    try {
+      return localStorage.getItem('mongopal-db-sort-mode') || 'alpha'
+    } catch {
+      return 'alpha'
+    }
+  })
 
   // State for keyboard navigation - track expanded state at Sidebar level
   const [expandedConnections, setExpandedConnections] = useState({})
@@ -941,10 +1131,177 @@ export default function Sidebar({
     })
   }, [activeConnections])
 
+  // Load favorites on mount
+  useEffect(() => {
+    if (go?.ListFavorites) {
+      go.ListFavorites().then(keys => {
+        setFavorites(new Set(keys || []))
+      }).catch(err => {
+        console.error('Failed to load favorites:', err)
+      })
+    }
+    // Load database favorites (ordered array)
+    if (go?.ListDatabaseFavorites) {
+      go.ListDatabaseFavorites().then(keys => {
+        setDatabaseFavorites(keys || [])
+      }).catch(err => {
+        console.error('Failed to load database favorites:', err)
+      })
+    }
+  }, [])
 
-  const filteredConnections = connections.filter(conn =>
-    conn.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // Toggle favorite for a collection
+  const handleToggleFavorite = async (connId, dbName, collName) => {
+    const key = `${connId}:${dbName}:${collName}`
+    const isFavorite = favorites.has(key)
+    try {
+      if (isFavorite) {
+        await go?.RemoveFavorite(connId, dbName, collName)
+        setFavorites(prev => {
+          const next = new Set(prev)
+          next.delete(key)
+          return next
+        })
+        notify.success(`Removed "${collName}" from favorites`)
+      } else {
+        await go?.AddFavorite(connId, dbName, collName)
+        setFavorites(prev => new Set([...prev, key]))
+        notify.success(`Added "${collName}" to favorites`)
+      }
+    } catch (err) {
+      notify.error(`Failed to update favorites: ${err?.message || String(err)}`)
+    }
+  }
+
+  // Toggle favorite for a database
+  const handleToggleDatabaseFavorite = async (connId, dbName) => {
+    const key = `db:${connId}:${dbName}`
+    const isFavorite = databaseFavorites.includes(key)
+    try {
+      if (isFavorite) {
+        await go?.RemoveDatabaseFavorite(connId, dbName)
+        setDatabaseFavorites(prev => prev.filter(k => k !== key))
+        notify.success(`Removed "${dbName}" from favorites`)
+      } else {
+        await go?.AddDatabaseFavorite(connId, dbName)
+        setDatabaseFavorites(prev => [...prev, key])
+        notify.success(`Added "${dbName}" to favorites`)
+      }
+    } catch (err) {
+      notify.error(`Failed to update database favorites: ${err?.message || String(err)}`)
+    }
+  }
+
+  // Reorder database favorites (for drag-and-drop within favorites section)
+  // Toggle database sort mode between alphabetical and last-accessed
+  const toggleDbSortMode = () => {
+    const newMode = dbSortMode === 'alpha' ? 'lastAccessed' : 'alpha'
+    setDbSortMode(newMode)
+    try {
+      localStorage.setItem('mongopal-db-sort-mode', newMode)
+    } catch {
+      // Ignore localStorage errors
+    }
+  }
+
+  // Comprehensive search across connections, databases, and collections
+  // Returns { filteredConnections, matchInfo } where matchInfo contains details about what matched
+  const searchResults = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim()
+
+    // No search query - return all connections with empty match info
+    if (!query) {
+      return {
+        filteredConnections: connections,
+        matchInfo: {}, // connId -> { matchedConnection, matchedDatabases: [], matchedCollections: { dbName: [collNames] } }
+        autoExpandConnections: {},
+        autoExpandDatabases: {},
+      }
+    }
+
+    const filteredConnections = []
+    const matchInfo = {}
+    const autoExpandConnections = {}
+    const autoExpandDatabases = {}
+
+    connections.forEach(conn => {
+      const connNameMatches = conn.name.toLowerCase().includes(query)
+      const connDatabases = databases[conn.id] || []
+      const connCollections = collectionsMap // keyed by "connId:dbName"
+
+      // Track which databases and collections match
+      const matchedDatabases = []
+      const matchedCollections = {} // dbName -> [collNames]
+
+      // Check each database for this connection
+      connDatabases.forEach(db => {
+        const dbNameMatches = db.name.toLowerCase().includes(query)
+        const dbCollections = connCollections[`${conn.id}:${db.name}`] || []
+
+        // Check collections within this database
+        const matchedCollsInDb = dbCollections
+          .filter(coll => coll.name.toLowerCase().includes(query))
+          .map(coll => coll.name)
+
+        if (dbNameMatches) {
+          matchedDatabases.push(db.name)
+        }
+
+        if (matchedCollsInDb.length > 0) {
+          matchedCollections[db.name] = matchedCollsInDb
+          // Auto-expand this database to show matching collections
+          autoExpandDatabases[`${conn.id}:${db.name}`] = true
+        }
+      })
+
+      const hasMatchingDb = matchedDatabases.length > 0
+      const hasMatchingColl = Object.keys(matchedCollections).length > 0
+
+      // Include connection if it matches OR if any of its children match
+      if (connNameMatches || hasMatchingDb || hasMatchingColl) {
+        filteredConnections.push(conn)
+
+        matchInfo[conn.id] = {
+          matchedConnection: connNameMatches,
+          matchedDatabases,
+          matchedCollections,
+        }
+
+        // Auto-expand connection if a child (db or collection) matches
+        if ((hasMatchingDb || hasMatchingColl) && !connNameMatches) {
+          autoExpandConnections[conn.id] = true
+        }
+      }
+    })
+
+    return {
+      filteredConnections,
+      matchInfo,
+      autoExpandConnections,
+      autoExpandDatabases,
+    }
+  }, [searchQuery, connections, databases, collectionsMap])
+
+  const { filteredConnections, matchInfo, autoExpandConnections, autoExpandDatabases } = searchResults
+
+  // Auto-expand connections and databases when search matches their children
+  useEffect(() => {
+    if (!searchQuery.trim()) return
+
+    // Auto-expand connections with matching children
+    Object.keys(autoExpandConnections).forEach(connId => {
+      if (autoExpandConnections[connId] && !expandedConnections[connId]) {
+        setExpandedConnections(prev => ({ ...prev, [connId]: true }))
+      }
+    })
+
+    // Auto-expand databases with matching collections
+    Object.keys(autoExpandDatabases).forEach(key => {
+      if (autoExpandDatabases[key] && !expandedDatabases[key]) {
+        setExpandedDatabases(prev => ({ ...prev, [key]: true }))
+      }
+    })
+  }, [searchQuery, autoExpandConnections, autoExpandDatabases])
 
   // Sort connections by last accessed date (most recent first), then by name
   const sortConnections = (connList) =>
@@ -1523,55 +1880,83 @@ export default function Sidebar({
     )
   }
 
-  const renderConnectionNode = (conn, index, totalConnections, level = 0) => (
-    <ConnectionNode
-      key={conn.id}
-      connection={conn}
-      isConnected={activeConnections.includes(conn.id)}
-      isConnecting={isConnecting(conn.id)}
-      databases={databases[conn.id] || []}
-      activeConnections={activeConnections}
-      selectedItem={selectedItem}
-      onConnect={connect}
-      onDisconnect={handleDisconnect}
-      onDisconnectOthers={handleDisconnectOthers}
-      onSelectDatabase={setSelectedDatabase}
-      onSelectCollection={handleSelectCollection}
-      onOpenCollection={handleOpenCollection}
-      onEdit={() => onEditConnection(conn)}
-      onDelete={() => onDeleteConnection(conn.id)}
-      onDuplicate={() => duplicateConnection(conn.id)}
-      onCopyURI={() => handleCopyURI(conn)}
-      onRefresh={() => refreshConnection(conn.id)}
-      onShowContextMenu={showContextMenu}
-      onDropDatabase={handleDropDatabase}
-      onDropCollection={handleDropCollection}
-      onClearCollection={handleClearCollection}
-      onViewSchema={openSchemaTab}
-      onShowStats={onShowStats}
-      onManageIndexes={onManageIndexes}
-      onExportDatabases={() => onExportDatabases?.(conn.id, conn.name)}
-      onImportDatabases={() => onImportDatabases?.(conn.id, conn.name)}
-      onExportCollections={(dbName) => onExportCollections?.(conn.id, conn.name, dbName)}
-      onImportCollections={(dbName) => onImportCollections?.(conn.id, conn.name, dbName)}
-      onError={(msg) => notify.error(msg)}
-      focusedNodeId={focusedNodeId}
-      onNodeFocus={setFocusedNodeId}
-      setSize={totalConnections}
-      posInSet={index + 1}
-      expandedConnections={expandedConnections}
-      setExpandedConnections={setExpandedConnections}
-      expandedDatabases={expandedDatabases}
-      setExpandedDatabases={setExpandedDatabases}
-      onCollectionsLoaded={(dbName, collections) => {
-        const key = `${conn.id}:${dbName}`
-        setCollectionsMap(prev => ({ ...prev, [key]: collections }))
-      }}
-      onDragStart={handleConnectionDragStart}
-      onDragEnd={handleConnectionDragEnd}
-      level={level}
-    />
-  )
+  const renderConnectionNode = (conn, index, totalConnections, level = 0) => {
+    // Get search match info for this connection
+    const connMatchInfo = matchInfo[conn.id] || {
+      matchedConnection: false,
+      matchedDatabases: [],
+      matchedCollections: {},
+    }
+
+    return (
+      <ConnectionNode
+        key={conn.id}
+        connection={conn}
+        isConnected={activeConnections.includes(conn.id)}
+        isConnecting={isConnecting(conn.id)}
+        databases={databases[conn.id] || []}
+        activeConnections={activeConnections}
+        selectedItem={selectedItem}
+        onConnect={connect}
+        onDisconnect={handleDisconnect}
+        onDisconnectOthers={handleDisconnectOthers}
+        onSelectDatabase={setSelectedDatabase}
+        onSelectCollection={handleSelectCollection}
+        onOpenCollection={handleOpenCollection}
+        onEdit={() => onEditConnection(conn)}
+        onDelete={() => onDeleteConnection(conn.id)}
+        onDuplicate={() => duplicateConnection(conn.id)}
+        onCopyURI={() => handleCopyURI(conn)}
+        onRefresh={() => refreshConnection(conn.id)}
+        onShowContextMenu={showContextMenu}
+        onDropDatabase={handleDropDatabase}
+        onDropCollection={handleDropCollection}
+        onClearCollection={handleClearCollection}
+        onViewSchema={openSchemaTab}
+        onShowStats={onShowStats}
+        onManageIndexes={onManageIndexes}
+        onExportDatabases={() => onExportDatabases?.(conn.id, conn.name)}
+        onImportDatabases={() => onImportDatabases?.(conn.id, conn.name)}
+        onExportCollections={(dbName) => onExportCollections?.(conn.id, conn.name, dbName)}
+        onImportCollections={(dbName) => onImportCollections?.(conn.id, conn.name, dbName)}
+        onError={(msg) => notify.error(msg)}
+        favorites={favorites}
+        onToggleFavorite={handleToggleFavorite}
+        databaseFavorites={databaseFavorites}
+        onToggleDatabaseFavorite={handleToggleDatabaseFavorite}
+        dbSortMode={dbSortMode}
+        onDatabaseAccessed={(connId, dbName) => {
+          // Update the database's lastAccessedAt in local state for immediate sort update
+          setDatabases(prev => ({
+            ...prev,
+            [connId]: (prev[connId] || []).map(db =>
+              db.name === dbName ? { ...db, lastAccessedAt: new Date().toISOString() } : db
+            )
+          }))
+        }}
+        focusedNodeId={focusedNodeId}
+        onNodeFocus={setFocusedNodeId}
+        setSize={totalConnections}
+        posInSet={index + 1}
+        expandedConnections={expandedConnections}
+        setExpandedConnections={setExpandedConnections}
+        expandedDatabases={expandedDatabases}
+        setExpandedDatabases={setExpandedDatabases}
+        onCollectionsLoaded={(dbName, collections) => {
+          const key = `${conn.id}:${dbName}`
+          setCollectionsMap(prev => ({ ...prev, [key]: collections }))
+        }}
+        onDragStart={handleConnectionDragStart}
+        onDragEnd={handleConnectionDragEnd}
+        level={level}
+        // Search props
+        searchQuery={searchQuery}
+        connectionNameMatched={connMatchInfo.matchedConnection}
+        matchingDatabases={connMatchInfo.matchedDatabases}
+        matchingCollections={connMatchInfo.matchedCollections}
+      />
+    )
+  }
 
   return (
     <div className="h-full flex flex-col bg-surface">
@@ -1581,9 +1966,9 @@ export default function Sidebar({
           <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search connections..."
+            placeholder="Search connections, databases, collections..."
             className="input py-1.5 text-sm titlebar-no-drag"
-            style={{ paddingLeft: '2.5rem' }}
+            style={{ paddingLeft: '2.5rem', paddingRight: searchQuery ? '2.5rem' : '0.75rem' }}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             autoComplete="off"
@@ -1591,6 +1976,15 @@ export default function Sidebar({
             autoCapitalize="off"
             spellCheck={false}
           />
+          {searchQuery && (
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-300 rounded hover:bg-zinc-700 titlebar-no-drag"
+              onClick={() => setSearchQuery('')}
+              title="Clear search"
+            >
+              <ClearIcon className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -1610,9 +2004,16 @@ export default function Sidebar({
         >
           <FolderIcon className="w-4 h-4" />
         </button>
+        <button
+          className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ml-auto titlebar-no-drag"
+          onClick={toggleDbSortMode}
+          title={dbSortMode === 'alpha' ? 'Sort by Name (click for Recent)' : 'Sort by Recent (click for Name)'}
+        >
+          {dbSortMode === 'alpha' ? <SortAlphaIcon className="w-4 h-4" /> : <SortClockIcon className="w-4 h-4" />}
+        </button>
         {activeConnections.length > 0 && (
           <button
-            className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ml-auto titlebar-no-drag"
+            className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 titlebar-no-drag"
             onClick={handleDisconnectAll}
             title={`Disconnect All (${activeConnections.length})`}
           >

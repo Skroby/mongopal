@@ -12,6 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/peternagy/mongopal/internal/core"
+	"github.com/peternagy/mongopal/internal/debug"
 	"github.com/peternagy/mongopal/internal/storage"
 	"github.com/peternagy/mongopal/internal/types"
 )
@@ -32,14 +33,27 @@ func NewService(state *core.AppState, connStore *storage.ConnectionService) *Ser
 
 // Connect establishes a connection to a saved MongoDB instance.
 func (s *Service) Connect(connID string) error {
+	start := time.Now()
+	debug.LogConnection("Connecting to MongoDB", map[string]interface{}{
+		"connectionId": connID,
+	})
+
 	// Prevent concurrent connection attempts for the same ID
 	if err := s.state.StartConnecting(connID); err != nil {
+		debug.LogConnection("Connection blocked (concurrent attempt)", map[string]interface{}{
+			"connectionId": connID,
+			"error":        err.Error(),
+		})
 		return err
 	}
 	defer s.state.FinishConnecting(connID)
 
 	uri, err := s.connStore.GetConnectionURI(connID)
 	if err != nil {
+		debug.LogConnection("Failed to get connection URI", map[string]interface{}{
+			"connectionId": connID,
+			"error":        err.Error(),
+		})
 		return err
 	}
 
@@ -49,12 +63,22 @@ func (s *Service) Connect(connID string) error {
 	clientOpts := options.Client().ApplyURI(uri)
 	client, err := mongo.Connect(ctx, clientOpts)
 	if err != nil {
+		debug.LogConnection("Failed to connect", map[string]interface{}{
+			"connectionId": connID,
+			"error":        err.Error(),
+			"durationMs":   time.Since(start).Milliseconds(),
+		})
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 
 	// Ping to verify connection
 	if err := client.Ping(ctx, nil); err != nil {
 		client.Disconnect(context.Background())
+		debug.LogConnection("Failed to ping", map[string]interface{}{
+			"connectionId": connID,
+			"error":        err.Error(),
+			"durationMs":   time.Since(start).Milliseconds(),
+		})
 		return fmt.Errorf("failed to ping: %w", err)
 	}
 
@@ -63,12 +87,23 @@ func (s *Service) Connect(connID string) error {
 	// Update last accessed time (ignore error - non-critical)
 	_ = s.connStore.UpdateLastAccessed(connID)
 
+	debug.LogConnection("Connected successfully", map[string]interface{}{
+		"connectionId": connID,
+		"durationMs":   time.Since(start).Milliseconds(),
+	})
+
 	return nil
 }
 
 // Disconnect closes a MongoDB connection.
 func (s *Service) Disconnect(connID string) error {
+	debug.LogConnection("Disconnecting", map[string]interface{}{
+		"connectionId": connID,
+	})
 	s.state.RemoveClient(connID)
+	debug.LogConnection("Disconnected", map[string]interface{}{
+		"connectionId": connID,
+	})
 	return nil
 }
 
@@ -83,12 +118,25 @@ func (s *Service) DisconnectAll() error {
 
 // TestConnection tests a MongoDB URI without saving.
 func (s *Service) TestConnection(uri string) error {
+	start := time.Now()
+	// Mask password in URI for logging
+	maskedURI := uri
+	if idx := strings.Index(uri, "@"); idx > 0 {
+		maskedURI = uri[:strings.Index(uri, "://")+3] + "***@" + uri[idx+1:]
+	}
+	debug.LogConnection("Testing connection", map[string]interface{}{
+		"uri": maskedURI,
+	})
+
 	if uri == "" {
 		return fmt.Errorf("URI cannot be empty")
 	}
 
 	// Validate URI scheme
 	if !strings.HasPrefix(uri, "mongodb://") && !strings.HasPrefix(uri, "mongodb+srv://") {
+		debug.LogConnection("Invalid URI scheme", map[string]interface{}{
+			"uri": maskedURI,
+		})
 		return fmt.Errorf("invalid URI scheme: must start with mongodb:// or mongodb+srv://")
 	}
 
@@ -98,14 +146,29 @@ func (s *Service) TestConnection(uri string) error {
 	clientOpts := options.Client().ApplyURI(uri)
 	client, err := mongo.Connect(ctx, clientOpts)
 	if err != nil {
+		debug.LogConnection("Test connection failed", map[string]interface{}{
+			"uri":        maskedURI,
+			"error":      err.Error(),
+			"durationMs": time.Since(start).Milliseconds(),
+		})
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 	// Use same timeout context for disconnect to avoid hanging
 	defer client.Disconnect(ctx)
 
 	if err := client.Ping(ctx, nil); err != nil {
+		debug.LogConnection("Test connection ping failed", map[string]interface{}{
+			"uri":        maskedURI,
+			"error":      err.Error(),
+			"durationMs": time.Since(start).Milliseconds(),
+		})
 		return fmt.Errorf("failed to ping: %w", err)
 	}
+
+	debug.LogConnection("Test connection successful", map[string]interface{}{
+		"uri":        maskedURI,
+		"durationMs": time.Since(start).Milliseconds(),
+	})
 
 	return nil
 }

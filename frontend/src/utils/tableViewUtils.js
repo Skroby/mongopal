@@ -247,6 +247,70 @@ const HEADER_PADDING = 40     // Extra padding for header (sort icon, etc.)
 const MAX_COLUMN_WIDTH = 350
 const MIN_COLUMN_WIDTH = 60
 
+// localStorage key for hidden columns per collection
+const HIDDEN_COLUMNS_KEY = 'mongopal-hidden-columns'
+
+/**
+ * Load hidden columns from localStorage for a specific collection.
+ * @param {string} connectionId - Connection ID
+ * @param {string} database - Database name
+ * @param {string} collection - Collection name
+ * @returns {Set<string>} Set of hidden column names
+ */
+export function loadHiddenColumns(connectionId, database, collection) {
+  try {
+    const stored = localStorage.getItem(HIDDEN_COLUMNS_KEY)
+    if (stored) {
+      const data = JSON.parse(stored)
+      const key = `${connectionId}:${database}:${collection}`
+      return new Set(data[key] || [])
+    }
+  } catch (err) {
+    console.error('Failed to load hidden columns:', err)
+  }
+  return new Set()
+}
+
+/**
+ * Save hidden columns to localStorage for a specific collection.
+ * @param {string} connectionId - Connection ID
+ * @param {string} database - Database name
+ * @param {string} collection - Collection name
+ * @param {Set<string>} hiddenColumns - Set of hidden column names
+ */
+export function saveHiddenColumns(connectionId, database, collection, hiddenColumns) {
+  try {
+    const stored = localStorage.getItem(HIDDEN_COLUMNS_KEY)
+    const data = stored ? JSON.parse(stored) : {}
+    const key = `${connectionId}:${database}:${collection}`
+    data[key] = Array.from(hiddenColumns)
+    localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify(data))
+  } catch (err) {
+    console.error('Failed to save hidden columns:', err)
+  }
+}
+
+/**
+ * Build a MongoDB exclusion projection from hidden columns.
+ * @param {Set<string>|Array<string>} hiddenColumns - Set or array of hidden column names
+ * @returns {string} MongoDB projection JSON string like '{"field1": 0, "field2": 0}'
+ */
+export function buildExclusionProjection(hiddenColumns) {
+  const cols = hiddenColumns instanceof Set ? Array.from(hiddenColumns) : hiddenColumns
+  if (!cols || cols.length === 0) return ''
+
+  // Filter out _id from exclusion - you can't mix _id: 0 with other field exclusions
+  // unless it's the only field being excluded
+  const fieldsToExclude = cols.filter(col => col !== '_id')
+  if (fieldsToExclude.length === 0) return ''
+
+  const projection = {}
+  fieldsToExclude.forEach(col => {
+    projection[col] = 0
+  })
+  return JSON.stringify(projection)
+}
+
 /**
  * Get the default column width based on column name length and value type.
  * Returns the larger of: (name length × char width) or (type content width),

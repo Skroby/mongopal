@@ -9,6 +9,9 @@ import {
   getNestedKeys,
   columnHasExpandableObjects,
   getDefaultColumnWidth,
+  loadHiddenColumns,
+  saveHiddenColumns,
+  buildExclusionProjection,
 } from './tableViewUtils'
 
 describe('getDocId', () => {
@@ -703,5 +706,146 @@ describe('getDefaultColumnWidth', () => {
     // "status" = 6 chars * 8 + 40 = 88
     // boolean type = 50, max(88, 50) = 88
     expect(getDefaultColumnWidth('status', docs)).toBe(88)
+  })
+})
+
+describe('loadHiddenColumns', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('returns empty set when no data stored', () => {
+    const result = loadHiddenColumns('conn1', 'db1', 'coll1')
+    expect(result).toEqual(new Set())
+  })
+
+  it('returns stored hidden columns for specific collection', () => {
+    const data = {
+      'conn1:db1:coll1': ['field1', 'field2'],
+      'conn1:db1:coll2': ['other']
+    }
+    localStorage.setItem('mongopal-hidden-columns', JSON.stringify(data))
+
+    const result = loadHiddenColumns('conn1', 'db1', 'coll1')
+    expect(result).toEqual(new Set(['field1', 'field2']))
+  })
+
+  it('returns empty set for collection with no hidden columns', () => {
+    const data = {
+      'conn1:db1:coll1': ['field1']
+    }
+    localStorage.setItem('mongopal-hidden-columns', JSON.stringify(data))
+
+    const result = loadHiddenColumns('conn1', 'db1', 'coll2')
+    expect(result).toEqual(new Set())
+  })
+
+  it('handles invalid JSON gracefully', () => {
+    localStorage.setItem('mongopal-hidden-columns', 'invalid json')
+
+    const result = loadHiddenColumns('conn1', 'db1', 'coll1')
+    expect(result).toEqual(new Set())
+  })
+})
+
+describe('saveHiddenColumns', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('saves hidden columns for a collection', () => {
+    const hiddenSet = new Set(['field1', 'field2'])
+    saveHiddenColumns('conn1', 'db1', 'coll1', hiddenSet)
+
+    const stored = JSON.parse(localStorage.getItem('mongopal-hidden-columns'))
+    expect(stored['conn1:db1:coll1']).toEqual(['field1', 'field2'])
+  })
+
+  it('preserves existing data for other collections', () => {
+    const existingData = {
+      'conn1:db1:coll2': ['existingField']
+    }
+    localStorage.setItem('mongopal-hidden-columns', JSON.stringify(existingData))
+
+    saveHiddenColumns('conn1', 'db1', 'coll1', new Set(['newField']))
+
+    const stored = JSON.parse(localStorage.getItem('mongopal-hidden-columns'))
+    expect(stored['conn1:db1:coll1']).toEqual(['newField'])
+    expect(stored['conn1:db1:coll2']).toEqual(['existingField'])
+  })
+
+  it('updates existing hidden columns for same collection', () => {
+    const existingData = {
+      'conn1:db1:coll1': ['oldField']
+    }
+    localStorage.setItem('mongopal-hidden-columns', JSON.stringify(existingData))
+
+    saveHiddenColumns('conn1', 'db1', 'coll1', new Set(['newField1', 'newField2']))
+
+    const stored = JSON.parse(localStorage.getItem('mongopal-hidden-columns'))
+    expect(stored['conn1:db1:coll1']).toEqual(['newField1', 'newField2'])
+  })
+
+  it('saves empty set as empty array', () => {
+    saveHiddenColumns('conn1', 'db1', 'coll1', new Set())
+
+    const stored = JSON.parse(localStorage.getItem('mongopal-hidden-columns'))
+    expect(stored['conn1:db1:coll1']).toEqual([])
+  })
+})
+
+describe('buildExclusionProjection', () => {
+  it('returns empty string for empty set', () => {
+    expect(buildExclusionProjection(new Set())).toBe('')
+  })
+
+  it('returns empty string for empty array', () => {
+    expect(buildExclusionProjection([])).toBe('')
+  })
+
+  it('returns empty string for null/undefined', () => {
+    expect(buildExclusionProjection(null)).toBe('')
+    expect(buildExclusionProjection(undefined)).toBe('')
+  })
+
+  it('builds exclusion projection from Set', () => {
+    const hidden = new Set(['field1', 'field2'])
+    const result = buildExclusionProjection(hidden)
+    const parsed = JSON.parse(result)
+    expect(parsed).toEqual({ field1: 0, field2: 0 })
+  })
+
+  it('builds exclusion projection from Array', () => {
+    const hidden = ['field1', 'field2']
+    const result = buildExclusionProjection(hidden)
+    const parsed = JSON.parse(result)
+    expect(parsed).toEqual({ field1: 0, field2: 0 })
+  })
+
+  it('excludes _id from exclusion projection', () => {
+    const hidden = new Set(['_id', 'field1'])
+    const result = buildExclusionProjection(hidden)
+    const parsed = JSON.parse(result)
+    expect(parsed).toEqual({ field1: 0 })
+    expect(parsed._id).toBeUndefined()
+  })
+
+  it('returns empty string when only _id is hidden', () => {
+    const hidden = new Set(['_id'])
+    expect(buildExclusionProjection(hidden)).toBe('')
+  })
+
+  it('handles single field', () => {
+    const hidden = new Set(['singleField'])
+    const result = buildExclusionProjection(hidden)
+    const parsed = JSON.parse(result)
+    expect(parsed).toEqual({ singleField: 0 })
+  })
+
+  it('handles nested field paths', () => {
+    const hidden = new Set(['user.profile', 'address.city'])
+    const result = buildExclusionProjection(hidden)
+    const parsed = JSON.parse(result)
+    expect(parsed).toEqual({ 'user.profile': 0, 'address.city': 0 })
   })
 })

@@ -1,10 +1,52 @@
 import { describe, it, expect } from 'vitest'
-import { parseFilterFromQuery, parseProjectionFromQuery, buildFullQuery, isSimpleFindQuery, wrapScriptForOutput } from './queryParser'
+import { parseFilterFromQuery, parseProjectionFromQuery, buildFullQuery, isSimpleFindQuery, wrapScriptForOutput, shellToJson } from './queryParser'
+
+describe('shellToJson', () => {
+  it('converts unquoted keys to quoted keys', () => {
+    expect(shellToJson('{name: "test"}')).toBe('{"name": "test"}')
+  })
+
+  it('preserves already valid JSON', () => {
+    expect(shellToJson('{"name": "test"}')).toBe('{"name": "test"}')
+  })
+
+  it('converts single quotes to double quotes', () => {
+    expect(shellToJson("{'name': 'test'}")).toBe('{"name": "test"}')
+  })
+
+  it('handles nested objects', () => {
+    expect(shellToJson('{a: {b: "c"}}')).toBe('{"a": {"b": "c"}}')
+  })
+
+  it('handles $-prefixed keys', () => {
+    expect(shellToJson('{$gt: 100}')).toBe('{"$gt": 100}')
+  })
+
+  it('handles _id key', () => {
+    expect(shellToJson('{_id: "abc"}')).toBe('{"_id": "abc"}')
+  })
+
+  it('handles arrays', () => {
+    expect(shellToJson('{tags: ["a", "b"]}')).toBe('{"tags": ["a", "b"]}')
+  })
+
+  it('handles empty object', () => {
+    expect(shellToJson('{}')).toBe('{}')
+  })
+
+  it('handles multiple keys', () => {
+    expect(shellToJson('{a: 1, b: 2}')).toBe('{"a": 1, "b": 2}')
+  })
+
+  it('handles keys with numbers', () => {
+    expect(shellToJson('{field1: "value"}')).toBe('{"field1": "value"}')
+  })
+})
 
 describe('parseFilterFromQuery', () => {
-  it('extracts filter from valid find query', () => {
+  it('extracts filter from valid find query and converts to JSON', () => {
     const query = 'db.getCollection("users").find({ name: "test" })'
-    expect(parseFilterFromQuery(query)).toBe('{ name: "test" }')
+    expect(parseFilterFromQuery(query)).toBe('{ "name": "test" }')
   })
 
   it('extracts empty filter from find with empty object', () => {
@@ -12,14 +54,14 @@ describe('parseFilterFromQuery', () => {
     expect(parseFilterFromQuery(query)).toBe('{}')
   })
 
-  it('handles raw JSON filter', () => {
+  it('converts raw shell filter to JSON', () => {
     const query = '{ status: "active" }'
-    expect(parseFilterFromQuery(query)).toBe('{ status: "active" }')
+    expect(parseFilterFromQuery(query)).toBe('{ "status": "active" }')
   })
 
   it('handles complex nested filter', () => {
     const query = 'db.getCollection("orders").find({ $and: [{ status: "pending" }, { total: { $gt: 100 } }] })'
-    expect(parseFilterFromQuery(query)).toBe('{ $and: [{ status: "pending" }, { total: { $gt: 100 } }] }')
+    expect(parseFilterFromQuery(query)).toBe('{ "$and": [{ "status": "pending" }, { "total": { "$gt": 100 } }] }')
   })
 
   it('returns empty string for .find without parentheses', () => {
@@ -29,7 +71,7 @@ describe('parseFilterFromQuery', () => {
 
   it('handles find with whitespace', () => {
     const query = 'db.getCollection("users").find(  { name: "test" }  )'
-    expect(parseFilterFromQuery(query)).toBe('{ name: "test" }')
+    expect(parseFilterFromQuery(query)).toBe('{ "name": "test" }')
   })
 
   it('returns default for empty find parentheses', () => {
@@ -44,17 +86,17 @@ describe('parseFilterFromQuery - edge cases', () => {
       name: "test",
       age: { $gt: 21 }
     })`
-    expect(parseFilterFromQuery(query)).toContain('name: "test"')
+    expect(parseFilterFromQuery(query)).toContain('"name": "test"')
   })
 
   it('handles db.collection shorthand', () => {
     const query = 'db.users.find({ active: true })'
-    expect(parseFilterFromQuery(query)).toBe('{ active: true }')
+    expect(parseFilterFromQuery(query)).toBe('{ "active": true }')
   })
 
-  it('returns trimmed string for plain text', () => {
+  it('converts and trims plain text filter', () => {
     const query = '  { foo: "bar" }  '
-    expect(parseFilterFromQuery(query)).toBe('{ foo: "bar" }')
+    expect(parseFilterFromQuery(query)).toBe('{ "foo": "bar" }')
   })
 
   it('handles empty string', () => {
@@ -83,22 +125,22 @@ describe('buildFullQuery', () => {
 describe('parseFilterFromQuery - with projections', () => {
   it('extracts only filter when projection is present', () => {
     const query = 'db.users.find({ active: true }, { name: 1, email: 1 })'
-    expect(parseFilterFromQuery(query)).toBe('{ active: true }')
+    expect(parseFilterFromQuery(query)).toBe('{ "active": true }')
   })
 
   it('handles nested objects in filter with projection', () => {
     const query = 'db.users.find({ address: { city: "NYC" } }, { name: 1 })'
-    expect(parseFilterFromQuery(query)).toBe('{ address: { city: "NYC" } }')
+    expect(parseFilterFromQuery(query)).toBe('{ "address": { "city": "NYC" } }')
   })
 
   it('handles arrays in filter with projection', () => {
     const query = 'db.users.find({ tags: ["a", "b"] }, { name: 1 })'
-    expect(parseFilterFromQuery(query)).toBe('{ tags: ["a", "b"] }')
+    expect(parseFilterFromQuery(query)).toBe('{ "tags": ["a", "b"] }')
   })
 
   it('handles commas in strings correctly', () => {
     const query = 'db.users.find({ name: "Doe, John" }, { email: 1 })'
-    expect(parseFilterFromQuery(query)).toBe('{ name: "Doe, John" }')
+    expect(parseFilterFromQuery(query)).toBe('{ "name": "Doe, John" }')
   })
 })
 
@@ -109,24 +151,24 @@ describe('parseProjectionFromQuery', () => {
     expect(parseProjectionFromQuery('')).toBe(null)
   })
 
-  it('extracts projection from find query', () => {
+  it('extracts projection from find query and converts to JSON', () => {
     const query = 'db.users.find({ active: true }, { name: 1, email: 1 })'
-    expect(parseProjectionFromQuery(query)).toBe('{ name: 1, email: 1 }')
+    expect(parseProjectionFromQuery(query)).toBe('{ "name": 1, "email": 1 }')
   })
 
   it('handles empty filter with projection', () => {
     const query = 'db.users.find({}, { name: 1, _id: 0 })'
-    expect(parseProjectionFromQuery(query)).toBe('{ name: 1, _id: 0 }')
+    expect(parseProjectionFromQuery(query)).toBe('{ "name": 1, "_id": 0 }')
   })
 
-  it('handles nested projection', () => {
+  it('handles nested projection with quoted path', () => {
     const query = 'db.users.find({}, { "address.city": 1, name: 1 })'
-    expect(parseProjectionFromQuery(query)).toBe('{ "address.city": 1, name: 1 }')
+    expect(parseProjectionFromQuery(query)).toBe('{ "address.city": 1, "name": 1 }')
   })
 
   it('handles projection with $elemMatch', () => {
     const query = 'db.users.find({}, { items: { $elemMatch: { status: "A" } } })'
-    expect(parseProjectionFromQuery(query)).toBe('{ items: { $elemMatch: { status: "A" } } }')
+    expect(parseProjectionFromQuery(query)).toBe('{ "items": { "$elemMatch": { "status": "A" } } }')
   })
 })
 

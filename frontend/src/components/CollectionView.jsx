@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Editor from '@monaco-editor/react'
 import TableView from './TableView'
 import BulkActionBar from './BulkActionBar'
@@ -10,15 +10,22 @@ import MonacoErrorBoundary from './MonacoErrorBoundary'
 import SavedQueriesDropdown from './SavedQueriesDropdown'
 import SaveQueryModal from './SaveQueryModal'
 import SavedQueriesManager from './SavedQueriesManager'
+import ColumnVisibilityDropdown from './ColumnVisibilityDropdown'
 import { loadSettings } from './Settings'
 import { useNotification } from './NotificationContext'
 import { useConnection } from './contexts/ConnectionContext'
 import { useTab } from './contexts/TabContext'
 import { useStatus } from './contexts/StatusContext'
 import { useOperation } from './contexts/OperationContext'
+import { useDebugLog, DEBUG_CATEGORIES } from './contexts/DebugContext'
+import { useSchema } from './contexts/SchemaContext'
 import { parseFilterFromQuery, parseProjectionFromQuery, buildFullQuery, isSimpleFindQuery, wrapScriptForOutput } from '../utils/queryParser'
+import { loadHiddenColumns, saveHiddenColumns } from '../utils/tableViewUtils'
+import { extractFieldPathsFromDocs } from '../utils/schemaUtils'
 import { parseMongoshOutput } from '../utils/mongoshParser'
 import { getErrorSummary } from '../utils/errorParser'
+import { validateQuery, toMonacoMarkers } from '../utils/queryValidator'
+import { validateFilter, fieldWarningsToMonacoDiagnostics } from '../utils/fieldValidator'
 
 const go = window.go?.main?.App
 
@@ -201,18 +208,6 @@ const PlusIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
-const ExpandIcon = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-  </svg>
-)
-
-const CollapseIcon = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
-  </svg>
-)
-
 const ExplainIcon = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -225,19 +220,22 @@ const SaveIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
-export default function CollectionView({ connectionId, database, collection }) {
+export default function CollectionView({ connectionId, database, collection, tabId, restored }) {
   const { notify } = useNotification()
   const { getConnectionById, activeConnections, connectingIds, connect } = useConnection()
-  const { openDocumentTab, openInsertTab, currentTab, markTabActivated } = useTab()
+  const { openDocumentTab, openInsertTab, markTabActivated } = useTab()
   const { updateDocumentStatus, clearStatus } = useStatus()
   const { startOperation, updateOperation, completeOperation } = useOperation()
+  const { log: logQuery } = useDebugLog(DEBUG_CATEGORIES.QUERY)
+  const { getFieldNames, prefetchSchema, isSchemaLoading, mergeFieldNames } = useSchema()
 
   // Get connection status
   const connection = getConnectionById(connectionId)
   const readOnly = connection?.readOnly || false
   const isConnected = activeConnections.includes(connectionId)
   const isConnecting = connectingIds.has(connectionId)
-  const isRestoredTab = currentTab?.restored === true
+  // Track restored state locally - starts with prop value, clears when user runs query
+  const [isRestoredTab, setIsRestoredTab] = useState(restored === true)
 
   const [query, setQuery] = useState(() => buildFullQuery(collection, '{}'))
   const [documents, setDocuments] = useState([])
@@ -247,9 +245,20 @@ export default function CollectionView({ connectionId, database, collection }) {
   const [rawOutput, setRawOutput] = useState('') // Raw mongosh output for 'raw' view
   const [queryHistory, setQueryHistory] = useState(() => loadQueryHistory())
   const [showHistory, setShowHistory] = useState(false)
-  const [expandedQuery, setExpandedQuery] = useState(false)
   const historyRef = useRef(null)
   const queryIdRef = useRef(0) // Track current query to handle cancellation
+  const monacoRef = useRef(null) // Monaco editor instance for validation markers
+  const editorRef = useRef(null) // Monaco editor component ref
+  const validationTimeoutRef = useRef(null) // Debounce timer for validation
+
+  // Resizable editor height
+  const [editorHeight, setEditorHeight] = useState(() => {
+    const saved = localStorage.getItem('mongopal_editor_height')
+    return saved ? parseInt(saved, 10) : 120
+  })
+  const resizingRef = useRef(false)
+  const startYRef = useRef(0)
+  const startHeightRef = useRef(0)
 
   // Delete dialog state
   const [deleteDoc, setDeleteDoc] = useState(null) // document to delete
@@ -276,8 +285,51 @@ export default function CollectionView({ connectionId, database, collection }) {
   const [showSavedQueriesManager, setShowSavedQueriesManager] = useState(false)
   const [savedQueriesRefreshKey, setSavedQueriesRefreshKey] = useState(0)
 
+  // Hidden columns state - persisted per collection
+  const [hiddenColumns, setHiddenColumns] = useState(() =>
+    loadHiddenColumns(connectionId, database, collection)
+  )
+  // Track all available columns (for showing in visibility dropdown even when hidden)
+  const [allAvailableColumns, setAllAvailableColumns] = useState([])
+
+  // Update hidden columns when collection changes
+  useEffect(() => {
+    setHiddenColumns(loadHiddenColumns(connectionId, database, collection))
+  }, [connectionId, database, collection])
+
+  // Handle hidden columns change
+  const handleHiddenColumnsChange = useCallback((newHiddenColumns) => {
+    setHiddenColumns(newHiddenColumns)
+    saveHiddenColumns(connectionId, database, collection, newHiddenColumns)
+  }, [connectionId, database, collection])
+
+  // Toggle single column visibility (for dropdown)
+  const handleToggleColumn = useCallback((column) => {
+    const newHidden = new Set(hiddenColumns)
+    if (newHidden.has(column)) {
+      newHidden.delete(column)
+    } else {
+      newHidden.add(column)
+    }
+    handleHiddenColumnsChange(newHidden)
+  }, [hiddenColumns, handleHiddenColumnsChange])
+
+  // Show all columns (for dropdown "Show All" button)
+  const handleShowAllColumns = useCallback(() => {
+    handleHiddenColumnsChange(new Set())
+  }, [handleHiddenColumnsChange])
+
   // Memoize JSON stringified documents for JSON view (expensive for large datasets)
   const documentsJson = useMemo(() => JSON.stringify(documents, null, 2), [documents])
+
+  // Field validation warnings (computed from query and schema)
+  const fieldWarnings = useMemo(() => {
+    if (!isSimpleFindQuery(query)) return []
+    const schemaFields = getFieldNames(connectionId, database, collection)
+    if (!schemaFields || schemaFields.size === 0) return []
+    const filter = parseFilterFromQuery(query)
+    return validateFilter(filter, schemaFields)
+  }, [query, connectionId, database, collection, getFieldNames])
 
   // Close history dropdown on click outside
   useEffect(() => {
@@ -316,6 +368,13 @@ export default function CollectionView({ connectionId, database, collection }) {
     prevSkipRef.current = skip
   }, [skip])
 
+  // Prefetch schema for field validation when connected
+  useEffect(() => {
+    if (isConnected && !isConnecting) {
+      prefetchSchema(connectionId, database, collection)
+    }
+  }, [connectionId, database, collection, isConnected, isConnecting, prefetchSchema])
+
   // Load documents on mount and when collection/pagination changes
   // Skip auto-execute if: not connected, connecting, or tab was restored from session
   useEffect(() => {
@@ -327,6 +386,44 @@ export default function CollectionView({ connectionId, database, collection }) {
   useEffect(() => {
     setSelectedIds(new Set())
   }, [connectionId, database, collection, skip, limit, query])
+
+  // Debounced query validation for Monaco editor
+  useEffect(() => {
+    // Clear any existing timeout
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current)
+    }
+
+    // Only validate if we have Monaco and editor refs
+    if (!monacoRef.current || !editorRef.current) {
+      return
+    }
+
+    // Debounce validation by 300ms
+    validationTimeoutRef.current = setTimeout(() => {
+      const model = editorRef.current.getModel()
+      if (!model) return
+
+      // Syntax validation diagnostics
+      const syntaxDiagnostics = validateQuery(query)
+
+      // Field validation diagnostics (unknown field warnings)
+      const fieldDiagnostics = fieldWarningsToMonacoDiagnostics(query, fieldWarnings)
+
+      // Combine all diagnostics
+      const allDiagnostics = [...syntaxDiagnostics, ...fieldDiagnostics]
+      const markers = toMonacoMarkers(monacoRef.current, allDiagnostics)
+
+      // Set markers on the editor model
+      monacoRef.current.editor.setModelMarkers(model, 'queryValidator', markers)
+    }, 300)
+
+    return () => {
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current)
+      }
+    }
+  }, [query, fieldWarnings])
 
   // Update status bar with document count
   useEffect(() => {
@@ -390,12 +487,21 @@ export default function CollectionView({ connectionId, database, collection }) {
 
   const executeQuery = async () => {
     const currentQueryId = ++queryIdRef.current
+    const startTime = performance.now()
+    const isSimple = isSimpleFindQuery(query)
 
     // Block write operations in read-only mode
     if (readOnly && isWriteQuery(query)) {
       notify.error('Write operation blocked - connection is in read-only mode')
       return
     }
+
+    logQuery(`Executing ${isSimple ? 'find' : 'mongosh'} query`, {
+      database,
+      collection,
+      queryType: isSimple ? 'find' : 'mongosh',
+      query: query.length > 200 ? query.slice(0, 200) + '...' : query,
+    })
 
     setLoading(true)
     setError(null)
@@ -413,6 +519,7 @@ export default function CollectionView({ connectionId, database, collection }) {
           queryIdRef.current++
           setLoading(false)
           const timeoutSec = settings.queryTimeout
+          logQuery(`Query timed out after ${timeoutSec}s`, { database, collection })
           setError(`Query timed out after ${timeoutSec} seconds. You can increase the timeout in Settings.`)
           notify.error(`Query timed out after ${timeoutSec}s`)
         }
@@ -421,15 +528,16 @@ export default function CollectionView({ connectionId, database, collection }) {
 
     try {
       // Check if this is a simple find query we can handle with Go driver
-      if (isSimpleFindQuery(query)) {
+      if (isSimple) {
         const filter = parseFilterFromQuery(query)
-        const projection = parseProjectionFromQuery(query)
+        const queryProjection = parseProjectionFromQuery(query)
+        // Hidden columns are now handled UI-side for instant feedback (no projection needed)
         if (go?.FindDocuments) {
           const result = await go.FindDocuments(connectionId, database, collection, filter, {
             skip,
             limit,
             sort: '',
-            projection: projection || '',
+            projection: queryProjection || '',
           })
           // Check if cancelled
           if (currentQueryId !== queryIdRef.current) return
@@ -440,10 +548,42 @@ export default function CollectionView({ connectionId, database, collection }) {
             setRawOutput('')
             return
           }
-          setDocuments(result.documents.map(d => JSON.parse(d)))
+          const docCount = result.documents.length
+          const duration = Math.round(performance.now() - startTime)
+          logQuery(`Query returned ${docCount} docs (${result.queryTimeMs || duration}ms)`, {
+            database,
+            collection,
+            count: docCount,
+            total: result.total,
+            queryTimeMs: result.queryTimeMs,
+            clientDuration: duration,
+          })
+          const parsedDocs = result.documents.map(d => JSON.parse(d))
+          setDocuments(parsedDocs)
           setTotal(result.total || 0)
           setQueryTime(result.queryTimeMs)
           setRawOutput('') // Clear raw output for regular queries
+
+          // Update available columns list (merge with existing + hidden)
+          const columnsFromDocs = new Set()
+          parsedDocs.forEach(doc => {
+            Object.keys(doc).forEach(key => columnsFromDocs.add(key))
+          })
+          // Also include hidden columns so they appear in the dropdown
+          hiddenColumns.forEach(col => columnsFromDocs.add(col))
+          // Sort: _id first, then alphabetically
+          const sortedColumns = Array.from(columnsFromDocs).sort((a, b) => {
+            if (a === '_id') return -1
+            if (b === '_id') return 1
+            return a.localeCompare(b)
+          })
+          setAllAvailableColumns(sortedColumns)
+
+          // Enrich schema cache with field names from results (skip if projection used)
+          if (!queryProjection && parsedDocs.length > 0) {
+            const fieldPaths = extractFieldPathsFromDocs(parsedDocs)
+            mergeFieldNames(connectionId, database, collection, fieldPaths)
+          }
 
           // Add to query history (if not default and not duplicate)
           if (filter !== '{}' && filter.trim() !== '') {
@@ -466,16 +606,31 @@ export default function CollectionView({ connectionId, database, collection }) {
           // Parse mongosh output (handles JSON, NDJSON, and mongosh JS format)
           const output = result.output.trim()
           setRawOutput(output) // Store raw output for 'raw' view
+          const duration = Math.round(performance.now() - startTime)
           if (!output) {
+            logQuery(`Mongosh query completed (${duration}ms, no output)`, { database, collection, duration })
             setDocuments([])
             setTotal(0)
           } else {
             const parseResult = parseMongoshOutput(output)
 
             if (parseResult.success && parseResult.data.length > 0) {
+              logQuery(`Mongosh query returned ${parseResult.data.length} results (${duration}ms)`, {
+                database,
+                collection,
+                count: parseResult.data.length,
+                duration,
+              })
               setDocuments(parseResult.data)
               setTotal(parseResult.data.length)
+
+              // Enrich schema cache with field names from mongosh results
+              // Note: mongosh queries may have projections we can't easily detect,
+              // but enriching is still useful for aggregation results
+              const fieldPaths = extractFieldPathsFromDocs(parseResult.data)
+              mergeFieldNames(connectionId, database, collection, fieldPaths)
             } else {
+              logQuery(`Mongosh query completed with raw output (${duration}ms)`, { database, collection, duration })
               // Couldn't parse - show as raw result
               setDocuments([{ _result: output }])
               setTotal(1)
@@ -503,6 +658,13 @@ export default function CollectionView({ connectionId, database, collection }) {
       // Don't show error if cancelled
       if (currentQueryId !== queryIdRef.current) return
       const errorMsg = err.message || 'Failed to execute query'
+      const duration = Math.round(performance.now() - startTime)
+      logQuery(`Query failed (${duration}ms): ${getErrorSummary(errorMsg)}`, {
+        database,
+        collection,
+        error: errorMsg,
+        duration,
+      })
       setError(errorMsg)
       notify.error(getErrorSummary(errorMsg))
       setDocuments([])
@@ -516,12 +678,6 @@ export default function CollectionView({ connectionId, database, collection }) {
       if (currentQueryId === queryIdRef.current) {
         setLoading(false)
       }
-    }
-  }
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      executeQuery()
     }
   }
 
@@ -731,246 +887,262 @@ export default function CollectionView({ connectionId, database, collection }) {
     <div className="h-full flex flex-col">
       {/* Query bar - overflow-visible for dropdown */}
       <div className="flex-shrink-0 p-2 border-b border-border bg-surface-secondary overflow-visible">
-        {expandedQuery ? (
-          /* Expanded multiline mode */
-          <div className="flex flex-col gap-2">
-            {/* Buttons row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {loading ? (
-                  <button
-                    className="btn btn-secondary flex items-center gap-1.5 text-red-400 hover:text-red-300"
-                    onClick={cancelQuery}
-                  >
-                    <StopIcon className="w-4 h-4" />
-                    <span>Cancel</span>
-                  </button>
-                ) : (
-                  <button
-                    className={`btn btn-primary flex items-center gap-1.5 ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    onClick={() => {
-                      if (!isConnected) return
-                      if (isRestoredTab) markTabActivated(currentTab?.id)
+        <div className="flex flex-col gap-2">
+          {/* Buttons row */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {loading ? (
+                <button
+                  className="btn btn-secondary flex items-center gap-1.5 text-red-400 hover:text-red-300"
+                  onClick={cancelQuery}
+                >
+                  <StopIcon className="w-4 h-4" />
+                  <span>Cancel</span>
+                </button>
+              ) : (
+                <button
+                  className={`btn btn-primary flex items-center gap-1.5 ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  onClick={() => {
+                    if (!isConnected) return
+                    if (isRestoredTab) {
+                      // Clear restored flag - useEffect will auto-execute
+                      markTabActivated(tabId)
+                      setIsRestoredTab(false)
+                    } else {
                       executeQuery()
-                    }}
-                    disabled={!isConnected}
-                    title={!isConnected ? 'Connect to database first' : 'Run query'}
-                  >
-                    <PlayIcon className="w-4 h-4" />
-                    <span>Run</span>
-                  </button>
+                    }
+                  }}
+                  disabled={!isConnected}
+                  title={!isConnected ? 'Connect to database first' : 'Run query (Cmd+Enter)'}
+                >
+                  <PlayIcon className="w-4 h-4" />
+                  <span>Run</span>
+                </button>
+              )}
+              <button
+                className={`btn btn-secondary flex items-center gap-1.5 ${readOnly || !isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={handleInsertDocument}
+                disabled={readOnly || !isConnected}
+                title={readOnly ? 'Read-only mode' : 'Insert new document (Cmd+N)'}
+              >
+                <PlusIcon className="w-4 h-4" />
+                <span>Insert</span>
+              </button>
+            </div>
+            <div className="flex items-center gap-1 overflow-visible">
+              <SavedQueriesDropdown
+                connectionId={connectionId}
+                database={database}
+                collection={collection}
+                onSelectQuery={(q) => setQuery(buildFullQuery(collection, q))}
+                onManageQueries={() => setShowSavedQueriesManager(true)}
+                refreshTrigger={savedQueriesRefreshKey}
+              />
+              <button
+                className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-accent"
+                onClick={() => setShowSaveQueryModal(true)}
+                title="Save current query"
+              >
+                <SaveIcon className="w-4 h-4" />
+              </button>
+              <div className="relative z-40">
+                <button
+                  className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
+                  onClick={() => setShowHistory(!showHistory)}
+                  title="Query history"
+                >
+                  <HistoryIcon className="w-4 h-4" />
+                </button>
+                {showHistory && (
+                  <QueryHistoryDropdown
+                    queryHistory={queryHistory}
+                    onSelect={setQuery}
+                    onClose={() => setShowHistory(false)}
+                    historyRef={historyRef}
+                  />
                 )}
-                <button
-                  className={`btn btn-secondary flex items-center gap-1.5 ${readOnly || !isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  onClick={handleInsertDocument}
-                  disabled={readOnly || !isConnected}
-                  title={readOnly ? 'Read-only mode' : 'Insert new document (Cmd+N)'}
-                >
-                  <PlusIcon className="w-4 h-4" />
-                  <span>Insert</span>
-                </button>
               </div>
-              <div className="flex items-center gap-1 overflow-visible">
-                <SavedQueriesDropdown
-                  connectionId={connectionId}
-                  database={database}
-                  collection={collection}
-                  onSelectQuery={(q) => setQuery(buildFullQuery(collection, q))}
-                  onManageQueries={() => setShowSavedQueriesManager(true)}
-                  refreshTrigger={savedQueriesRefreshKey}
-                />
-                <button
-                  className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-accent"
-                  onClick={() => setShowSaveQueryModal(true)}
-                  title="Save current query"
-                >
-                  <SaveIcon className="w-4 h-4" />
-                </button>
-                <div className="relative z-40">
-                  <button
-                    className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
-                    onClick={() => setShowHistory(!showHistory)}
-                    title="Query history"
-                  >
-                    <HistoryIcon className="w-4 h-4" />
-                  </button>
-                  {showHistory && (
-                    <QueryHistoryDropdown
-                      queryHistory={queryHistory}
-                      onSelect={setQuery}
-                      onClose={() => setShowHistory(false)}
-                      historyRef={historyRef}
-                    />
-                  )}
-                </div>
-                <button
-                  className={`icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ${explaining ? 'animate-pulse' : ''} ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  onClick={explainQuery}
-                  disabled={explaining || loading || !isConnected}
-                  title={!isConnected ? 'Connect to database first' : 'Explain query plan'}
-                >
-                  <ExplainIcon className="w-4 h-4" />
-                </button>
-                <CSVExportButton
-                  connectionId={connectionId}
-                  database={database}
-                  collection={collection}
-                  currentFilter={parseFilterFromQuery(query)}
-                  disabled={!isConnected}
-                />
-                <button
-                  className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
-                  onClick={() => setExpandedQuery(false)}
-                  title="Collapse to single line"
-                >
-                  <CollapseIcon className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            {/* Monaco Editor */}
-            <div className="border border-zinc-700 rounded overflow-hidden">
-              <Editor
-                height="180px"
-                defaultLanguage="javascript"
-                theme="vs-dark"
-                value={query}
-                onChange={(value) => setQuery(value || '')}
-                options={{
-                  minimap: { enabled: false },
-                  lineNumbers: 'off',
-                  glyphMargin: false,
-                  folding: false,
-                  lineDecorationsWidth: 0,
-                  lineNumbersMinChars: 0,
-                  scrollBeyondLastLine: false,
-                  wordWrap: 'on',
-                  fontSize: 13,
-                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
-                  padding: { top: 8, bottom: 8 },
-                  overviewRulerLanes: 0,
-                  hideCursorInOverviewRuler: true,
-                  overviewRulerBorder: false,
-                  scrollbar: {
-                    vertical: 'auto',
-                    horizontal: 'hidden',
-                    verticalScrollbarSize: 8,
-                  },
-                }}
-                onMount={(editor, monaco) => {
-                  // Add Cmd/Ctrl+Enter shortcut to run query
-                  editor.addCommand(
-                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-                    () => executeQuery()
-                  )
-                }}
-              />
-            </div>
-          </div>
-        ) : (
-          /* Compact one-liner mode */
-          <div className="flex gap-2 overflow-visible">
-            <div className="flex-1 relative overflow-visible">
-              <input
-                type="text"
-                className="input pr-32 pl-3 font-mono text-sm !bg-zinc-900"
-                placeholder={`db.getCollection("${collection}").find({})`}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onPaste={(e) => {
-                  const pastedText = e.clipboardData.getData('text')
-                  if (pastedText.includes('\n')) {
-                    e.preventDefault()
-                    const input = e.target
-                    const start = input.selectionStart
-                    const end = input.selectionEnd
-                    const newQuery = query.slice(0, start) + pastedText + query.slice(end)
-                    setQuery(newQuery)
-                    setExpandedQuery(true)
-                  }
-                }}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-              />
-              {/* History, explain, export, and expand buttons */}
-              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 z-40">
-                <div className="relative">
-                  <button
-                    className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
-                    onClick={() => setShowHistory(!showHistory)}
-                    title="Query history"
-                  >
-                    <HistoryIcon className="w-4 h-4" />
-                  </button>
-                  {showHistory && (
-                    <QueryHistoryDropdown
-                      queryHistory={queryHistory}
-                      onSelect={setQuery}
-                      onClose={() => setShowHistory(false)}
-                      historyRef={historyRef}
-                    />
-                  )}
-                </div>
-                <button
-                  className={`icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ${explaining ? 'animate-pulse' : ''} ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  onClick={explainQuery}
-                  disabled={explaining || loading || !isConnected}
-                  title={!isConnected ? 'Connect to database first' : 'Explain query plan'}
-                >
-                  <ExplainIcon className="w-4 h-4" />
-                </button>
-                <CSVExportButton
-                  connectionId={connectionId}
-                  database={database}
-                  collection={collection}
-                  currentFilter={parseFilterFromQuery(query)}
-                  disabled={!isConnected}
-                />
-                <button
-                  className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
-                  onClick={() => setExpandedQuery(true)}
-                  title="Expand to multiline"
-                >
-                  <ExpandIcon className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            {loading ? (
               <button
-                className="btn btn-secondary flex items-center gap-1.5 text-red-400 hover:text-red-300"
-                onClick={cancelQuery}
+                className={`icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ${explaining ? 'animate-pulse' : ''} ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={explainQuery}
+                disabled={explaining || loading || !isConnected}
+                title={!isConnected ? 'Connect to database first' : 'Explain query plan'}
               >
-                <StopIcon className="w-4 h-4" />
-                <span>Cancel</span>
+                <ExplainIcon className="w-4 h-4" />
               </button>
-            ) : (
-              <button
-                className={`btn btn-primary flex items-center gap-1.5 ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
-                onClick={() => {
-                  if (!isConnected) return
-                  if (isRestoredTab) markTabActivated(currentTab?.id)
-                  executeQuery()
-                }}
+              <CSVExportButton
+                connectionId={connectionId}
+                database={database}
+                collection={collection}
+                currentFilter={parseFilterFromQuery(query)}
                 disabled={!isConnected}
-                title={!isConnected ? 'Connect to database first' : 'Run query'}
-              >
-                <PlayIcon className="w-4 h-4" />
-                <span>Run</span>
-              </button>
-            )}
-            <button
-              className={`btn btn-secondary flex items-center gap-1.5 ${readOnly || !isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
-              onClick={handleInsertDocument}
-              disabled={readOnly || !isConnected}
-              title={!isConnected ? 'Connect to database first' : readOnly ? 'Read-only mode' : 'Insert new document (Cmd+N)'}
-            >
-              <PlusIcon className="w-4 h-4" />
-              <span>Insert</span>
-            </button>
+              />
+            </div>
           </div>
-        )}
+          {/* Monaco Editor with resizable height */}
+          <div className="border border-zinc-700 rounded overflow-visible">
+            <Editor
+              height={`${editorHeight}px`}
+              defaultLanguage="mongoquery"
+              theme="vs-dark"
+              value={query}
+              onChange={(value) => setQuery(value || '')}
+              options={{
+                minimap: { enabled: false },
+                lineNumbers: 'on',
+                glyphMargin: true, // Show error/warning icons in gutter
+                folding: false,
+                lineDecorationsWidth: 10, // Space for validation markers
+                lineNumbersMinChars: 2,
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                fontSize: 13,
+                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
+                padding: { top: 8, bottom: 8 },
+                overviewRulerLanes: 1, // Show markers in overview ruler
+                hideCursorInOverviewRuler: true,
+                overviewRulerBorder: false,
+                fixedOverflowWidgets: true, // Render hover/suggest widgets outside editor to avoid clipping
+                hover: { enabled: true, delay: 300 }, // Enable hover for validation messages
+                quickSuggestions: false, // Disable autocomplete suggestions
+                parameterHints: { enabled: false }, // Disable parameter hints
+                suggestOnTriggerCharacters: false,
+                codeLens: false, // Disable code lens
+                lightbulb: { enabled: false }, // Disable lightbulb suggestions
+                inlayHints: { enabled: 'off' }, // Disable inlay hints
+                links: false, // Disable link detection
+                scrollbar: {
+                  vertical: 'auto',
+                  horizontal: 'hidden',
+                  verticalScrollbarSize: 8,
+                },
+              }}
+              beforeMount={(monaco) => {
+                // Register custom "mongoquery" language to avoid conflicts with JS language service
+                if (!monaco.languages.getLanguages().some(lang => lang.id === 'mongoquery')) {
+                  monaco.languages.register({ id: 'mongoquery' })
+
+                  // Set up tokenization for syntax highlighting (similar to JavaScript)
+                  monaco.languages.setMonarchTokensProvider('mongoquery', {
+                    defaultToken: '',
+                    tokenPostfix: '.mongoquery',
+                    keywords: ['db', 'true', 'false', 'null'],
+                    operators: ['=', '>', '<', '!', '~', '?', ':', '==', '<=', '>=', '!=', '&&', '||', '+', '-', '*', '/', '&', '|', '^', '%'],
+                    symbols: /[=><!~?:&|+\-*/^%]+/,
+                    escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
+                    tokenizer: {
+                      root: [
+                        // MongoDB operators ($gt, $in, etc.)
+                        [/\$[a-zA-Z_][a-zA-Z0-9_]*/, 'keyword.operator'],
+                        // Identifiers and keywords
+                        [/[a-zA-Z_][a-zA-Z0-9_]*/, {
+                          cases: {
+                            '@keywords': 'keyword',
+                            '@default': 'identifier'
+                          }
+                        }],
+                        // Whitespace
+                        { include: '@whitespace' },
+                        // Delimiters and operators
+                        [/[{}()[\]]/, '@brackets'],
+                        [/[<>](?!@symbols)/, '@brackets'],
+                        [/@symbols/, {
+                          cases: {
+                            '@operators': 'operator',
+                            '@default': ''
+                          }
+                        }],
+                        // Numbers
+                        [/\d*\.\d+([eE][-+]?\d+)?/, 'number.float'],
+                        [/0[xX][0-9a-fA-F]+/, 'number.hex'],
+                        [/\d+/, 'number'],
+                        // Delimiter: after number because of .\d floats
+                        [/[;,.]/, 'delimiter'],
+                        // Strings
+                        [/"([^"\\]|\\.)*$/, 'string.invalid'], // non-terminated string
+                        [/"/, { token: 'string.quote', bracket: '@open', next: '@string_double' }],
+                        [/'([^'\\]|\\.)*$/, 'string.invalid'], // non-terminated string
+                        [/'/, { token: 'string.quote', bracket: '@open', next: '@string_single' }],
+                      ],
+                      string_double: [
+                        [/[^\\"]+/, 'string'],
+                        [/@escapes/, 'string.escape'],
+                        [/\\./, 'string.escape.invalid'],
+                        [/"/, { token: 'string.quote', bracket: '@close', next: '@pop' }]
+                      ],
+                      string_single: [
+                        [/[^\\']+/, 'string'],
+                        [/@escapes/, 'string.escape'],
+                        [/\\./, 'string.escape.invalid'],
+                        [/'/, { token: 'string.quote', bracket: '@close', next: '@pop' }]
+                      ],
+                      whitespace: [
+                        [/[ \t\r\n]+/, 'white'],
+                        [/\/\*/, 'comment', '@comment'],
+                        [/\/\/.*$/, 'comment'],
+                      ],
+                      comment: [
+                        [/[^/*]+/, 'comment'],
+                        [/\/\*/, 'comment', '@push'],
+                        ['\\*/', 'comment', '@pop'],
+                        [/[/*]/, 'comment']
+                      ],
+                    },
+                  })
+                }
+              }}
+              onMount={(editor, monaco) => {
+                // Store refs for validation
+                editorRef.current = editor
+                monacoRef.current = monaco
+
+                // Add Cmd/Ctrl+Enter shortcut to run query
+                editor.addCommand(
+                  monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+                  () => executeQuery()
+                )
+
+                // Initial validation with field warnings
+                const model = editor.getModel()
+                if (model) {
+                  const syntaxDiagnostics = validateQuery(query)
+                  const fieldDiagnostics = fieldWarningsToMonacoDiagnostics(query, fieldWarnings)
+                  const allDiagnostics = [...syntaxDiagnostics, ...fieldDiagnostics]
+                  const markers = toMonacoMarkers(monaco, allDiagnostics)
+                  monaco.editor.setModelMarkers(model, 'queryValidator', markers)
+                }
+              }}
+            />
+          </div>
+          {/* Resize handle */}
+          <div
+            className="h-1.5 cursor-ns-resize bg-transparent hover:bg-zinc-600 transition-colors -mt-1 rounded-b"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              resizingRef.current = true
+              startYRef.current = e.clientY
+              startHeightRef.current = editorHeight
+
+              const onMouseMove = (moveEvent) => {
+                if (!resizingRef.current) return
+                const deltaY = moveEvent.clientY - startYRef.current
+                const newHeight = Math.max(60, Math.min(500, startHeightRef.current + deltaY))
+                setEditorHeight(newHeight)
+              }
+
+              const onMouseUp = () => {
+                resizingRef.current = false
+                localStorage.setItem('mongopal_editor_height', String(editorHeight))
+                document.removeEventListener('mousemove', onMouseMove)
+                document.removeEventListener('mouseup', onMouseUp)
+              }
+
+              document.addEventListener('mousemove', onMouseMove)
+              document.addEventListener('mouseup', onMouseUp)
+            }}
+            title="Drag to resize editor"
+          />
+        </div>
       </div>
 
       {/* Read-only indicator */}
@@ -982,6 +1154,7 @@ export default function CollectionView({ connectionId, database, collection }) {
           Read-only mode - Write operations are disabled for this connection
         </div>
       )}
+
 
       {/* View mode tabs and info */}
       <div className="flex-shrink-0 flex items-center justify-between px-3 py-1.5 border-b border-border bg-surface text-sm">
@@ -1097,6 +1270,19 @@ export default function CollectionView({ connectionId, database, collection }) {
               »»
             </button>
           </div>
+
+          {/* Column visibility toggle - only in table view */}
+          {viewMode === 'table' && (
+            <>
+              <span className="mx-1 text-zinc-600">|</span>
+              <ColumnVisibilityDropdown
+                allColumns={allAvailableColumns}
+                hiddenColumns={hiddenColumns}
+                onToggleColumn={handleToggleColumn}
+                onShowAll={handleShowAllColumns}
+              />
+            </>
+          )}
         </div>
       </div>
 
@@ -1149,8 +1335,9 @@ export default function CollectionView({ connectionId, database, collection }) {
             <p className="text-sm text-zinc-500">Click Run to execute query</p>
             <button
               onClick={() => {
-                markTabActivated(currentTab?.id)
-                executeQuery()
+                // Clear restored flag - useEffect will auto-execute
+                markTabActivated(tabId)
+                setIsRestoredTab(false)
               }}
               className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium flex items-center gap-2"
             >
@@ -1184,6 +1371,9 @@ export default function CollectionView({ connectionId, database, collection }) {
             connectionId={connectionId}
             database={database}
             collection={collection}
+            hiddenColumns={hiddenColumns}
+            onHiddenColumnsChange={handleHiddenColumnsChange}
+            allAvailableColumns={allAvailableColumns}
           />
         ) : viewMode === 'json' ? (
           <MonacoErrorBoundary>

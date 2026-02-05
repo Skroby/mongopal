@@ -1,3 +1,86 @@
+/**
+ * Convert MongoDB shell syntax to valid JSON.
+ * Handles unquoted keys like {_id: "value"} -> {"_id": "value"}
+ * and single-quoted strings like {'key': 'value'} -> {"key": "value"}
+ */
+export function shellToJson(shellSyntax) {
+  if (!shellSyntax || shellSyntax === '{}') return shellSyntax
+
+  // First try to parse as JSON - if it works, it's already valid
+  try {
+    JSON.parse(shellSyntax)
+    return shellSyntax // Already valid JSON
+  } catch {
+    // Not valid JSON, needs conversion
+  }
+
+  let result = shellSyntax
+  let inString = false
+  let stringChar = null
+  let output = ''
+
+  for (let i = 0; i < result.length; i++) {
+    const char = result[i]
+    const prevChar = i > 0 ? result[i - 1] : ''
+    const nextChars = result.slice(i)
+
+    // Handle string boundaries
+    if ((char === '"' || char === "'") && prevChar !== '\\') {
+      if (!inString) {
+        inString = true
+        stringChar = char
+        // Convert single quotes to double quotes for JSON
+        output += '"'
+        continue
+      } else if (char === stringChar) {
+        inString = false
+        stringChar = null
+        output += '"'
+        continue
+      }
+    }
+
+    if (inString) {
+      // Escape double quotes inside strings if we converted from single quotes
+      if (char === '"' && stringChar === "'") {
+        output += '\\"'
+      } else {
+        output += char
+      }
+      continue
+    }
+
+    // Outside of strings: look for unquoted keys
+    // Pattern: start of object or after comma, optional whitespace, then identifier followed by colon
+    if (char === '{' || char === ',') {
+      output += char
+      // Skip whitespace after { or ,
+      let j = i + 1
+      while (j < result.length && /\s/.test(result[j])) {
+        output += result[j]
+        j++
+      }
+      // Check if next token is an unquoted key (identifier followed by colon)
+      if (j < result.length) {
+        const remaining = result.slice(j)
+        const keyMatch = remaining.match(/^([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/)
+        if (keyMatch) {
+          // Found unquoted key - quote it
+          output += '"' + keyMatch[1] + '"'
+          i = j + keyMatch[1].length - 1 // -1 because loop will increment
+          continue
+        }
+      }
+      i = j - 1 // -1 because loop will increment
+      continue
+    }
+
+    output += char
+  }
+
+  return output
+}
+
 // Check if a query is a simple find that can be handled by the Go driver
 // Returns true for: empty, filter objects, or proper db.x.find({...}) syntax
 export function isSimpleFindQuery(query) {
@@ -64,7 +147,7 @@ function splitFindArguments(argsStr) {
 }
 
 // Parse filter from full MongoDB query string like db.getCollection("col").find({...})
-// Extracts the filter and sends to backend - let MongoDB validate it
+// Extracts the filter, converts shell syntax to JSON, and sends to backend
 export function parseFilterFromQuery(queryStr) {
   const trimmed = queryStr.trim()
 
@@ -73,9 +156,9 @@ export function parseFilterFromQuery(queryStr) {
     return '{}'
   }
 
-  // If it's just a JSON object, use it directly
+  // If it's just a filter object, convert and return
   if (trimmed.startsWith('{')) {
-    return trimmed
+    return shellToJson(trimmed)
   }
 
   // Try to extract content from .find(...) - get everything between the parentheses
@@ -84,9 +167,9 @@ export function parseFilterFromQuery(queryStr) {
   if (findMatch) {
     const content = findMatch[1].trim()
     if (!content) return '{}'
-    // Split into filter and projection, return only filter
+    // Split into filter and projection, return only filter (converted to JSON)
     const { filter } = splitFindArguments(content)
-    return filter
+    return shellToJson(filter)
   }
 
   // If contains .find but no parentheses, send empty string to let backend error
@@ -94,8 +177,8 @@ export function parseFilterFromQuery(queryStr) {
     return ''
   }
 
-  // Fallback - send as-is and let backend handle it
-  return trimmed || '{}'
+  // Fallback - convert and let backend handle it
+  return shellToJson(trimmed) || '{}'
 }
 
 // Parse projection from full MongoDB query string
@@ -114,7 +197,8 @@ export function parseProjectionFromQuery(queryStr) {
     const content = findMatch[1].trim()
     if (!content) return null
     const { projection } = splitFindArguments(content)
-    return projection
+    // Convert projection to JSON if present
+    return projection ? shellToJson(projection) : null
   }
 
   return null

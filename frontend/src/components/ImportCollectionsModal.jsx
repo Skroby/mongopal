@@ -507,9 +507,9 @@ export default function ImportCollectionsModal({ connectionId, connectionName, d
                       className="mt-0.5"
                     />
                     <div>
-                      <div className="text-sm text-zinc-200">Skip Existing</div>
+                      <div className="text-sm text-zinc-200">Keep Existing (Skip)</div>
                       <div className="text-xs text-zinc-400">
-                        Only insert documents that don't already exist (by _id).
+                        Keep existing documents in the database, skip importing conflicting documents (by _id).
                       </div>
                     </div>
                   </label>

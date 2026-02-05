@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/peternagy/mongopal/internal/core"
+	"github.com/peternagy/mongopal/internal/debug"
 	"github.com/peternagy/mongopal/internal/types"
 )
 
@@ -26,8 +28,21 @@ func NewService(state *core.AppState) *Service {
 
 // InferCollectionSchema analyzes a collection and returns its inferred schema.
 func (s *Service) InferCollectionSchema(connID, dbName, collName string, sampleSize int) (*types.SchemaResult, error) {
+	start := time.Now()
+	debug.LogSchema("Inferring collection schema", map[string]interface{}{
+		"database":   dbName,
+		"collection": collName,
+		"sampleSize": sampleSize,
+	})
+
 	client, err := s.state.GetClient(connID)
 	if err != nil {
+		debug.LogSchema("Schema inference failed - not connected", map[string]interface{}{
+			"database":     dbName,
+			"collection":   collName,
+			"connectionId": connID,
+			"error":        err.Error(),
+		})
 		return nil, err
 	}
 
@@ -39,10 +54,19 @@ func (s *Service) InferCollectionSchema(connID, dbName, collName string, sampleS
 	// Count total documents
 	total, err := coll.CountDocuments(ctx, bson.M{})
 	if err != nil {
+		debug.LogSchema("Schema inference failed - count error", map[string]interface{}{
+			"database":   dbName,
+			"collection": collName,
+			"error":      err.Error(),
+		})
 		return nil, fmt.Errorf("failed to count documents: %w", err)
 	}
 
 	if total == 0 {
+		debug.LogSchema("Schema inference - empty collection", map[string]interface{}{
+			"database":   dbName,
+			"collection": collName,
+		})
 		return &types.SchemaResult{
 			Collection: collName,
 			SampleSize: 0,
@@ -101,6 +125,15 @@ func (s *Service) InferCollectionSchema(connID, dbName, collName string, sampleS
 
 	// Build schema result
 	schema := buildSchemaFields(fieldCounts, fieldTypes, fieldSchemas, len(samples))
+
+	debug.LogSchema("Schema inference completed", map[string]interface{}{
+		"database":   dbName,
+		"collection": collName,
+		"sampleSize": len(samples),
+		"totalDocs":  total,
+		"fieldCount": len(schema),
+		"durationMs": time.Since(start).Milliseconds(),
+	})
 
 	return &types.SchemaResult{
 		Collection: collName,

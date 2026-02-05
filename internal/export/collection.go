@@ -82,7 +82,9 @@ func (s *Service) ExportCollections(connID, dbName string, collNames []string) e
 	exportID := fmt.Sprintf("coll-%s-%s-%d", connID, dbName, time.Now().UnixNano())
 	exportCtx, exportCancel := context.WithCancel(context.Background())
 	s.state.SetExportCancel(exportID, exportCancel)
+	s.state.ResetExportPause() // Reset pause state at start
 	defer s.state.ClearExportCancel(exportID)
+	defer s.state.ResetExportPause()
 
 	// Create zip file
 	zipFile, err := os.Create(filePath)
@@ -171,8 +173,14 @@ func (s *Service) ExportCollections(connID, dbName string, collNames []string) e
 		var docCount int64
 		cancelled := false
 		for docCursor.Next(ctx) {
-			// Check for cancellation periodically
+			// Check for pause/cancellation periodically
 			if docCount%100 == 0 {
+				// Wait if paused (also checks for cancellation)
+				if !s.state.WaitIfExportPaused(exportCtx) {
+					cancelled = true
+					break
+				}
+				// Also check context directly
 				select {
 				case <-exportCtx.Done():
 					cancelled = true
