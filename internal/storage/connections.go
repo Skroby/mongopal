@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -14,83 +13,201 @@ import (
 
 // ConnectionService handles connection storage operations.
 type ConnectionService struct {
-	state      *core.AppState
-	storage    *Service
-	credential *credential.Service
+	state            *core.AppState
+	storage          *Service
+	encryptedStorage *credential.EncryptedStorage
 }
 
 // NewConnectionService creates a new connection service.
-func NewConnectionService(state *core.AppState, storage *Service, cred *credential.Service) *ConnectionService {
+func NewConnectionService(state *core.AppState, storage *Service, encStorage *credential.EncryptedStorage) *ConnectionService {
 	return &ConnectionService{
-		state:      state,
-		storage:    storage,
-		credential: cred,
+		state:            state,
+		storage:          storage,
+		encryptedStorage: encStorage,
 	}
 }
 
-// SaveConnection saves a connection to storage with password in keyring.
-func (s *ConnectionService) SaveConnection(conn types.SavedConnection, password string) error {
-	// Extract password from URI if present
-	cleanURI, uriPassword, _ := credential.ExtractPasswordFromURI(conn.URI)
-
-	// Determine password to store:
-	// 1. Use explicitly provided password if given
-	// 2. Otherwise use password from URI if present
-	// 3. Otherwise preserve existing password (for edits where password wasn't changed)
-	passwordToStore := password
-	if passwordToStore == "" {
-		passwordToStore = uriPassword
-	}
-	if passwordToStore == "" {
-		// Check if this is an edit (connection already exists) and preserve existing password
-		existingPassword, _ := s.credential.GetPassword(conn.ID)
-		passwordToStore = existingPassword
+// SaveExtendedConnection saves a connection with all credentials to encrypted storage.
+func (s *ConnectionService) SaveExtendedConnection(conn types.ExtendedConnection) error {
+	// Generate a new ID for imported connections that don't have one
+	if conn.ID == "" {
+		conn.ID = uuid.New().String()
 	}
 
-	// Store password in keyring (or preserve existing if passwordToStore is still empty)
-	if err := s.credential.SetPassword(conn.ID, passwordToStore); err != nil {
-		// Log but don't fail - password will be in URI as fallback
-		fmt.Printf("Warning: failed to store password in keyring: %v\n", err)
-		s.state.EmitEvent("app:warning", map[string]string{
-			"message": "Password stored in connection URI (keyring unavailable)",
-			"detail":  err.Error(),
-		})
-	} else {
-		// Password stored in keyring, use clean URI
-		conn.URI = cleanURI
+	// Resolve folder path from export — find or create folder hierarchy
+	if conn.FolderID == "" && len(conn.FolderPath) > 0 {
+		conn.FolderID = s.resolveOrCreateFolderPath(conn.FolderPath)
+		conn.FolderPath = nil // consumed
 	}
 
+	// Preserve existing fields when the incoming connection doesn't supply them.
+	// The UI strips passwords and doesn't manage folder assignment; the backend fills them back in.
+	var existing types.ExtendedConnection
+	if err := s.encryptedStorage.LoadConnection(conn.ID, &existing); err == nil {
+		if conn.FolderID == "" && existing.FolderID != "" {
+			conn.FolderID = existing.FolderID
+		}
+		_, incomingPw, _ := credential.ExtractPasswordFromURI(conn.MongoURI)
+		if incomingPw == "" {
+			_, existingPw, _ := credential.ExtractPasswordFromURI(existing.MongoURI)
+			if existingPw != "" {
+				if injected, err := credential.InjectPasswordIntoURI(conn.MongoURI, existingPw); err == nil {
+					conn.MongoURI = injected
+				}
+			}
+		}
+		if conn.SSHPassword == "" {
+			conn.SSHPassword = existing.SSHPassword
+		}
+		if conn.SSHPassphrase == "" {
+			conn.SSHPassphrase = existing.SSHPassphrase
+		}
+		if conn.SOCKS5Password == "" {
+			conn.SOCKS5Password = existing.SOCKS5Password
+		}
+		if conn.TLSKeyPassword == "" {
+			conn.TLSKeyPassword = existing.TLSKeyPassword
+		}
+	}
+
+	// Save to encrypted storage (full URI with credentials)
+	if err := s.encryptedStorage.SaveConnection(conn.ID, conn); err != nil {
+		return fmt.Errorf("failed to save connection to encrypted storage: %w", err)
+	}
+
+	// Update in-memory state — strip password for display
 	s.state.Mu.Lock()
 	defer s.state.Mu.Unlock()
 
-	// Update or add connection
+	savedConn := conn.ToSavedConnection()
+	cleanURI, _, _ := credential.ExtractPasswordFromURI(savedConn.URI)
+	savedConn.URI = cleanURI
+
 	found := false
 	for i, c := range s.state.SavedConnections {
 		if c.ID == conn.ID {
-			s.state.SavedConnections[i] = conn
+			s.state.SavedConnections[i] = savedConn
 			found = true
 			break
 		}
 	}
 	if !found {
-		s.state.SavedConnections = append(s.state.SavedConnections, conn)
+		s.state.SavedConnections = append(s.state.SavedConnections, savedConn)
 	}
 
-	return s.storage.PersistConnections(s.state.SavedConnections)
+	return nil
+}
+
+// resolveOrCreateFolderPath walks a folder name path (e.g. ["Work", "Backend"]),
+// finding existing folders or creating new ones as needed. Returns the leaf folder ID.
+// Caller must NOT hold state.Mu — this method locks internally.
+func (s *ConnectionService) resolveOrCreateFolderPath(path []string) string {
+	s.state.Mu.Lock()
+	defer s.state.Mu.Unlock()
+
+	parentID := ""
+	for _, name := range path {
+		// Look for an existing folder with this name under the current parent
+		found := ""
+		for _, f := range s.state.Folders {
+			if f.Name == name && f.ParentID == parentID {
+				found = f.ID
+				break
+			}
+		}
+		if found != "" {
+			parentID = found
+			continue
+		}
+		// Create the folder
+		newFolder := types.Folder{
+			ID:       uuid.New().String(),
+			Name:     name,
+			ParentID: parentID,
+		}
+		s.state.Folders = append(s.state.Folders, newFolder)
+		parentID = newFolder.ID
+	}
+
+	// Persist any new folders — ignore errors (folder creation is best-effort)
+	_ = s.storage.PersistFolders(s.state.Folders)
+	return parentID
+}
+
+// UpdateFolderID updates a connection's folder assignment in encrypted storage.
+func (s *ConnectionService) UpdateFolderID(connID, folderID string) error {
+	var conn types.ExtendedConnection
+	if err := s.encryptedStorage.LoadConnection(connID, &conn); err != nil {
+		return nil // not in encrypted storage (legacy connection) — skip
+	}
+	conn.FolderID = folderID
+	return s.encryptedStorage.SaveConnection(connID, conn)
 }
 
 // UpdateLastAccessed updates the last accessed time for a connection.
 func (s *ConnectionService) UpdateLastAccessed(connID string) error {
+	// Load full connection from encrypted storage
+	var extended types.ExtendedConnection
+	if err := s.encryptedStorage.LoadConnection(connID, &extended); err != nil {
+		return fmt.Errorf("failed to load connection: %w", err)
+	}
+
+	// Update timestamp
+	extended.LastAccessedAt = time.Now()
+
+	// Save back to encrypted storage
+	if err := s.encryptedStorage.SaveConnection(connID, extended); err != nil {
+		return fmt.Errorf("failed to save connection: %w", err)
+	}
+
+	// Update in-memory state
 	s.state.Mu.Lock()
 	defer s.state.Mu.Unlock()
 
 	for i, c := range s.state.SavedConnections {
 		if c.ID == connID {
-			s.state.SavedConnections[i].LastAccessedAt = time.Now()
-			return s.storage.PersistConnections(s.state.SavedConnections)
+			s.state.SavedConnections[i].LastAccessedAt = extended.LastAccessedAt
+			break
 		}
 	}
-	return &core.ConnectionNotFoundError{ConnID: connID}
+
+	return nil
+}
+
+// LoadAllConnections loads all connections from encrypted storage on startup.
+func (s *ConnectionService) LoadAllConnections() error {
+	// Get all connection IDs from encrypted storage
+	connIDs, err := s.encryptedStorage.ListConnectionIDs()
+	if err != nil {
+		return fmt.Errorf("failed to list connections: %w", err)
+	}
+
+	s.state.Mu.Lock()
+	defer s.state.Mu.Unlock()
+
+	// Clear existing connections
+	s.state.SavedConnections = make([]types.SavedConnection, 0, len(connIDs))
+
+	// Load each connection
+	for _, connID := range connIDs {
+		var extended types.ExtendedConnection
+		if err := s.encryptedStorage.LoadConnection(connID, &extended); err != nil {
+			// Log error but continue loading other connections
+			s.state.EmitEvent("app:warning", map[string]string{
+				"message": fmt.Sprintf("Failed to load connection %s", connID),
+				"detail":  err.Error(),
+			})
+			continue
+		}
+
+		// Convert to SavedConnection for in-memory state (strip password from URI for display)
+		saved := extended.ToSavedConnection()
+		cleanURI, _, _ := credential.ExtractPasswordFromURI(saved.URI)
+		saved.URI = cleanURI
+		s.state.SavedConnections = append(s.state.SavedConnections, saved)
+	}
+
+	return nil
 }
 
 // ListSavedConnections returns all saved connections.
@@ -114,12 +231,21 @@ func (s *ConnectionService) GetSavedConnection(connID string) (types.SavedConnec
 	return types.SavedConnection{}, &core.ConnectionNotFoundError{ConnID: connID}
 }
 
-// DeleteSavedConnection removes a saved connection and its password from keyring.
+// GetExtendedConnection returns the full connection including all credentials.
+func (s *ConnectionService) GetExtendedConnection(connID string) (types.ExtendedConnection, error) {
+	var conn types.ExtendedConnection
+	if err := s.encryptedStorage.LoadConnection(connID, &conn); err != nil {
+		return types.ExtendedConnection{}, fmt.Errorf("failed to load connection: %w", err)
+	}
+	return conn, nil
+}
+
+// DeleteSavedConnection removes a saved connection and its encrypted file.
 func (s *ConnectionService) DeleteSavedConnection(connID string) error {
-	// Delete password from keyring
-	if err := s.credential.DeletePassword(connID); err != nil {
+	// Delete from encrypted storage (also removes encryption key from keyring)
+	if err := s.encryptedStorage.DeleteConnection(connID); err != nil {
 		s.state.EmitEvent("app:warning", map[string]string{
-			"message": "Could not remove password from keyring",
+			"message": "Could not remove encrypted connection file",
 			"detail":  err.Error(),
 		})
 	}
@@ -130,102 +256,42 @@ func (s *ConnectionService) DeleteSavedConnection(connID string) error {
 	for i, c := range s.state.SavedConnections {
 		if c.ID == connID {
 			s.state.SavedConnections = append(s.state.SavedConnections[:i], s.state.SavedConnections[i+1:]...)
-			return s.storage.PersistConnections(s.state.SavedConnections)
+			return nil
 		}
 	}
 	return &core.ConnectionNotFoundError{ConnID: connID}
 }
 
-// DuplicateConnection creates a copy of a connection including password.
+// DuplicateConnection creates a copy of a connection including all credentials.
 func (s *ConnectionService) DuplicateConnection(connID, newName string) (types.SavedConnection, error) {
-	// Get original password from keyring before locking
-	originalPassword, err := s.credential.GetPassword(connID)
-	if err != nil {
-		s.state.EmitEvent("app:warning", map[string]string{
-			"message": "Could not copy password to new connection",
-			"detail":  err.Error(),
-		})
+	// Load original connection from encrypted storage
+	var original types.ExtendedConnection
+	if err := s.encryptedStorage.LoadConnection(connID, &original); err != nil {
+		return types.SavedConnection{}, fmt.Errorf("failed to load original connection: %w", err)
 	}
 
+	// Create new connection with new ID
+	newConn := original
+	newConn.ID = uuid.New().String()
+	newConn.Name = newName
+	newConn.CreatedAt = time.Now()
+	newConn.LastAccessedAt = time.Time{}
+
+	// Save to encrypted storage
+	if err := s.encryptedStorage.SaveConnection(newConn.ID, newConn); err != nil {
+		return types.SavedConnection{}, fmt.Errorf("failed to save duplicated connection: %w", err)
+	}
+
+	// Update in-memory state
 	s.state.Mu.Lock()
 	defer s.state.Mu.Unlock()
 
-	var original types.SavedConnection
-	for _, c := range s.state.SavedConnections {
-		if c.ID == connID {
-			original = c
-			break
-		}
-	}
-	if original.ID == "" {
-		return types.SavedConnection{}, &core.ConnectionNotFoundError{ConnID: connID}
-	}
+	savedConn := newConn.ToSavedConnection()
+	cleanURI, _, _ := credential.ExtractPasswordFromURI(savedConn.URI)
+	savedConn.URI = cleanURI
+	s.state.SavedConnections = append(s.state.SavedConnections, savedConn)
 
-	newConn := types.SavedConnection{
-		ID:        uuid.New().String(),
-		Name:      newName,
-		FolderID:  original.FolderID,
-		URI:       original.URI,
-		Color:     original.Color,
-		CreatedAt: time.Now(),
-	}
-
-	// Copy password to new connection's keyring entry
-	if originalPassword != "" {
-		if err := s.credential.SetPassword(newConn.ID, originalPassword); err != nil {
-			s.state.EmitEvent("app:warning", map[string]string{
-				"message": "Password not stored in keyring for duplicated connection",
-				"detail":  err.Error(),
-			})
-		}
-	}
-
-	s.state.SavedConnections = append(s.state.SavedConnections, newConn)
-	if err := s.storage.PersistConnections(s.state.SavedConnections); err != nil {
-		return types.SavedConnection{}, err
-	}
-	return newConn, nil
-}
-
-// ExportConnections exports connections as JSON (without passwords).
-func (s *ConnectionService) ExportConnections(folderID string) (string, error) {
-	s.state.Mu.RLock()
-	defer s.state.Mu.RUnlock()
-
-	// Filter by folder if specified
-	var conns []types.SavedConnection
-	for _, c := range s.state.SavedConnections {
-		if folderID == "" || c.FolderID == folderID {
-			// Mask password in URI for export
-			conns = append(conns, c)
-		}
-	}
-
-	data, err := json.MarshalIndent(conns, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
-}
-
-// ImportConnections imports connections from JSON.
-func (s *ConnectionService) ImportConnections(jsonStr string) error {
-	var conns []types.SavedConnection
-	if err := json.Unmarshal([]byte(jsonStr), &conns); err != nil {
-		return fmt.Errorf("invalid JSON: %w", err)
-	}
-
-	s.state.Mu.Lock()
-	defer s.state.Mu.Unlock()
-
-	// Add imported connections with new IDs
-	for _, c := range conns {
-		c.ID = uuid.New().String()
-		c.CreatedAt = time.Now()
-		s.state.SavedConnections = append(s.state.SavedConnections, c)
-	}
-
-	return s.storage.PersistConnections(s.state.SavedConnections)
+	return savedConn, nil
 }
 
 // ConnectionToURI returns the URI for a connection.
@@ -269,35 +335,32 @@ func (s *ConnectionService) ConnectionFromURI(uri string) (types.SavedConnection
 	}, nil
 }
 
-// GetConnectionURI returns the URI for a saved connection with password from keyring.
-func (s *ConnectionService) GetConnectionURI(connID string) (string, error) {
-	s.state.Mu.RLock()
-	var conn *types.SavedConnection
-	for i := range s.state.SavedConnections {
-		if s.state.SavedConnections[i].ID == connID {
-			conn = &s.state.SavedConnections[i]
-			break
+// MergeStoredCredentials injects stored passwords into a URI that may have them stripped.
+// Used for test connection where the form doesn't hold passwords in memory.
+func (s *ConnectionService) MergeStoredCredentials(connID, uri string) string {
+	var existing types.ExtendedConnection
+	if err := s.encryptedStorage.LoadConnection(connID, &existing); err != nil {
+		return uri
+	}
+
+	_, incomingPw, _ := credential.ExtractPasswordFromURI(uri)
+	if incomingPw == "" {
+		_, storedPw, _ := credential.ExtractPasswordFromURI(existing.MongoURI)
+		if storedPw != "" {
+			if injected, err := credential.InjectPasswordIntoURI(uri, storedPw); err == nil {
+				return injected
+			}
 		}
 	}
-	s.state.Mu.RUnlock()
+	return uri
+}
 
-	if conn == nil {
-		return "", &core.ConnectionNotFoundError{ConnID: connID}
+// GetConnectionURI returns the URI for a saved connection with password from encrypted storage.
+func (s *ConnectionService) GetConnectionURI(connID string) (string, error) {
+	var extended types.ExtendedConnection
+	if err := s.encryptedStorage.LoadConnection(connID, &extended); err != nil {
+		return "", fmt.Errorf("failed to load connection: %w", err)
 	}
 
-	// Get password from keyring and inject into URI
-	password, err := s.credential.GetPassword(connID)
-	if err != nil {
-		s.state.EmitEvent("app:warning", map[string]string{
-			"message": "Could not retrieve password from keyring",
-			"detail":  err.Error(),
-		})
-		return conn.URI, nil
-	}
-	if password == "" {
-		// No password stored, return URI as-is
-		return conn.URI, nil
-	}
-
-	return credential.InjectPasswordIntoURI(conn.URI, password)
+	return extended.MongoURI, nil
 }

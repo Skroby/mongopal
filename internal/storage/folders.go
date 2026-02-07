@@ -37,7 +37,8 @@ func (s *FolderService) CreateFolder(name, parentID string) (types.Folder, error
 }
 
 // DeleteFolder removes a folder and moves its connections to root.
-func (s *FolderService) DeleteFolder(folderID string) error {
+// Returns the IDs of connections that were moved so the caller can sync encrypted storage.
+func (s *FolderService) DeleteFolder(folderID string) ([]string, error) {
 	s.state.Mu.Lock()
 	defer s.state.Mu.Unlock()
 
@@ -52,13 +53,15 @@ func (s *FolderService) DeleteFolder(folderID string) error {
 	}
 
 	if !found {
-		return &core.FolderNotFoundError{FolderID: folderID}
+		return nil, &core.FolderNotFoundError{FolderID: folderID}
 	}
 
-	// Move connections in this folder to root
+	// Move connections in this folder to root, collecting affected IDs
+	var movedConnIDs []string
 	for i := range s.state.SavedConnections {
 		if s.state.SavedConnections[i].FolderID == folderID {
 			s.state.SavedConnections[i].FolderID = ""
+			movedConnIDs = append(movedConnIDs, s.state.SavedConnections[i].ID)
 		}
 	}
 
@@ -69,10 +72,7 @@ func (s *FolderService) DeleteFolder(folderID string) error {
 		}
 	}
 
-	if err := s.storage.PersistFolders(s.state.Folders); err != nil {
-		return err
-	}
-	return s.storage.PersistConnections(s.state.SavedConnections)
+	return movedConnIDs, s.storage.PersistFolders(s.state.Folders)
 }
 
 // ListFolders returns all folders.
@@ -103,7 +103,8 @@ func (s *FolderService) UpdateFolder(folderID, name, parentID string) error {
 	return &core.FolderNotFoundError{FolderID: folderID}
 }
 
-// MoveConnectionToFolder moves a connection to a folder.
+// MoveConnectionToFolder moves a connection to a folder (in-memory only).
+// Caller must sync encrypted storage separately via ConnectionService.UpdateFolderID.
 func (s *FolderService) MoveConnectionToFolder(connID, folderID string) error {
 	s.state.Mu.Lock()
 	defer s.state.Mu.Unlock()
@@ -111,7 +112,7 @@ func (s *FolderService) MoveConnectionToFolder(connID, folderID string) error {
 	for i := range s.state.SavedConnections {
 		if s.state.SavedConnections[i].ID == connID {
 			s.state.SavedConnections[i].FolderID = folderID
-			return s.storage.PersistConnections(s.state.SavedConnections)
+			return nil
 		}
 	}
 

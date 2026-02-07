@@ -161,12 +161,18 @@ func TestIntegration_TestConnection(t *testing.T) {
 	defer tc.teardown(t)
 
 	// Test with valid URI
-	err := tc.app.TestConnection(tc.uri)
-	assert.NoError(t, err, "Should succeed with valid URI")
+	result, err := tc.app.TestConnection(tc.uri, "")
+	assert.NoError(t, err, "Should not return go error")
+	assert.True(t, result.Success, "Should succeed with valid URI")
+	assert.NotEmpty(t, result.ServerVersion, "Should return server version")
+	assert.NotEmpty(t, result.Topology, "Should return topology")
+	assert.Greater(t, result.Latency, int64(0), "Should return latency")
 
 	// Test with invalid URI
-	err = tc.app.TestConnection("mongodb://invalid:27017")
-	assert.Error(t, err, "Should fail with invalid URI")
+	result, err = tc.app.TestConnection("mongodb://invalid:27017", "")
+	assert.NoError(t, err, "Should not return go error")
+	assert.False(t, result.Success, "Should fail with invalid URI")
+	assert.NotEmpty(t, result.Error, "Should return error message")
 }
 
 // =============================================================================
@@ -1234,8 +1240,9 @@ func TestIntegration_AuthenticationFailure(t *testing.T) {
 
 	// Try to connect with wrong credentials
 	// Note: Default testcontainer doesn't have auth, so we test with a bad URI
-	err := tc.app.TestConnection("mongodb://wronguser:wrongpass@localhost:99999")
-	assert.Error(t, err, "Should fail with bad credentials/host")
+	result, err := tc.app.TestConnection("mongodb://wronguser:wrongpass@localhost:99999", "")
+	assert.NoError(t, err, "Should not return go error")
+	assert.False(t, result.Success, "Should fail with bad credentials/host")
 }
 
 func TestIntegration_InvalidDatabaseName(t *testing.T) {

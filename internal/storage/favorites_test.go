@@ -329,48 +329,6 @@ func TestRemoveFavoritesForConnection_IncludesDatabases(t *testing.T) {
 	}
 }
 
-func TestLegacyFormatMigration(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Write legacy format file (plain array)
-	legacyData := []string{
-		"conn1:db1:coll1",
-		"conn1:db1:coll2",
-		"db:conn1:db1",
-		"db:conn1:db2",
-	}
-	jsonData, _ := json.MarshalIndent(legacyData, "", "  ")
-	os.WriteFile(filepath.Join(tmpDir, "favorites.json"), jsonData, 0600)
-
-	// Load service
-	svc := NewFavoriteService(tmpDir)
-
-	// Collection favorites should be loaded
-	if !svc.IsFavorite("conn1", "db1", "coll1") {
-		t.Error("Expected collection favorite coll1 to be migrated")
-	}
-	if !svc.IsFavorite("conn1", "db1", "coll2") {
-		t.Error("Expected collection favorite coll2 to be migrated")
-	}
-
-	// Database favorites should be loaded with order preserved
-	if !svc.IsDatabaseFavorite("conn1", "db1") {
-		t.Error("Expected database favorite db1 to be migrated")
-	}
-	if !svc.IsDatabaseFavorite("conn1", "db2") {
-		t.Error("Expected database favorite db2 to be migrated")
-	}
-
-	dbFavs := svc.ListDatabaseFavorites()
-	if len(dbFavs) != 2 {
-		t.Fatalf("Expected 2 database favorites, got %d", len(dbFavs))
-	}
-	// Order should match legacy file order
-	if dbFavs[0] != "db:conn1:db1" || dbFavs[1] != "db:conn1:db2" {
-		t.Errorf("Expected db1, db2 order, got %v", dbFavs)
-	}
-}
-
 func TestNewFormatPersistence(t *testing.T) {
 	tmpDir := t.TempDir()
 	svc := NewFavoriteService(tmpDir)

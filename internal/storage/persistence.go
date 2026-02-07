@@ -30,30 +30,9 @@ func InitConfigDir() string {
 	return dir
 }
 
-// ConnectionsFile returns the path to the connections file.
-func (s *Service) ConnectionsFile() string {
-	return filepath.Join(s.configDir, "connections.json")
-}
-
 // FoldersFile returns the path to the folders file.
 func (s *Service) FoldersFile() string {
 	return filepath.Join(s.configDir, "folders.json")
-}
-
-// LoadConnections loads saved connections from disk.
-func (s *Service) LoadConnections() ([]types.SavedConnection, error) {
-	data, err := os.ReadFile(s.ConnectionsFile())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []types.SavedConnection{}, nil
-		}
-		return nil, err
-	}
-	var connections []types.SavedConnection
-	if err := json.Unmarshal(data, &connections); err != nil {
-		return nil, err
-	}
-	return connections, nil
 }
 
 // LoadFolders loads folders from disk.
@@ -70,15 +49,6 @@ func (s *Service) LoadFolders() ([]types.Folder, error) {
 		return nil, err
 	}
 	return folders, nil
-}
-
-// PersistConnections saves connections to disk.
-func (s *Service) PersistConnections(connections []types.SavedConnection) error {
-	data, err := json.MarshalIndent(connections, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.ConnectionsFile(), data, 0600)
 }
 
 // PersistFolders saves folders to disk.

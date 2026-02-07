@@ -1,0 +1,261 @@
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+
+// =============================================================================
+// Type Definitions for Mocks
+// =============================================================================
+
+interface MockNotify {
+  success: Mock
+  error: Mock
+  warning: Mock
+}
+
+interface MockConnection {
+  id: string
+  name: string
+  uri: string
+  folderId?: string
+}
+
+interface MockDatabase {
+  name: string
+}
+
+interface MockCollection {
+  name: string
+  count: number
+}
+
+// =============================================================================
+// Mocks
+// =============================================================================
+
+// Mock the notification context
+vi.mock('./NotificationContext', () => ({
+  useNotification: (): { notify: MockNotify } => ({
+    notify: {
+      success: vi.fn(),
+      error: vi.fn(),
+      warning: vi.fn(),
+    },
+  }),
+}))
+
+// Mock the connection context
+const mockConnect = vi.fn()
+const mockDisconnect = vi.fn()
+const mockDisconnectAll = vi.fn()
+const mockDisconnectOthers = vi.fn()
+const mockSetSelectedDatabase = vi.fn()
+const mockSetSelectedCollection = vi.fn()
+const mockDuplicateConnection = vi.fn()
+const mockRefreshConnection = vi.fn()
+const mockDropDatabase = vi.fn()
+const mockDropCollection = vi.fn()
+const mockClearCollection = vi.fn()
+const mockCreateFolder = vi.fn()
+const mockDeleteFolder = vi.fn()
+const mockMoveConnectionToFolder = vi.fn()
+const mockMoveFolderToFolder = vi.fn()
+const mockLoadConnections = vi.fn()
+const mockIsConnecting = vi.fn().mockReturnValue(false)
+
+vi.mock('./contexts/ConnectionContext', () => ({
+  useConnection: () => ({
+    connections: [
+      { id: 'conn1', name: 'Production Server', uri: 'mongodb://localhost:27017' },
+      { id: 'conn2', name: 'Development Server', uri: 'mongodb://localhost:27018' },
+      { id: 'conn3', name: 'Test Environment', uri: 'mongodb://localhost:27019' },
+    ] as MockConnection[],
+    folders: [],
+    activeConnections: ['conn1'],
+    isConnecting: mockIsConnecting,
+    connect: mockConnect,
+    disconnect: mockDisconnect,
+    disconnectAll: mockDisconnectAll,
+    disconnectOthers: mockDisconnectOthers,
+    setSelectedDatabase: mockSetSelectedDatabase,
+    setSelectedCollection: mockSetSelectedCollection,
+    duplicateConnection: mockDuplicateConnection,
+    refreshConnection: mockRefreshConnection,
+    dropDatabase: mockDropDatabase,
+    dropCollection: mockDropCollection,
+    clearCollection: mockClearCollection,
+    createFolder: mockCreateFolder,
+    deleteFolder: mockDeleteFolder,
+    moveConnectionToFolder: mockMoveConnectionToFolder,
+    moveFolderToFolder: mockMoveFolderToFolder,
+    loadConnections: mockLoadConnections,
+  }),
+}))
+
+// Mock the tab context
+vi.mock('./contexts/TabContext', () => ({
+  useTab: () => ({
+    openTab: vi.fn(),
+    openSchemaTab: vi.fn(),
+    closeTabsForConnection: vi.fn(),
+    closeTabsForDatabase: vi.fn(),
+    closeTabsForCollection: vi.fn(),
+    closeAllTabs: vi.fn(),
+    keepOnlyConnectionTabs: vi.fn(),
+  }),
+}))
+
+// Mock window.go
+beforeEach(() => {
+  // Update the existing window.go from test setup
+  if (window.go?.main?.App) {
+    window.go.main.App.ListDatabases = vi.fn().mockResolvedValue([
+      { name: 'myapp_production' },
+      { name: 'myapp_staging' },
+      { name: 'analytics' },
+    ] as MockDatabase[])
+    window.go.main.App.ListCollections = vi.fn().mockResolvedValue([
+      { name: 'users', count: 1000 },
+      { name: 'orders', count: 5000 },
+      { name: 'products', count: 500 },
+    ] as MockCollection[])
+  }
+})
+
+afterEach(() => {
+  vi.clearAllMocks()
+})
+
+// Import after mocks are set up
+import Sidebar, { SidebarProps } from './Sidebar'
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Helper to check if a text content is present in tree items
+ */
+const findTreeItemWithText = (container: HTMLElement, text: string): boolean => {
+  const treeItems = container.querySelectorAll('.tree-item')
+  return Array.from(treeItems).some(item => item.textContent?.includes(text))
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+describe('Sidebar Search', () => {
+  const defaultProps: SidebarProps = {
+    onManageConnections: vi.fn(),
+    onEditConnection: vi.fn(),
+    onDeleteConnection: vi.fn(),
+    onExportDatabases: vi.fn(),
+    onImportDatabases: vi.fn(),
+    onExportCollections: vi.fn(),
+    onImportCollections: vi.fn(),
+    onShowStats: vi.fn(),
+    onManageIndexes: vi.fn(),
+  }
+
+  it('renders search input with correct placeholder', () => {
+    render(<Sidebar {...defaultProps} />)
+    const searchInput = screen.getByPlaceholderText('Search connections, databases, collections...')
+    expect(searchInput).toBeInTheDocument()
+  })
+
+  it('filters connections by name when typing in search', () => {
+    const { container } = render(<Sidebar {...defaultProps} />)
+    const searchInput = screen.getByPlaceholderText('Search connections, databases, collections...')
+
+    // All connections should be visible initially
+    expect(findTreeItemWithText(container, 'Production Server')).toBe(true)
+    expect(findTreeItemWithText(container, 'Development Server')).toBe(true)
+    expect(findTreeItemWithText(container, 'Test Environment')).toBe(true)
+
+    // Type in search
+    fireEvent.change(searchInput, { target: { value: 'Production' } })
+
+    // Only Production Server should be visible
+    expect(findTreeItemWithText(container, 'Production Server')).toBe(true)
+    expect(findTreeItemWithText(container, 'Development Server')).toBe(false)
+    expect(findTreeItemWithText(container, 'Test Environment')).toBe(false)
+  })
+
+  it('shows clear button when search has text', () => {
+    render(<Sidebar {...defaultProps} />)
+    const searchInput = screen.getByPlaceholderText('Search connections, databases, collections...')
+
+    // No clear button initially
+    expect(screen.queryByTitle('Clear search')).not.toBeInTheDocument()
+
+    // Type in search
+    fireEvent.change(searchInput, { target: { value: 'test' } })
+
+    // Clear button should appear
+    expect(screen.getByTitle('Clear search')).toBeInTheDocument()
+  })
+
+  it('clears search when clicking clear button', () => {
+    render(<Sidebar {...defaultProps} />)
+    const searchInput = screen.getByPlaceholderText('Search connections, databases, collections...') as HTMLInputElement
+
+    // Type in search
+    fireEvent.change(searchInput, { target: { value: 'test' } })
+    expect(searchInput.value).toBe('test')
+
+    // Click clear button
+    const clearButton = screen.getByTitle('Clear search')
+    fireEvent.click(clearButton)
+
+    // Search should be cleared
+    expect(searchInput.value).toBe('')
+  })
+
+  it('performs case-insensitive search', () => {
+    const { container } = render(<Sidebar {...defaultProps} />)
+    const searchInput = screen.getByPlaceholderText('Search connections, databases, collections...')
+
+    // Type lowercase
+    fireEvent.change(searchInput, { target: { value: 'production' } })
+
+    // Should still find Production Server
+    expect(findTreeItemWithText(container, 'Production Server')).toBe(true)
+    expect(findTreeItemWithText(container, 'Development Server')).toBe(false)
+  })
+
+  it('shows "No matching connections" when search has no results', () => {
+    render(<Sidebar {...defaultProps} />)
+    const searchInput = screen.getByPlaceholderText('Search connections, databases, collections...')
+
+    // Type something that doesn't match anything
+    fireEvent.change(searchInput, { target: { value: 'zzznomatch' } })
+
+    // Should show no matching message
+    expect(screen.getByText('No matching connections')).toBeInTheDocument()
+  })
+
+  it('shows partial text matches', () => {
+    const { container } = render(<Sidebar {...defaultProps} />)
+    const searchInput = screen.getByPlaceholderText('Search connections, databases, collections...')
+
+    // Search for "Server" which matches two connections
+    fireEvent.change(searchInput, { target: { value: 'Server' } })
+
+    // Both servers should match
+    expect(findTreeItemWithText(container, 'Production Server')).toBe(true)
+    expect(findTreeItemWithText(container, 'Development Server')).toBe(true)
+    expect(findTreeItemWithText(container, 'Test Environment')).toBe(false)
+  })
+
+  it('highlights matching text in connection names', () => {
+    const { container } = render(<Sidebar {...defaultProps} />)
+    const searchInput = screen.getByPlaceholderText('Search connections, databases, collections...')
+
+    fireEvent.change(searchInput, { target: { value: 'Prod' } })
+
+    // Look for highlight span with the matching text using CSS class selector
+    const highlightedSpans = container.querySelectorAll('span.bg-amber-500\\/30')
+    expect(highlightedSpans.length).toBeGreaterThan(0)
+    expect(highlightedSpans[0].textContent).toBe('Prod')
+    expect(highlightedSpans[0].classList.contains('text-amber-200')).toBe(true)
+  })
+})

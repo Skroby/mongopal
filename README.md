@@ -25,7 +25,7 @@ A lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing do
 
 - **Backend**: Go 1.24+
 - **MongoDB Driver**: mongo-go-driver
-- **Frontend**: React 18 + Vite
+- **Frontend**: React 18 + TypeScript 5.9+ (strict mode) + Vite
 - **Styling**: TailwindCSS
 - **Desktop Framework**: Wails v2
 
@@ -98,14 +98,16 @@ mongopal/
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx         # Root component with state management
-│   │   ├── components/     # React components
-│   │   │   ├── Sidebar.jsx           # Folder/connection tree with drag-drop
-│   │   │   ├── CollectionView.jsx    # Document list with filters
-│   │   │   ├── DocumentEditView.jsx  # Monaco editor
-│   │   │   ├── SchemaView.jsx        # Collection schema analysis
-│   │   │   ├── KeyboardShortcuts.jsx # Shortcuts reference modal
-│   │   │   ├── ActionableError.jsx   # Error hints with recovery
+│   │   ├── App.tsx         # Root component with state management
+│   │   ├── types/          # TypeScript type definitions
+│   │   │   └── wails.d.ts  # Centralized Wails bindings
+│   │   ├── components/     # React components (TypeScript)
+│   │   │   ├── Sidebar.tsx           # Folder/connection tree with drag-drop
+│   │   │   ├── CollectionView.tsx    # Document list with filters
+│   │   │   ├── DocumentEditView.tsx  # Monaco editor
+│   │   │   ├── SchemaView.tsx        # Collection schema analysis
+│   │   │   ├── KeyboardShortcuts.tsx # Shortcuts reference modal
+│   │   │   ├── ActionableError.tsx   # Error hints with recovery
 │   │   │   ├── Import/ExportModals   # Data transfer
 │   │   │   ├── contexts/             # React contexts for state
 │   │   │   └── ...
@@ -131,8 +133,9 @@ make test
 ### Unit tests only (used by commit hook)
 ```bash
 make test-unit              # All unit tests
-make test-unit-frontend     # Frontend only
+make test-unit-frontend     # Frontend only (includes TypeScript typecheck)
 make test-unit-go           # Go only
+make typecheck              # TypeScript type checking
 make test-watch             # Frontend watch mode
 ```
 

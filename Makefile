@@ -1,4 +1,4 @@
-.PHONY: help dev build clean install test test-unit test-unit-go test-unit-frontend test-watch test-integration test-integration-go test-integration-frontend test-coverage test-coverage-go test-coverage-frontend setup setup-quick install-hooks install-frontend generate doctor fmt lint frontend-dist
+.PHONY: help dev build clean install test test-unit test-unit-go test-unit-frontend typecheck test-watch test-integration test-integration-go test-integration-frontend test-coverage test-coverage-go test-coverage-frontend setup setup-quick install-hooks install-frontend generate doctor fmt lint frontend-dist
 
 # Ensure Go bin is in PATH
 GOBIN := $(shell go env GOPATH)/bin
@@ -41,6 +41,7 @@ help:
 	@echo "  test-unit                 Run all unit tests - used by commit hook"
 	@echo "  test-unit-go              Run Go unit tests only"
 	@echo "  test-unit-frontend        Run frontend unit tests only"
+	@echo "  typecheck                 Run TypeScript type checking"
 	@echo "  test-watch                Run frontend tests in watch mode"
 	@echo "  test-integration          Run all integration tests (requires Docker)"
 	@echo "  test-integration-go       Run Go integration tests only (requires Docker)"
@@ -131,8 +132,12 @@ test-unit: test-unit-frontend test-unit-go
 test-unit-go:
 	go test -v ./...
 
-# Run frontend unit tests
-test-unit-frontend: generate
+# Run TypeScript type checking
+typecheck: generate
+	cd frontend && npm run typecheck
+
+# Run frontend unit tests (includes type checking)
+test-unit-frontend: generate typecheck
 	cd frontend && npm test
 
 # Run frontend tests in watch mode

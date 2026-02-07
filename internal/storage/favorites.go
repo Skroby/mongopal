@@ -9,7 +9,6 @@ import (
 )
 
 // favoritesData represents the JSON structure for favorites storage.
-// Supports both legacy format (plain array) and new format (object with ordered database favorites).
 type favoritesData struct {
 	Collections     []string `json:"collections"`     // Collection favorite keys
 	DatabaseOrder   []string `json:"databaseOrder"`   // Ordered database favorite keys
@@ -43,7 +42,6 @@ func (s *FavoriteService) favoritesFile() string {
 }
 
 // loadFavorites loads favorites from disk.
-// Supports both legacy format (plain array) and new format (object).
 func (s *FavoriteService) loadFavorites() {
 	data, err := os.ReadFile(s.favoritesFile())
 	if err != nil {
@@ -60,28 +58,8 @@ func (s *FavoriteService) loadFavorites() {
 		return
 	}
 
-	// Try to parse as new format first
-	var newFormat favoritesData
-	if err := json.Unmarshal(data, &newFormat); err == nil && (newFormat.Collections != nil || newFormat.DatabaseOrder != nil) {
-		// New format
-		s.collectionFavs = make(map[string]bool, len(newFormat.Collections))
-		for _, k := range newFormat.Collections {
-			s.collectionFavs[k] = true
-		}
-		s.databaseFavOrder = newFormat.DatabaseOrder
-		if s.databaseFavOrder == nil {
-			s.databaseFavOrder = make([]string, 0)
-		}
-		s.databaseFavLookup = make(map[string]bool, len(s.databaseFavOrder))
-		for _, k := range s.databaseFavOrder {
-			s.databaseFavLookup[k] = true
-		}
-		return
-	}
-
-	// Try legacy format (plain array of strings)
-	var legacyKeys []string
-	if err := json.Unmarshal(data, &legacyKeys); err != nil {
+	var stored favoritesData
+	if err := json.Unmarshal(data, &stored); err != nil {
 		fmt.Printf("Warning: failed to parse favorites: %v\n", err)
 		s.collectionFavs = make(map[string]bool)
 		s.databaseFavOrder = make([]string, 0)
@@ -89,19 +67,17 @@ func (s *FavoriteService) loadFavorites() {
 		return
 	}
 
-	// Migrate legacy format: separate collection and database favorites
-	s.collectionFavs = make(map[string]bool)
-	s.databaseFavOrder = make([]string, 0)
-	s.databaseFavLookup = make(map[string]bool)
-	for _, k := range legacyKeys {
-		if len(k) > 3 && k[:3] == "db:" {
-			// Database favorite
-			s.databaseFavOrder = append(s.databaseFavOrder, k)
-			s.databaseFavLookup[k] = true
-		} else {
-			// Collection favorite
-			s.collectionFavs[k] = true
-		}
+	s.collectionFavs = make(map[string]bool, len(stored.Collections))
+	for _, k := range stored.Collections {
+		s.collectionFavs[k] = true
+	}
+	s.databaseFavOrder = stored.DatabaseOrder
+	if s.databaseFavOrder == nil {
+		s.databaseFavOrder = make([]string, 0)
+	}
+	s.databaseFavLookup = make(map[string]bool, len(s.databaseFavOrder))
+	for _, k := range s.databaseFavOrder {
+		s.databaseFavLookup[k] = true
 	}
 }
 

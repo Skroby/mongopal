@@ -30,18 +30,18 @@ export default defineConfig({
     include: ['monaco-editor'],
   },
   server: {
-    port: 5179,
+    port: 5280,
     strictPort: true,
     hmr: {
       host: 'localhost',
-      port: 5179,
+      port: 5280,
       protocol: 'ws',
     },
   },
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './src/test/setup.js',
-    include: ['src/**/*.{test,spec}.{js,jsx}'],
+    setupFiles: './src/test/setup.ts',
+    include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}'],
   },
 })

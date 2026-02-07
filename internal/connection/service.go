@@ -116,9 +116,11 @@ func (s *Service) DisconnectAll() error {
 	return nil
 }
 
-// TestConnection tests a MongoDB URI without saving.
-func (s *Service) TestConnection(uri string) error {
+// TestConnection tests a MongoDB URI and returns detailed server information.
+func (s *Service) TestConnection(uri string) (*types.TestConnectionResult, error) {
 	start := time.Now()
+	result := &types.TestConnectionResult{}
+
 	// Mask password in URI for logging
 	maskedURI := uri
 	if idx := strings.Index(uri, "@"); idx > 0 {
@@ -129,7 +131,9 @@ func (s *Service) TestConnection(uri string) error {
 	})
 
 	if uri == "" {
-		return fmt.Errorf("URI cannot be empty")
+		result.Error = "URI cannot be empty"
+		result.Hint = "Enter a valid MongoDB connection URI"
+		return result, nil
 	}
 
 	// Validate URI scheme
@@ -137,10 +141,12 @@ func (s *Service) TestConnection(uri string) error {
 		debug.LogConnection("Invalid URI scheme", map[string]interface{}{
 			"uri": maskedURI,
 		})
-		return fmt.Errorf("invalid URI scheme: must start with mongodb:// or mongodb+srv://")
+		result.Error = "Invalid URI scheme: must start with mongodb:// or mongodb+srv://"
+		result.Hint = "Use mongodb:// for standard connections or mongodb+srv:// for SRV connections"
+		return result, nil
 	}
 
-	ctx, cancel := core.ContextWithConnectTimeout()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	clientOpts := options.Client().ApplyURI(uri)
@@ -151,9 +157,11 @@ func (s *Service) TestConnection(uri string) error {
 			"error":      err.Error(),
 			"durationMs": time.Since(start).Milliseconds(),
 		})
-		return fmt.Errorf("failed to connect: %w", err)
+		result.Error = fmt.Sprintf("Failed to connect: %s", err.Error())
+		result.Hint = connectionErrorHint(err)
+		result.Latency = time.Since(start).Milliseconds()
+		return result, nil
 	}
-	// Use same timeout context for disconnect to avoid hanging
 	defer client.Disconnect(ctx)
 
 	if err := client.Ping(ctx, nil); err != nil {
@@ -162,15 +170,68 @@ func (s *Service) TestConnection(uri string) error {
 			"error":      err.Error(),
 			"durationMs": time.Since(start).Milliseconds(),
 		})
-		return fmt.Errorf("failed to ping: %w", err)
+		result.Error = fmt.Sprintf("Failed to ping: %s", err.Error())
+		result.Hint = connectionErrorHint(err)
+		result.Latency = time.Since(start).Milliseconds()
+		return result, nil
+	}
+
+	result.Latency = time.Since(start).Milliseconds()
+	result.Success = true
+
+	// Detect TLS from URI
+	result.TLSEnabled = strings.Contains(uri, "tls=true") || strings.Contains(uri, "ssl=true") || strings.HasPrefix(uri, "mongodb+srv://")
+
+	// Get server info via buildInfo command
+	var buildInfo bson.M
+	if err := client.Database("admin").RunCommand(ctx, bson.D{{Key: "buildInfo", Value: 1}}).Decode(&buildInfo); err == nil {
+		if version, ok := buildInfo["version"].(string); ok {
+			result.ServerVersion = version
+		}
+	}
+
+	// Get topology info via hello/isMaster command
+	var hello bson.M
+	if err := client.Database("admin").RunCommand(ctx, bson.D{{Key: "hello", Value: 1}}).Decode(&hello); err == nil {
+		if setName, ok := hello["setName"].(string); ok && setName != "" {
+			result.Topology = "replicaset"
+			result.ReplicaSet = setName
+		} else if msg, ok := hello["msg"].(string); ok && msg == "isdbgrid" {
+			result.Topology = "sharded"
+		} else {
+			result.Topology = "standalone"
+		}
 	}
 
 	debug.LogConnection("Test connection successful", map[string]interface{}{
-		"uri":        maskedURI,
-		"durationMs": time.Since(start).Milliseconds(),
+		"uri":           maskedURI,
+		"durationMs":    result.Latency,
+		"serverVersion": result.ServerVersion,
+		"topology":      result.Topology,
 	})
 
-	return nil
+	return result, nil
+}
+
+// connectionErrorHint returns an actionable hint for common connection errors.
+func connectionErrorHint(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "connection refused"):
+		return "Check that MongoDB is running and the host/port are correct"
+	case strings.Contains(msg, "authentication failed"):
+		return "Verify your username, password, and authentication database"
+	case strings.Contains(msg, "tls") || strings.Contains(msg, "certificate"):
+		return "Check your TLS/SSL certificate configuration"
+	case strings.Contains(msg, "timeout") || strings.Contains(msg, "context deadline"):
+		return "The server may be unreachable. Check network connectivity and firewall rules"
+	case strings.Contains(msg, "no reachable servers"):
+		return "No MongoDB servers found. Verify the hostname and that the server is running"
+	case strings.Contains(msg, "DNS"):
+		return "DNS resolution failed. Check the hostname or try using an IP address"
+	default:
+		return ""
+	}
 }
 
 // GetConnectionStatus returns the status of a connection.

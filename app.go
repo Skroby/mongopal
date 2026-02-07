@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/peternagy/mongopal/internal/auth"
 	"github.com/peternagy/mongopal/internal/connection"
 	"github.com/peternagy/mongopal/internal/core"
 	"github.com/peternagy/mongopal/internal/credential"
@@ -29,8 +32,13 @@ import (
 
 type Folder = types.Folder
 type SavedConnection = types.SavedConnection
+type ExtendedConnection = types.ExtendedConnection
 type ConnectionInfo = types.ConnectionInfo
 type ConnectionStatus = types.ConnectionStatus
+type TestConnectionResult = types.TestConnectionResult
+type ConnectionShareResult = types.ConnectionShareResult
+type BulkConnectionShareResult = types.BulkConnectionShareResult
+type BulkShareEntry = types.BulkShareEntry
 type DatabaseInfo = types.DatabaseInfo
 type CollectionInfo = types.CollectionInfo
 type CollectionExportInfo = types.CollectionExportInfo
@@ -70,34 +78,33 @@ type PerformanceMetrics = performance.Metrics
 
 // App struct holds the application state and services
 type App struct {
-	state       *core.AppState
-	storage     *storage.Service
-	credential  *credential.Service
-	connStore   *storage.ConnectionService
-	folderSvc   *storage.FolderService
-	querySvc    *storage.QueryService
-	favoriteSvc *storage.FavoriteService
-	dbMetaSvc   *storage.DatabaseMetadataService
-	connection  *connection.Service
-	database    *database.Service
-	document    *document.Service
-	schema      *schema.Service
-	export      *export.Service
-	importer    *importer.Service
-	script      *script.Service
-	performance *performance.Service
+	state            *core.AppState
+	storage          *storage.Service
+	encryptedStorage *credential.EncryptedStorage
+	connStore        *storage.ConnectionService
+	folderSvc        *storage.FolderService
+	querySvc         *storage.QueryService
+	favoriteSvc      *storage.FavoriteService
+	dbMetaSvc        *storage.DatabaseMetadataService
+	connection       *connection.Service
+	database         *database.Service
+	document         *document.Service
+	schema           *schema.Service
+	export           *export.Service
+	importer         *importer.Service
+	script           *script.Service
+	performance      *performance.Service
+	auth             *auth.Service
 }
 
 // NewApp creates a new App instance
 func NewApp() *App {
 	state := core.NewAppState()
-	credSvc := credential.NewService()
 	storageSvc := storage.NewService("")
 
 	return &App{
-		state:      state,
-		credential: credSvc,
-		storage:    storageSvc,
+		state:   state,
+		storage: storageSvc,
 	}
 }
 
@@ -109,19 +116,37 @@ func (a *App) startup(ctx context.Context) {
 	// Initialize debug logger
 	debug.Init(ctx)
 
+	// Initialize OS authentication service with 1-minute grace period
+	a.auth = auth.NewService(1 * time.Minute)
+
 	// Initialize config directory and storage
 	configDir := storage.InitConfigDir()
 	a.storage = storage.NewService(configDir)
 	a.state.ConfigDir = configDir
 
-	// Load connections and folders
-	connections, _ := a.storage.LoadConnections()
+	// Initialize encrypted storage for connections
+	encryptedStorageDir := configDir + "/connections"
+	encStorage, err := credential.NewEncryptedStorage(encryptedStorageDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to initialize encrypted storage: %v\n", err)
+		// Create a fallback - will continue without persistent encryption keys
+		encStorage, _ = credential.NewEncryptedStorage(encryptedStorageDir)
+	}
+	a.encryptedStorage = encStorage
+
+	// Load folders
 	folders, _ := a.storage.LoadFolders()
-	a.state.SavedConnections = connections
 	a.state.Folders = folders
 
-	// Initialize all services
-	a.connStore = storage.NewConnectionService(a.state, a.storage, a.credential)
+	// Initialize connection service with encrypted storage
+	a.connStore = storage.NewConnectionService(a.state, a.storage, encStorage)
+
+	// Load connections from encrypted storage
+	if err := a.connStore.LoadAllConnections(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load connections: %v\n", err)
+	}
+
+	// Initialize all other services
 	a.folderSvc = storage.NewFolderService(a.state, a.storage)
 	a.querySvc = storage.NewQueryService(configDir)
 	a.favoriteSvc = storage.NewFavoriteService(configDir)
@@ -157,7 +182,11 @@ func (a *App) DisconnectAll() error {
 	return a.connection.DisconnectAll()
 }
 
-func (a *App) TestConnection(uri string) error {
+func (a *App) TestConnection(uri string, connID string) (*TestConnectionResult, error) {
+	// For saved connections, merge stored credentials into the test URI
+	if connID != "" {
+		uri = a.connStore.MergeStoredCredentials(connID, uri)
+	}
 	return a.connection.TestConnection(uri)
 }
 
@@ -173,8 +202,12 @@ func (a *App) GetConnectionInfo(connID string) ConnectionInfo {
 // Storage - Connection Methods
 // =============================================================================
 
-func (a *App) SaveConnection(conn SavedConnection, password string) error {
-	return a.connStore.SaveConnection(conn, password)
+func (a *App) SaveExtendedConnection(conn ExtendedConnection) error {
+	return a.connStore.SaveExtendedConnection(conn)
+}
+
+func (a *App) GetExtendedConnection(connID string) (ExtendedConnection, error) {
+	return a.connStore.GetExtendedConnection(connID)
 }
 
 func (a *App) ListSavedConnections() ([]SavedConnection, error) {
@@ -201,12 +234,123 @@ func (a *App) DuplicateConnection(connID, newName string) (SavedConnection, erro
 	return a.connStore.DuplicateConnection(connID, newName)
 }
 
-func (a *App) ExportConnections(folderID string) (string, error) {
-	return a.connStore.ExportConnections(folderID)
+// resolveFolderPath builds the folder name path (e.g. ["Work", "Backend"]) for a given folder ID.
+func (a *App) resolveFolderPath(folderID string) []string {
+	if folderID == "" {
+		return nil
+	}
+	folders, _ := a.folderSvc.ListFolders()
+	byID := make(map[string]Folder, len(folders))
+	for _, f := range folders {
+		byID[f.ID] = f
+	}
+	var path []string
+	for id := folderID; id != ""; {
+		f, ok := byID[id]
+		if !ok {
+			break
+		}
+		path = append([]string{f.Name}, path...)
+		id = f.ParentID
+	}
+	return path
 }
 
-func (a *App) ImportConnections(jsonStr string) error {
-	return a.connStore.ImportConnections(jsonStr)
+// prepareConnectionForExport strips internal fields and adds folder path.
+func (a *App) prepareConnectionForExport(ext *ExtendedConnection) {
+	ext.FolderPath = a.resolveFolderPath(ext.FolderID)
+	ext.ID = ""
+	ext.FolderID = ""
+	ext.ReadOnly = false
+	ext.CreatedAt = time.Time{}
+	ext.LastAccessedAt = time.Time{}
+}
+
+// ExportEncryptedConnection encrypts a saved connection for sharing.
+// Requires OS authentication for saved connections with credentials.
+func (a *App) ExportEncryptedConnection(connID string) (*ConnectionShareResult, error) {
+	// Require OS auth since we're exporting credentials
+	if err := a.auth.Authenticate("MongoPal needs to verify your identity to export credentials"); err != nil {
+		return nil, fmt.Errorf("authentication required to export credentials")
+	}
+
+	ext, err := a.connStore.GetExtendedConnection(connID)
+	if err != nil {
+		return nil, err
+	}
+
+	a.prepareConnectionForExport(&ext)
+
+	data, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize connection: %w", err)
+	}
+
+	bundle, key, err := credential.EncryptForSharing(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ConnectionShareResult{Bundle: bundle, Key: key}, nil
+}
+
+// ExportEncryptedConnections encrypts multiple connections with a single shared key.
+// Requires OS authentication.
+func (a *App) ExportEncryptedConnections(connIDs []string) (*BulkConnectionShareResult, error) {
+	if err := a.auth.Authenticate("MongoPal needs to verify your identity to export credentials"); err != nil {
+		return nil, fmt.Errorf("authentication required to export credentials")
+	}
+
+	sharedKey, err := credential.GenerateSharingKey()
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]BulkShareEntry, 0, len(connIDs))
+	for _, connID := range connIDs {
+		ext, err := a.connStore.GetExtendedConnection(connID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load connection %s: %w", connID, err)
+		}
+
+		a.prepareConnectionForExport(&ext)
+
+		data, err := json.Marshal(ext)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize connection: %w", err)
+		}
+
+		bundle, err := credential.EncryptForSharingWithKey(data, sharedKey)
+		if err != nil {
+			return nil, err
+		}
+
+		entries = append(entries, BulkShareEntry{Name: ext.Name, Bundle: bundle})
+	}
+
+	return &BulkConnectionShareResult{
+		Version:     1,
+		Connections: entries,
+		Key:         sharedKey,
+	}, nil
+}
+
+// ExportEncryptedConnectionFromForm encrypts form data directly (for unsaved connections).
+func (a *App) ExportEncryptedConnectionFromForm(formDataJSON string) (*ConnectionShareResult, error) {
+	bundle, key, err := credential.EncryptForSharing([]byte(formDataJSON))
+	if err != nil {
+		return nil, err
+	}
+	return &ConnectionShareResult{Bundle: bundle, Key: key}, nil
+}
+
+// DecryptConnectionImport decrypts an encrypted connection bundle.
+func (a *App) DecryptConnectionImport(bundleJSON string, key string) (string, error) {
+	data, err := credential.DecryptFromSharing(bundleJSON, key)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func (a *App) ConnectionToURI(connID string) (string, error) {
@@ -226,7 +370,15 @@ func (a *App) CreateFolder(name, parentID string) (Folder, error) {
 }
 
 func (a *App) DeleteFolder(folderID string) error {
-	return a.folderSvc.DeleteFolder(folderID)
+	movedConnIDs, err := a.folderSvc.DeleteFolder(folderID)
+	if err != nil {
+		return err
+	}
+	// Sync cleared folder IDs to encrypted storage
+	for _, connID := range movedConnIDs {
+		_ = a.connStore.UpdateFolderID(connID, "")
+	}
+	return nil
 }
 
 func (a *App) ListFolders() ([]Folder, error) {
@@ -238,7 +390,11 @@ func (a *App) UpdateFolder(folderID, name, parentID string) error {
 }
 
 func (a *App) MoveConnectionToFolder(connID, folderID string) error {
-	return a.folderSvc.MoveConnectionToFolder(connID, folderID)
+	if err := a.folderSvc.MoveConnectionToFolder(connID, folderID); err != nil {
+		return err
+	}
+	// Also update encrypted storage so FolderID survives restart
+	return a.connStore.UpdateFolderID(connID, folderID)
 }
 
 // =============================================================================
@@ -556,4 +712,30 @@ func (a *App) RemoveDatabaseFavorite(connID, dbName string) error {
 
 func (a *App) ListDatabaseFavorites() []string {
 	return a.favoriteSvc.ListDatabaseFavorites()
+}
+
+// =============================================================================
+// Authentication Methods
+// =============================================================================
+
+// AuthenticateForPasswordReveal prompts the user for OS-level authentication
+// to reveal sensitive credentials. Uses a 1-minute grace period.
+func (a *App) AuthenticateForPasswordReveal() error {
+	return a.auth.Authenticate("MongoPal needs to verify your identity to reveal passwords")
+}
+
+// IsAuthenticatedForPasswordReveal checks if the user is authenticated within grace period.
+func (a *App) IsAuthenticatedForPasswordReveal() bool {
+	return a.auth.IsAuthenticated()
+}
+
+// GetAuthGracePeriodRemaining returns seconds remaining in grace period.
+func (a *App) GetAuthGracePeriodRemaining() int {
+	remaining := a.auth.GracePeriodRemaining()
+	return int(remaining.Seconds())
+}
+
+// InvalidatePasswordAuth clears authentication state, requiring re-authentication.
+func (a *App) InvalidatePasswordAuth() {
+	a.auth.InvalidateAuth()
 }

@@ -412,6 +412,16 @@ select option {
   background-color: rgba(239, 68, 68, 0.4) !important;
 }
 
+/* Connection form - field error highlight animation */
+@keyframes field-error-highlight {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.4); }
+}
+
+.field-error-highlight {
+  animation: field-error-highlight 0.6s ease-in-out 3;
+}
+
 /* Monaco hover widget - ensure it appears above other UI elements */
 .monaco-editor .monaco-hover {
   z-index: 100 !important;

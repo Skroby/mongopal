@@ -26,6 +26,98 @@ type SavedConnection struct {
 	LastAccessedAt time.Time `json:"lastAccessedAt,omitempty"`
 }
 
+// ExtendedConnection contains all connection data including sensitive credentials.
+// This is stored encrypted, unlike SavedConnection which was stored in plain JSON.
+type ExtendedConnection struct {
+	// Base fields (from SavedConnection)
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	FolderID       string    `json:"folderId,omitempty"`
+	Color          string    `json:"color"`
+	ReadOnly       bool      `json:"readOnly"`
+	CreatedAt      time.Time `json:"createdAt"`
+	LastAccessedAt time.Time `json:"lastAccessedAt,omitempty"`
+
+	// MongoDB connection details
+	MongoURI string `json:"mongoUri"`
+
+	// SSH tunnel configuration (F074)
+	SSHEnabled    bool   `json:"sshEnabled"`
+	SSHHost       string `json:"sshHost,omitempty"`
+	SSHPort       int    `json:"sshPort,omitempty"`
+	SSHUser       string `json:"sshUser,omitempty"`
+	SSHPassword   string `json:"sshPassword,omitempty"`   // Stored encrypted
+	SSHPrivateKey string `json:"sshPrivateKey,omitempty"` // Stored encrypted (~3KB)
+	SSHPassphrase string `json:"sshPassphrase,omitempty"` // Stored encrypted
+
+	// TLS/SSL configuration (F074)
+	TLSEnabled        bool   `json:"tlsEnabled"`
+	TLSInsecure       bool   `json:"tlsInsecure"` // Allow invalid certificates
+	TLSCAFile         string `json:"tlsCAFile,omitempty"`   // CA certificate content (~2KB)
+	TLSCertFile       string `json:"tlsCertFile,omitempty"` // Client certificate content
+	TLSKeyFile        string `json:"tlsKeyFile,omitempty"`  // Client key content
+	TLSKeyPassword    string `json:"tlsKeyPassword,omitempty"` // Client key password
+
+	// SOCKS5 proxy configuration (F074)
+	SOCKS5Enabled  bool   `json:"socks5Enabled"`
+	SOCKS5Host     string `json:"socks5Host,omitempty"`
+	SOCKS5Port     int    `json:"socks5Port,omitempty"`
+	SOCKS5User     string `json:"socks5User,omitempty"`
+	SOCKS5Password string `json:"socks5Password,omitempty"` // Stored encrypted
+
+	// Safety settings (F074)
+	DestructiveDelay          int  `json:"destructiveDelay"`          // Seconds to delay destructive operations
+	RequireDeleteConfirmation bool `json:"requireDeleteConfirmation"` // Require typing "DELETE"
+
+	// Form state (F074) - stores raw form field values for editing
+	FormData string `json:"formData,omitempty"` // JSON blob of form fields
+
+	// Export/import only — folder path segments for recreating folder structure
+	FolderPath []string `json:"folderPath,omitempty"`
+}
+
+// ToSavedConnection converts ExtendedConnection to SavedConnection (for compatibility).
+func (e *ExtendedConnection) ToSavedConnection() SavedConnection {
+	return SavedConnection{
+		ID:             e.ID,
+		Name:           e.Name,
+		FolderID:       e.FolderID,
+		URI:            e.MongoURI,
+		Color:          e.Color,
+		ReadOnly:       e.ReadOnly,
+		CreatedAt:      e.CreatedAt,
+		LastAccessedAt: e.LastAccessedAt,
+	}
+}
+
+// ConnectionShareBundle is the encrypted bundle format for sharing connections.
+type ConnectionShareBundle struct {
+	Version int    `json:"v"`
+	App     string `json:"app"`
+	Time    string `json:"ts"`
+	Nonce   string `json:"nonce"`
+	Data    string `json:"data"`
+}
+
+// ConnectionShareResult contains the export result: bundle JSON and the decryption key.
+type ConnectionShareResult struct {
+	Bundle string `json:"bundle"`
+	Key    string `json:"key"`
+}
+
+// BulkShareEntry is a single connection in a bulk export.
+type BulkShareEntry struct {
+	Name   string `json:"name"`
+	Bundle string `json:"bundle"`
+}
+
+// BulkConnectionShareResult contains multiple encrypted connections sharing one key.
+type BulkConnectionShareResult struct {
+	Version     int              `json:"version"`
+	Connections []BulkShareEntry `json:"connections"`
+	Key         string           `json:"key"`
+}
+
 // ConnectionInfo provides detailed info about a connection.
 type ConnectionInfo struct {
 	ID            string `json:"id"`
@@ -39,6 +131,18 @@ type ConnectionInfo struct {
 type ConnectionStatus struct {
 	Connected bool   `json:"connected"`
 	Error     string `json:"error,omitempty"`
+}
+
+// TestConnectionResult is the enhanced result from a test connection attempt.
+type TestConnectionResult struct {
+	Success       bool   `json:"success"`
+	Error         string `json:"error,omitempty"`
+	Hint          string `json:"hint,omitempty"`
+	ServerVersion string `json:"serverVersion,omitempty"`
+	Topology      string `json:"topology,omitempty"` // "standalone", "replicaset", "sharded"
+	Latency       int64  `json:"latency"`            // milliseconds
+	TLSEnabled    bool   `json:"tlsEnabled"`
+	ReplicaSet    string `json:"replicaSet,omitempty"`
 }
 
 // =============================================================================

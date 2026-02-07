@@ -7,7 +7,7 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 ## Tech Stack
 - **Desktop**: Wails v2
 - **Backend**: Go 1.24+, mongo-go-driver v1.17
-- **Frontend**: React 18, Vite, TailwindCSS
+- **Frontend**: React 18, TypeScript 5.9+, Vite, TailwindCSS
 - **Credentials**: OS Keyring (go-keyring) with encrypted file fallback
 - **Testing**: Vitest (frontend), Go testing + testcontainers (backend)
 
@@ -27,7 +27,7 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 |---------|---------|-----------|
 | `internal/types` | All shared type definitions | `types.go` |
 | `internal/core` | App state and event emitter | `state.go`, `events.go` |
-| `internal/credential` | Password/keyring management | `keyring.go`, `uri.go` |
+| `internal/credential` | Password/keyring management, encrypted storage | `keyring.go`, `uri.go`, `encrypted_storage.go` |
 | `internal/storage` | Config file I/O, connections, folders, favorites | `persistence.go`, `connections.go`, `folders.go`, `favorites.go` |
 | `internal/connection` | Connect, Disconnect, TestConnection | `service.go` |
 | `internal/database` | List databases/collections, drop operations | `listing.go`, `operations.go` |
@@ -41,55 +41,57 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 ### Frontend Core
 | Purpose | File |
 |---------|------|
-| App entry/state | `frontend/src/App.jsx` |
+| App entry/state | `frontend/src/App.tsx` |
 | Global styles | `frontend/src/index.css` |
 | Tailwind config | `frontend/tailwind.config.js` |
+| Centralized Wails type definitions | `frontend/src/types/wails.d.ts` |
 
 ### Components
 | Purpose | File |
 |---------|------|
-| Left sidebar tree (folders, connections) | `frontend/src/components/Sidebar.jsx` |
-| Tab bar with drag-reorder | `frontend/src/components/TabBar.jsx` |
-| Collection data view with filters | `frontend/src/components/CollectionView.jsx` |
-| Document table display | `frontend/src/components/TableView.jsx` |
-| Document editor (Monaco) | `frontend/src/components/DocumentEditView.jsx` |
-| Collection schema analysis | `frontend/src/components/SchemaView.jsx` |
-| Bulk action bar | `frontend/src/components/BulkActionBar.jsx` |
-| Connection form modal | `frontend/src/components/ConnectionForm.jsx` |
-| Application settings | `frontend/src/components/Settings.jsx` |
-| Toast notifications + history | `frontend/src/components/NotificationContext.jsx` |
-| Confirmation dialogs | `frontend/src/components/ConfirmDialog.jsx` |
-| Error boundary wrapper | `frontend/src/components/ErrorBoundary.jsx` |
-| Database export modal | `frontend/src/components/ExportDatabasesModal.jsx` |
-| Database import modal | `frontend/src/components/ImportDatabasesModal.jsx` |
-| Collection export modal | `frontend/src/components/ExportCollectionsModal.jsx` |
-| Collection import modal | `frontend/src/components/ImportCollectionsModal.jsx` |
-| Keyboard shortcuts modal | `frontend/src/components/KeyboardShortcuts.jsx` |
-| Actionable error display | `frontend/src/components/ActionableError.jsx` |
-| Performance metrics panel | `frontend/src/components/PerformancePanel.jsx` |
+| Left sidebar tree (folders, connections) | `frontend/src/components/Sidebar.tsx` |
+| Tab bar with drag-reorder | `frontend/src/components/TabBar.tsx` |
+| Collection data view with filters | `frontend/src/components/CollectionView.tsx` |
+| Document table display | `frontend/src/components/TableView.tsx` |
+| Document editor (Monaco) | `frontend/src/components/DocumentEditView.tsx` |
+| Collection schema analysis | `frontend/src/components/SchemaView.tsx` |
+| Bulk action bar | `frontend/src/components/BulkActionBar.tsx` |
+| Connection form modal (legacy) | `frontend/src/components/ConnectionForm.tsx` |
+| Advanced connection form (F074) | `frontend/src/components/connection-form/ConnectionFormV2.tsx` |
+| Application settings | `frontend/src/components/Settings.tsx` |
+| Toast notifications + history | `frontend/src/components/NotificationContext.tsx` |
+| Confirmation dialogs | `frontend/src/components/ConfirmDialog.tsx` |
+| Error boundary wrapper | `frontend/src/components/ErrorBoundary.tsx` |
+| Database export modal | `frontend/src/components/ExportDatabasesModal.tsx` |
+| Database import modal | `frontend/src/components/ImportDatabasesModal.tsx` |
+| Collection export modal | `frontend/src/components/ExportCollectionsModal.tsx` |
+| Collection import modal | `frontend/src/components/ImportCollectionsModal.tsx` |
+| Keyboard shortcuts modal | `frontend/src/components/KeyboardShortcuts.tsx` |
+| Actionable error display | `frontend/src/components/ActionableError.tsx` |
+| Performance metrics panel | `frontend/src/components/PerformancePanel.tsx` |
 
 ### Contexts
 | Purpose | File |
 |---------|------|
-| Connection state management | `frontend/src/components/contexts/ConnectionContext.jsx` |
-| Tab state management | `frontend/src/components/contexts/TabContext.jsx` |
-| Status bar state | `frontend/src/components/contexts/StatusContext.jsx` |
-| Operation tracking (busy indicator) | `frontend/src/components/contexts/OperationContext.jsx` |
-| Debug logging (toggle via Settings) | `frontend/src/components/contexts/DebugContext.jsx` |
+| Connection state management | `frontend/src/components/contexts/ConnectionContext.tsx` |
+| Tab state management | `frontend/src/components/contexts/TabContext.tsx` |
+| Status bar state | `frontend/src/components/contexts/StatusContext.tsx` |
+| Operation tracking (busy indicator) | `frontend/src/components/contexts/OperationContext.tsx` |
+| Debug logging (toggle via Settings) | `frontend/src/components/contexts/DebugContext.tsx` |
 
 ### Hooks
 | Purpose | File |
 |---------|------|
-| ETA time remaining calculation | `frontend/src/hooks/useProgressETA.js` |
+| ETA time remaining calculation | `frontend/src/hooks/useProgressETA.ts` |
 
 ### Utilities
 | Purpose | File |
 |---------|------|
-| MongoDB query parsing | `frontend/src/utils/queryParser.js` |
-| Mongosh script parsing | `frontend/src/utils/mongoshParser.js` |
-| Schema analysis helpers | `frontend/src/utils/schemaUtils.js` |
-| Table formatting utils | `frontend/src/utils/tableViewUtils.js` |
-| Error parsing for actionable hints | `frontend/src/utils/errorParser.js` |
+| MongoDB query parsing | `frontend/src/utils/queryParser.ts` |
+| Mongosh script parsing | `frontend/src/utils/mongoshParser.ts` |
+| Schema analysis helpers | `frontend/src/utils/schemaUtils.ts` |
+| Table formatting utils | `frontend/src/utils/tableViewUtils.ts` |
+| Error parsing for actionable hints | `frontend/src/utils/errorParser.ts` |
 
 ## Key Patterns
 
@@ -102,9 +104,11 @@ MongoDB documents can have various ID types. Handle them consistently:
 
 Frontend passes Extended JSON for complex types; backend's `parseDocumentID()` handles conversion.
 
-### Connection Credentials
-- Passwords stored in OS keyring, keyed by connection ID
-- URI stored without password in `~/.config/mongopal/connections.json`
+### Connection Credentials (F074)
+- **New**: Full connections stored encrypted in `~/.config/mongopal/connections/*.encrypted`
+- **Encryption**: AES-256-GCM with keys stored in OS keyring (per-connection)
+- **ExtendedConnection** type stores MongoDB password, SSH credentials, TLS certs, proxy settings
+- **Legacy**: Old format (keyring password + JSON URI) still supported for backward compatibility
 - Password injected into URI at connection time
 
 ### BSON Extended JSON
@@ -156,7 +160,8 @@ make build-windows    # Windows amd64
 make test                      # All tests (unit + integration)
 make test-unit                 # All unit tests (commit hook)
 make test-unit-go              # Go unit tests only
-make test-unit-frontend        # Frontend unit tests only
+make test-unit-frontend        # Frontend unit tests only (includes typecheck)
+make typecheck                 # TypeScript type checking
 make test-watch                # Frontend watch mode
 make test-integration          # All integration tests (Docker)
 make test-integration-go       # Go integration only
@@ -186,6 +191,7 @@ make lint             # Lint code
 
 ## Code Style
 - **Go**: Standard gofmt, error wrapping with `fmt.Errorf`
+- **TypeScript**: Strict mode enabled, centralized Wails types in `src/types/wails.d.ts`
 - **React**: Functional components with hooks, no class components
 - **CSS**: TailwindCSS utilities, custom classes in `index.css`
 - **Colors**: Dark theme with zinc palette, accent `#4CC38A`
@@ -223,7 +229,7 @@ The backend uses a thin facade pattern:
 | Category | Methods | Internal Package |
 |----------|---------|------------------|
 | Connection | Connect, Disconnect, TestConnection | `internal/connection` |
-| Storage | SaveConnection, ListSavedConnections, CreateFolder, etc. | `internal/storage` |
+| Storage | SaveConnection, SaveExtendedConnection, GetExtendedConnection, ListSavedConnections, CreateFolder, etc. | `internal/storage` |
 | Database | ListDatabases, ListCollections, DropDatabase, DropCollection | `internal/database` |
 | Document | FindDocuments, GetDocument, InsertDocument, UpdateDocument, DeleteDocument | `internal/document` |
 | Schema | InferCollectionSchema, ExportSchemaAsJSON | `internal/schema` |
