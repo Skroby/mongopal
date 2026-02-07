@@ -6,7 +6,7 @@ frontend/dist/
 frontend/*.md5
 
 # Dependencies
-frontend/node_modules/
+node_modules/
 
 # IDE
 .idea/
@@ -49,3 +49,10 @@ frontend/wailsjs/
 
 # Local planning/task files
 tickets/
+*_PLAN.md
+*_PLAN_*.md
+*_TODO.md
+*_MIGRATION_*.md
+
+# Claude AI context
+.claude/docs/
