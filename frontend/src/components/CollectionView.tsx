@@ -31,6 +31,7 @@ import { useStatus } from './contexts/StatusContext'
 import { useOperation, OperationInput } from './contexts/OperationContext'
 import { useDebugLog, DEBUG_CATEGORIES, DebugCategory } from './contexts/DebugContext'
 import { useSchema } from './contexts/SchemaContext'
+import type { CollectionProfile } from '../types/wails.d'
 import {
   parseFilterFromQuery,
   parseProjectionFromQuery,
@@ -384,7 +385,7 @@ export default function CollectionView({
   const { updateDocumentStatus, clearStatus } = useStatus()
   const { startOperation, updateOperation, completeOperation } = useOperation()
   const { log: logQuery } = useDebugLog(DEBUG_CATEGORIES.QUERY as DebugCategory)
-  const { getFieldNames, prefetchSchema, mergeFieldNames } = useSchema()
+  const { getCachedSchema, getFieldNames, prefetchSchema, mergeFieldNames, fetchCollectionProfile, getCollectionProfile } = useSchema()
 
   // Get connection status
   const connection = getConnectionById(connectionId)
@@ -452,6 +453,20 @@ export default function CollectionView({
   // Track all available columns (for showing in visibility dropdown even when hidden)
   const [allAvailableColumns, setAllAvailableColumns] = useState<string[]>([])
 
+  // Collection health check state (LDH-01)
+  const [collectionProfile, setCollectionProfile] = useState<CollectionProfile | null>(null)
+  const [healthWarningDismissed, setHealthWarningDismissed] = useState<boolean>(false)
+
+  // Auto-projection: applied once on first load, then user owns the query (LDH-03)
+  const autoProjectionAppliedRef = useRef<string>('') // stores the auto-projection JSON for current collection
+
+  // Response size warning state (LDH-04)
+  const [responseSizeWarning, setResponseSizeWarning] = useState<{
+    estimatedMB: number
+    suggestedPageSize: number
+  } | null>(null)
+  const responseSizeBypassRef = useRef<boolean>(false)
+
   // Update hidden columns when collection changes
   useEffect(() => {
     setHiddenColumns(loadHiddenColumns(connectionId, database, collection))
@@ -485,8 +500,104 @@ export default function CollectionView({
     handleHiddenColumnsChange(new Set())
   }, [handleHiddenColumnsChange])
 
-  // Memoize JSON stringified documents for JSON view (expensive for large datasets)
-  const documentsJson = useMemo(() => JSON.stringify(documents, null, 2), [documents])
+  // Hide all columns (for dropdown "Hide All" button, LDH-07)
+  const handleHideAllColumns = useCallback(
+    (columns: string[]) => {
+      handleHiddenColumnsChange(new Set(columns))
+    },
+    [handleHiddenColumnsChange]
+  )
+
+  // Detect whether auto-projection is still active (LDH-03)
+  const autoProjectionInfo = useMemo(() => {
+    if (!autoProjectionAppliedRef.current || !collectionProfile) return null
+    const queryProj = parseProjectionFromQuery(query)
+    if (!queryProj) return null
+    // Check the ref is still set (cleared by "Show All Fields")
+    try {
+      const fieldCount = Object.keys(JSON.parse(queryProj)).length
+      return { fieldCount, totalFields: collectionProfile.fieldCount }
+    } catch {
+      return null
+    }
+  }, [query, collectionProfile])
+
+  // Show all fields — strip auto-projection from query and mark as opted out (LDH-03)
+  const handleShowAllFields = useCallback(() => {
+    const filter = parseFilterFromQuery(query)
+    setQuery(buildFullQuery(collection, filter))
+    autoProjectionAppliedRef.current = 'opted-out'
+  }, [query, collection])
+
+  // Columns for the visibility dropdown — only columns present in current query results
+  const dropdownColumns = allAvailableColumns
+
+  // Column count for the always-visible indicator (only counts hidden columns that exist in current data)
+  const columnCountInfo = useMemo(() => {
+    if (allAvailableColumns.length === 0) return null
+    const effectiveHidden = allAvailableColumns.filter((col) => hiddenColumns.has(col)).length
+    if (effectiveHidden === 0) return null
+    return { visible: allAvailableColumns.length - effectiveHidden, total: allAvailableColumns.length }
+  }, [allAvailableColumns, hiddenColumns])
+
+  // Auto-hide columns beyond the cap when new data arrives (LDH-02)
+  // Runs as a reactive effect so it always sees the latest hiddenColumns state
+  const columnCapAppliedRef = useRef<string>('') // tracks which collection we've capped
+  useEffect(() => {
+    if (allAvailableColumns.length === 0) return
+    // Build a key so we only cap once per collection
+    const collKey = `${connectionId}/${database}/${collection}`
+    if (columnCapAppliedRef.current === collKey) return
+    columnCapAppliedRef.current = collKey
+
+    const settings: AppSettings = loadSettings()
+    const maxVisible = settings.ldhMaxVisibleColumns || 30
+    const visibleCount = allAvailableColumns.filter((col) => !hiddenColumns.has(col)).length
+    if (visibleCount > maxVisible) {
+      const newHidden = new Set(hiddenColumns)
+      let shown = 0
+      for (const col of allAvailableColumns) {
+        if (newHidden.has(col)) continue
+        shown++
+        if (shown > maxVisible) {
+          newHidden.add(col)
+        }
+      }
+      handleHiddenColumnsChange(newHidden)
+    }
+  }, [allAvailableColumns, hiddenColumns, connectionId, database, collection, handleHiddenColumnsChange])
+
+  // Memoize JSON stringified documents for JSON view with size guard (LDH-06)
+  const documentsJson = useMemo(() => {
+    const MAX_JSON_VIEW_BYTES = 5 * 1024 * 1024 // 5 MB
+    const json = JSON.stringify(documents, null, 2)
+    if (json.length > MAX_JSON_VIEW_BYTES) {
+      return json.slice(0, MAX_JSON_VIEW_BYTES) + '\n\n// ... Truncated (showing first 5 MB of ' + (json.length / 1024 / 1024).toFixed(1) + ' MB). Use table view for full navigation.'
+    }
+    return json
+  }, [documents])
+
+  // Health check warnings (LDH-01) — doc size warning only (field count is handled by column visibility indicator)
+  const healthWarnings = useMemo(() => {
+    if (!collectionProfile || healthWarningDismissed) return []
+    const settings: AppSettings = loadSettings()
+    const warnings: string[] = []
+    const avgKB = collectionProfile.avgDocSizeBytes / 1024
+    if (avgKB > settings.ldhWarningThresholdKB) {
+      const sizeStr = avgKB >= 1024
+        ? `${(avgKB / 1024).toFixed(1)} MB`
+        : `${Math.round(avgKB)} KB`
+      warnings.push(`Documents average ${sizeStr} each. Consider reducing page size or adding a projection.`)
+    }
+    return warnings
+  }, [collectionProfile, healthWarningDismissed])
+
+  // Whether the health warning includes a size warning (to show small page sizes)
+  const hasLargeDocWarning = useMemo(() => {
+    if (!collectionProfile) return false
+    const settings: AppSettings = loadSettings()
+    return (collectionProfile.avgDocSizeBytes / 1024) > settings.ldhWarningThresholdKB
+  }, [collectionProfile])
 
   // Field validation warnings (computed from query and schema)
   const fieldWarnings = useMemo<FieldWarning[]>(() => {
@@ -512,7 +623,31 @@ export default function CollectionView({
 
   // Pagination state
   const [skip, setSkip] = useState<number>(0)
-  const [limit, setLimit] = useState<number>(50)
+  const [userLimit, setUserLimit] = useState<number>(50)
+
+  // Adaptive page size (LDH-05): compute effective limit from profile
+  const { limit, isAdaptive, adaptiveInfo } = useMemo(() => {
+    if (!collectionProfile || collectionProfile.avgDocSizeBytes <= 0) {
+      return { limit: userLimit, isAdaptive: false, adaptiveInfo: '' }
+    }
+    const settings: AppSettings = loadSettings()
+    const maxPayloadBytes = (settings.ldhMaxPagePayloadMB || 10) * 1024 * 1024
+    const recommended = Math.max(1, Math.floor(maxPayloadBytes / collectionProfile.avgDocSizeBytes))
+    if (recommended < userLimit) {
+      const avgSize = collectionProfile.avgDocSizeBytes
+      const sizeStr = avgSize >= 1024 * 1024
+        ? `${(avgSize / 1024 / 1024).toFixed(1)} MB`
+        : avgSize >= 1024
+        ? `${Math.round(avgSize / 1024)} KB`
+        : `${avgSize} bytes`
+      return {
+        limit: recommended,
+        isAdaptive: true,
+        adaptiveInfo: `Page size reduced to ${recommended} (documents average ${sizeStr} each).`,
+      }
+    }
+    return { limit: userLimit, isAdaptive: false, adaptiveInfo: '' }
+  }, [userLimit, collectionProfile])
   const [total, setTotal] = useState<number>(0)
   const [queryTime, setQueryTime] = useState<number | null>(null)
   const [goToPage, setGoToPage] = useState<string>('')
@@ -540,6 +675,33 @@ export default function CollectionView({
       prefetchSchema(connectionId, database, collection)
     }
   }, [connectionId, database, collection, isConnected, isConnecting, prefetchSchema])
+
+  // Fetch collection profile for health check (LDH-01)
+  useEffect(() => {
+    if (!isConnected || isConnecting) return
+    // Check cache first
+    const cached = getCollectionProfile(connectionId, database, collection)
+    if (cached) {
+      setCollectionProfile(cached)
+      return
+    }
+    setHealthWarningDismissed(false)
+    fetchCollectionProfile(connectionId, database, collection)
+      .then((profile) => {
+        if (profile) setCollectionProfile(profile)
+      })
+      .catch(() => { /* ignore profile fetch errors */ })
+  }, [connectionId, database, collection, isConnected, isConnecting, fetchCollectionProfile, getCollectionProfile])
+
+  // Reset health warning, auto-projection, column cap, and size warning when collection changes
+  useEffect(() => {
+    setHealthWarningDismissed(false)
+    setCollectionProfile(null)
+    autoProjectionAppliedRef.current = ''
+    columnCapAppliedRef.current = ''
+    setResponseSizeWarning(null)
+    responseSizeBypassRef.current = false
+  }, [connectionId, database, collection])
 
   // Load documents on mount and when collection/pagination changes
   // Skip auto-execute if: not connected, connecting, or tab was restored from session
@@ -653,6 +815,33 @@ export default function CollectionView({
     return writePatterns.some((pattern) => pattern.test(queryText))
   }, [])
 
+  // Build auto-projection from profile/schema when collection is wide (LDH-03)
+  const buildAutoProjection = useCallback((profile: CollectionProfile | null): string => {
+    const settings: AppSettings = loadSettings()
+    if (!profile || profile.fieldCount <= settings.ldhFieldCountThreshold) return ''
+
+    // Prefer schema-ranked fields (by occurrence), fall back to profile's topFields
+    let fieldNames: string[]
+    const schema = getCachedSchema(connectionId, database, collection)
+    if (schema?.fields) {
+      fieldNames = Object.entries(schema.fields)
+        .filter(([name]) => name !== '_id')
+        .sort(([, a], [, b]) => b.occurrence - a.occurrence)
+        .slice(0, 15)
+        .map(([name]) => name)
+    } else if (profile.topFields?.length > 0) {
+      fieldNames = profile.topFields.filter(name => name !== '_id').slice(0, 15)
+    } else {
+      return ''
+    }
+
+    if (fieldNames.length === 0) return ''
+
+    const projection: Record<string, 1> = {}
+    fieldNames.forEach(name => { projection[name] = 1 })
+    return JSON.stringify(projection)
+  }, [connectionId, database, collection, getCachedSchema])
+
   const executeQuery = useCallback(async (): Promise<void> => {
     const currentQueryId = ++queryIdRef.current
     const startTime = performance.now()
@@ -662,6 +851,43 @@ export default function CollectionView({
       notify.error('Write operation blocked - connection is in read-only mode')
       return
     }
+
+    // Ensure we have the collection profile for adaptive page size + auto-projection
+    const go = getGo()
+    let activeProfile = getCollectionProfile(connectionId, database, collection)
+    if (!activeProfile && go?.GetCollectionProfile) {
+      try {
+        activeProfile = await go.GetCollectionProfile(connectionId, database, collection)
+        if (activeProfile) setCollectionProfile(activeProfile)
+      } catch { /* ignore */ }
+    }
+    if (currentQueryId !== queryIdRef.current) return
+
+    // Compute effective limit: adaptive page size from profile (LDH-05)
+    let effectiveLimit = limit
+    if (activeProfile && activeProfile.avgDocSizeBytes > 0) {
+      const settings: AppSettings = loadSettings()
+      const maxPayloadBytes = (settings.ldhMaxPagePayloadMB || 10) * 1024 * 1024
+      const recommended = Math.max(1, Math.floor(maxPayloadBytes / activeProfile.avgDocSizeBytes))
+      if (recommended < effectiveLimit) {
+        effectiveLimit = recommended
+      }
+    }
+
+    // Pre-query response size estimate (LDH-04)
+    if (isSimple && !responseSizeBypassRef.current && activeProfile && activeProfile.avgDocSizeBytes > 0) {
+      const settings: AppSettings = loadSettings()
+      const thresholdMB = settings.ldhResponseSizeWarningMB || 10
+      const estimatedBytes = activeProfile.avgDocSizeBytes * effectiveLimit
+      const estimatedMB = estimatedBytes / (1024 * 1024)
+      if (estimatedMB > thresholdMB) {
+        const suggestedPageSize = Math.max(1, Math.floor((thresholdMB * 1024 * 1024) / activeProfile.avgDocSizeBytes))
+        setResponseSizeWarning({ estimatedMB: Math.round(estimatedMB * 10) / 10, suggestedPageSize })
+        return // Don't execute - let user decide
+      }
+    }
+    responseSizeBypassRef.current = false
+    setResponseSizeWarning(null)
 
     logQuery(`Executing ${isSimple ? 'find' : 'mongosh'} query`, {
       database,
@@ -692,19 +918,28 @@ export default function CollectionView({
       }, timeoutMs)
     }
 
-    const go = getGo()
-
     try {
       if (isSimple) {
         const filter = parseFilterFromQuery(query)
         const queryProjection = parseProjectionFromQuery(query)
+
+        // Auto-projection for wide collections — apply once on first load (LDH-03)
+        let effectiveProjection = queryProjection || ''
+        if (!queryProjection && !autoProjectionAppliedRef.current) {
+          const autoProj = buildAutoProjection(activeProfile)
+          if (autoProj) {
+            effectiveProjection = autoProj
+            autoProjectionAppliedRef.current = autoProj
+            setQuery(buildFullQuery(collection, filter, autoProj))
+          }
+        }
+
         if (go?.FindDocuments) {
-          // Cast to any to include projection which may not be in auto-generated types
           const result = await go.FindDocuments(connectionId, database, collection, filter, {
             skip,
-            limit,
+            limit: effectiveLimit,
             sort: '',
-            projection: queryProjection || '',
+            projection: effectiveProjection,
           } as Parameters<typeof go.FindDocuments>[4])
           if (currentQueryId !== queryIdRef.current) return
           if (!result || !result.documents) {
@@ -730,12 +965,11 @@ export default function CollectionView({
           setQueryTime(result.queryTimeMs ?? null)
           setRawOutput('')
 
-          // Update available columns list (merge with existing + hidden)
+          // Update available columns list from query results
           const columnsFromDocs = new Set<string>()
           parsedDocs.forEach((doc) => {
             Object.keys(doc).forEach((key) => columnsFromDocs.add(key))
           })
-          hiddenColumns.forEach((col) => columnsFromDocs.add(col))
           const sortedColumns = Array.from(columnsFromDocs).sort((a, b) => {
             if (a === '_id') return -1
             if (b === '_id') return 1
@@ -853,9 +1087,10 @@ export default function CollectionView({
     connectionId,
     skip,
     limit,
-    hiddenColumns,
     queryHistory,
     mergeFieldNames,
+    buildAutoProjection,
+    getCollectionProfile,
   ])
 
   // Explain the current query
@@ -1400,13 +1635,20 @@ export default function CollectionView({
           {/* Page size selector */}
           <select
             className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-xs text-zinc-300"
-            value={limit}
+            value={userLimit}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => {
               const newLimit = parseInt(e.target.value, 10)
-              setLimit(newLimit)
+              setUserLimit(newLimit)
               setSkip(0)
             }}
           >
+            {hasLargeDocWarning && (
+              <>
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={5}>5</option>
+              </>
+            )}
             <option value={10}>10</option>
             <option value={25}>25</option>
             <option value={50}>50</option>
@@ -1488,11 +1730,17 @@ export default function CollectionView({
           {viewMode === 'table' && (
             <>
               <span className="mx-1 text-zinc-600">|</span>
+              {columnCountInfo && (
+                <span className="text-xs text-zinc-400">
+                  {columnCountInfo.visible} / {columnCountInfo.total} columns
+                </span>
+              )}
               <ColumnVisibilityDropdown
-                allColumns={allAvailableColumns}
+                allColumns={dropdownColumns}
                 hiddenColumns={hiddenColumns}
                 onToggleColumn={handleToggleColumn}
                 onShowAll={handleShowAllColumns}
+                onHideAll={handleHideAllColumns}
               />
             </>
           )}
@@ -1509,6 +1757,105 @@ export default function CollectionView({
       {/* Explain panel */}
       {explainResult && (
         <ExplainPanel result={explainResult} onClose={() => setExplainResult(null)} />
+      )}
+
+      {/* Health check warning banner (LDH-01) */}
+      {healthWarnings.length > 0 && (
+        <div className="flex-shrink-0 px-3 py-2 bg-amber-900/20 border-b border-amber-800/50">
+          <div className="flex items-start gap-2">
+            <svg className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <div className="flex-1">
+              <div className="text-sm text-amber-300 font-medium">Large Collection Warning</div>
+              {healthWarnings.map((w, i) => (
+                <div key={i} className="text-xs text-amber-400/80 mt-0.5">{w}</div>
+              ))}
+            </div>
+            <button
+              className="text-amber-400/60 hover:text-amber-300 p-0.5 flex-shrink-0"
+              onClick={() => setHealthWarningDismissed(true)}
+              title="Dismiss warning for this session"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Auto-projection info bar (LDH-03) */}
+      {autoProjectionInfo && (
+        <div className="flex-shrink-0 px-3 py-1.5 bg-blue-900/20 border-b border-blue-800/40 flex items-center gap-2 text-xs">
+          <svg className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="text-blue-300">
+            Showing {autoProjectionInfo.fieldCount} of {autoProjectionInfo.totalFields} fields (auto-projected). Edit the query to change.
+          </span>
+          <button
+            className="text-blue-400 hover:text-blue-200 underline"
+            onClick={handleShowAllFields}
+          >
+            Show All Fields
+          </button>
+        </div>
+      )}
+
+      {/* Adaptive page size info (LDH-05) */}
+      {isAdaptive && (
+        <div className="flex-shrink-0 px-3 py-1.5 bg-blue-900/15 border-b border-blue-800/30 flex items-center gap-2 text-xs">
+          <svg className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="text-blue-300/80">{adaptiveInfo}</span>
+          <span className="text-zinc-500">Adjust in pagination controls.</span>
+        </div>
+      )}
+
+      {/* Response size warning (LDH-04) */}
+      {responseSizeWarning && (
+        <div className="flex-shrink-0 px-3 py-2 bg-red-900/20 border-b border-red-800/50">
+          <div className="flex items-start gap-2">
+            <svg className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <div className="flex-1">
+              <div className="text-sm text-red-300">
+                Estimated response: ~{responseSizeWarning.estimatedMB} MB for {limit} documents. This may cause slowness.
+              </div>
+              <div className="flex items-center gap-3 mt-1.5">
+                <button
+                  className="px-2 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded"
+                  onClick={() => {
+                    responseSizeBypassRef.current = true
+                    setResponseSizeWarning(null)
+                    executeQuery()
+                  }}
+                >
+                  Continue Anyway
+                </button>
+                <button
+                  className="px-2 py-1 text-xs bg-accent/20 hover:bg-accent/30 text-accent rounded"
+                  onClick={() => {
+                    setResponseSizeWarning(null)
+                    setUserLimit(responseSizeWarning.suggestedPageSize)
+                    setSkip(0)
+                  }}
+                >
+                  Reduce to {responseSizeWarning.suggestedPageSize} docs
+                </button>
+                <button
+                  className="px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+                  onClick={() => setResponseSizeWarning(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Document list with bulk action bar overlay */}

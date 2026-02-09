@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ChangeEvent } from 'react'
+import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react'
 
 interface IconProps {
   className?: string
@@ -23,6 +23,11 @@ const EyeOffIcon = ({ className = "w-4 h-4" }: IconProps) => (
   </svg>
 )
 
+// Virtual list constants
+const ITEM_HEIGHT = 32 // px per column row
+const VIEWPORT_HEIGHT = 256 // px visible area (8 items)
+const BUFFER_ITEMS = 4 // extra items rendered above/below viewport
+
 /**
  * Props for the ColumnVisibilityDropdown component.
  */
@@ -35,29 +40,54 @@ export interface ColumnVisibilityDropdownProps {
   onToggleColumn: (column: string) => void
   /** Callback to show all columns */
   onShowAll: () => void
+  /** Callback to hide all columns (optional, for bulk hide) */
+  onHideAll?: (columns: string[]) => void
 }
 
 /**
  * Dropdown component for managing column visibility.
- * Shows a list of all columns with checkboxes to toggle visibility.
+ * Uses virtual scrolling for performance with large column counts (LDH-07).
  */
 export default function ColumnVisibilityDropdown({
   allColumns = [],
   hiddenColumns = new Set(),
   onToggleColumn,
   onShowAll,
+  onHideAll,
 }: ColumnVisibilityDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [filterText, setFilterText] = useState('')
+  const [scrollTop, setScrollTop] = useState(0)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const filterInputRef = useRef<HTMLInputElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-  const hiddenCount = hiddenColumns.size
+  // Only count hidden columns that actually exist in the current data
+  const hiddenCount = allColumns.filter(col => hiddenColumns.has(col)).length
+  const visibleCount = allColumns.length - hiddenCount
 
   // Filter columns based on search text
   const filteredColumns = filterText.trim()
     ? allColumns.filter(col => col.toLowerCase().includes(filterText.toLowerCase()))
     : allColumns
+
+  // Virtual scrolling calculations
+  const totalHeight = filteredColumns.length * ITEM_HEIGHT
+  const useVirtualization = filteredColumns.length > 30
+  const startIndex = useVirtualization
+    ? Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_ITEMS)
+    : 0
+  const endIndex = useVirtualization
+    ? Math.min(filteredColumns.length, Math.ceil((scrollTop + VIEWPORT_HEIGHT) / ITEM_HEIGHT) + BUFFER_ITEMS)
+    : filteredColumns.length
+  const visibleItems = filteredColumns.slice(startIndex, endIndex)
+  const offsetY = startIndex * ITEM_HEIGHT
+
+  const handleScroll = useCallback(() => {
+    if (scrollContainerRef.current) {
+      setScrollTop(scrollContainerRef.current.scrollTop)
+    }
+  }, [])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -91,15 +121,28 @@ export default function ColumnVisibilityDropdown({
     }
   }, [isOpen])
 
-  // Reset filter when dropdown closes
+  // Reset filter and scroll when dropdown closes
   useEffect(() => {
     if (!isOpen) {
       setFilterText('')
+      setScrollTop(0)
     }
   }, [isOpen])
 
   const handleFilterChange = (e: ChangeEvent<HTMLInputElement>) => {
     setFilterText(e.target.value)
+    setScrollTop(0)
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0
+    }
+  }
+
+  const handleHideAll = () => {
+    if (onHideAll) {
+      // Hide all visible (non-_id) columns
+      const columnsToHide = allColumns.filter(col => col !== '_id')
+      onHideAll(columnsToHide)
+    }
   }
 
   return (
@@ -118,21 +161,31 @@ export default function ColumnVisibilityDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-64 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 flex flex-col max-h-80">
-          {/* Header */}
+        <div className="absolute right-0 top-full mt-1 w-64 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 flex flex-col" style={{ maxHeight: 400 }}>
+          {/* Header with bulk actions */}
           <div className="flex-shrink-0 px-3 py-2 border-b border-zinc-700 flex items-center justify-between">
             <span className="text-sm font-medium text-zinc-200">Column Visibility</span>
-            {hiddenCount > 0 && (
-              <button
-                className="text-xs text-accent hover:text-accent/80"
-                onClick={() => {
-                  onShowAll()
-                  setIsOpen(false)
-                }}
-              >
-                Show All
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {onHideAll && visibleCount > 1 && (
+                <button
+                  className="text-xs text-zinc-400 hover:text-zinc-200"
+                  onClick={handleHideAll}
+                >
+                  Hide All
+                </button>
+              )}
+              {hiddenCount > 0 && (
+                <button
+                  className="text-xs text-accent hover:text-accent/80"
+                  onClick={() => {
+                    onShowAll()
+                    setIsOpen(false)
+                  }}
+                >
+                  Show All
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Filter input */}
@@ -153,13 +206,43 @@ export default function ColumnVisibilityDropdown({
             </div>
           )}
 
-          {/* Column list */}
-          <div className="flex-1 overflow-auto py-1">
+          {/* Column list with virtual scrolling */}
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 overflow-auto py-1"
+            style={{ maxHeight: VIEWPORT_HEIGHT }}
+            onScroll={handleScroll}
+          >
             {filteredColumns.length === 0 ? (
               <div className="px-3 py-2 text-sm text-zinc-500">
                 {allColumns.length === 0 ? 'No columns' : 'No matching columns'}
               </div>
+            ) : useVirtualization ? (
+              /* Virtual scrolling for large column counts */
+              <div style={{ height: totalHeight, position: 'relative' }}>
+                <div style={{ position: 'absolute', top: offsetY, left: 0, right: 0 }}>
+                  {visibleItems.map(column => {
+                    const isHidden = hiddenColumns.has(column)
+                    return (
+                      <button
+                        key={column}
+                        className="w-full px-3 text-left text-sm hover:bg-zinc-700 flex items-center gap-2 transition-colors"
+                        style={{ height: ITEM_HEIGHT }}
+                        onClick={() => onToggleColumn(column)}
+                      >
+                        <span className={isHidden ? 'text-zinc-500' : 'text-accent'}>
+                          {isHidden ? <EyeOffIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                        </span>
+                        <span className={`flex-1 truncate ${isHidden ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+                          {column}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             ) : (
+              /* Direct rendering for small column counts */
               filteredColumns.map(column => {
                 const isHidden = hiddenColumns.has(column)
                 return (
@@ -180,9 +263,9 @@ export default function ColumnVisibilityDropdown({
             )}
           </div>
 
-          {/* Footer with hint */}
+          {/* Footer with column count summary */}
           <div className="flex-shrink-0 px-3 py-1.5 border-t border-zinc-700 text-xs text-zinc-500">
-            Right-click column header to hide
+            {visibleCount} visible / {allColumns.length} total columns
           </div>
         </div>
       )}

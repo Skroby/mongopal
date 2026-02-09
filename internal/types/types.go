@@ -203,6 +203,17 @@ type CollectionStats struct {
 	Capped         bool   `json:"capped"`         // Whether collection is capped
 }
 
+// CollectionProfile is a lightweight summary of collection characteristics,
+// used for pre-query health checks and adaptive behavior.
+type CollectionProfile struct {
+	AvgDocSizeBytes int64    `json:"avgDocSizeBytes"` // Average document size from collStats
+	DocCount        int64    `json:"docCount"`         // Total documents
+	FieldCount      int      `json:"fieldCount"`       // Top-level field count from quick schema sample
+	TotalFieldPaths int      `json:"totalFieldPaths"`  // Total field paths including nested
+	MaxNestingDepth int      `json:"maxNestingDepth"`  // Deepest nesting level found
+	TopFields       []string `json:"topFields"`        // Top-level field names from sample (for auto-projection)
+}
+
 // =============================================================================
 // Query Types
 // =============================================================================

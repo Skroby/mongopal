@@ -46,6 +46,12 @@ const DeveloperIcon = (): JSX.Element => (
   </svg>
 )
 
+const LargeDocIcon = (): JSX.Element => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+  </svg>
+)
+
 // ============================================================================
 // Settings Types and Defaults
 // ============================================================================
@@ -58,6 +64,13 @@ export interface AppSettings {
   wordWrap: boolean
   showLineNumbers: boolean
   freezeIdColumn: boolean
+  // Large Document Handling (LDH)
+  ldhWarningThresholdKB: number     // avg doc size warning threshold (KB)
+  ldhFieldCountThreshold: number    // field count triggering auto-projection
+  ldhMaxVisibleColumns: number      // max columns shown by default
+  ldhMaxPagePayloadMB: number       // max page payload for adaptive page size (MB)
+  ldhArrayDisplayLimit: number      // array elements shown before truncation
+  ldhResponseSizeWarningMB: number  // response size estimate warning threshold (MB)
 }
 
 const defaultSettings: AppSettings = {
@@ -68,6 +81,13 @@ const defaultSettings: AppSettings = {
   wordWrap: true,
   showLineNumbers: true,
   freezeIdColumn: false,
+  // LDH defaults
+  ldhWarningThresholdKB: 512,
+  ldhFieldCountThreshold: 50,
+  ldhMaxVisibleColumns: 30,
+  ldhMaxPagePayloadMB: 10,
+  ldhArrayDisplayLimit: 20,
+  ldhResponseSizeWarningMB: 10,
 }
 
 const STORAGE_KEY = 'mongopal-settings'
@@ -271,6 +291,110 @@ function SafetyTab({ settings, onChange }: TabContentProps): JSX.Element {
         onChange={(e) => onChange('confirmDelete', e.target.checked)}
         label="Confirm before delete"
         description="Show confirmation dialog when deleting documents"
+      />
+    </div>
+  )
+}
+
+// ============================================================================
+// Number Input Setting Component
+// ============================================================================
+
+export interface NumberInputSettingProps {
+  label: string
+  description?: string
+  value: number
+  onChange: (value: number) => void
+  min?: number
+  max?: number
+  step?: number
+  suffix?: string
+}
+
+function NumberInputSetting({ label, description, value, onChange, min = 0, max = 99999, step = 1, suffix }: NumberInputSettingProps): JSX.Element {
+  return (
+    <div className="py-2">
+      <label className="block text-sm text-zinc-200 mb-1.5">{label}</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          className="input w-28"
+          value={value}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10)
+            if (!isNaN(v) && v >= min && v <= max) onChange(v)
+          }}
+          min={min}
+          max={max}
+          step={step}
+        />
+        {suffix && <span className="text-sm text-zinc-400">{suffix}</span>}
+      </div>
+      {description && <p className="text-xs text-zinc-500 mt-1.5">{description}</p>}
+    </div>
+  )
+}
+
+// Large Document Handling tab content
+function LargeDocumentTab({ settings, onChange }: TabContentProps): JSX.Element {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-zinc-500 mb-2">
+        Configure how MongoPal handles collections with large documents, many fields, or deep nesting.
+      </p>
+      <NumberInputSetting
+        label="Warning threshold (avg doc size)"
+        description="Show a health warning when average document size exceeds this value"
+        value={settings.ldhWarningThresholdKB}
+        onChange={(v) => onChange('ldhWarningThresholdKB', v)}
+        min={64}
+        max={16384}
+        suffix="KB"
+      />
+      <NumberInputSetting
+        label="Field count threshold"
+        description="Trigger auto-projection when collections have more top-level fields than this"
+        value={settings.ldhFieldCountThreshold}
+        onChange={(v) => onChange('ldhFieldCountThreshold', v)}
+        min={10}
+        max={500}
+        suffix="fields"
+      />
+      <NumberInputSetting
+        label="Max visible columns"
+        description="Columns beyond this cap are hidden by default (toggle in column dropdown)"
+        value={settings.ldhMaxVisibleColumns}
+        onChange={(v) => onChange('ldhMaxVisibleColumns', v)}
+        min={5}
+        max={500}
+        suffix="columns"
+      />
+      <NumberInputSetting
+        label="Max page payload"
+        description="Estimated page response size limit for adaptive page size and pre-query warnings"
+        value={settings.ldhMaxPagePayloadMB}
+        onChange={(v) => onChange('ldhMaxPagePayloadMB', v)}
+        min={1}
+        max={100}
+        suffix="MB"
+      />
+      <NumberInputSetting
+        label="Array display limit"
+        description="Truncate array rendering in table cells after this many elements"
+        value={settings.ldhArrayDisplayLimit}
+        onChange={(v) => onChange('ldhArrayDisplayLimit', v)}
+        min={5}
+        max={1000}
+        suffix="items"
+      />
+      <NumberInputSetting
+        label="Response size warning"
+        description="Warn before executing a query when estimated response exceeds this size"
+        value={settings.ldhResponseSizeWarningMB}
+        onChange={(v) => onChange('ldhResponseSizeWarningMB', v)}
+        min={1}
+        max={100}
+        suffix="MB"
       />
     </div>
   )
@@ -515,7 +639,7 @@ function DeveloperTab(): JSX.Element {
 // Main Settings Component
 // ============================================================================
 
-type TabId = 'general' | 'editor' | 'safety' | 'developer'
+type TabId = 'general' | 'editor' | 'safety' | 'largedoc' | 'developer'
 
 interface Tab {
   id: TabId
@@ -587,6 +711,7 @@ export default function Settings({ onClose }: SettingsProps): JSX.Element {
     { id: 'general', label: 'General', icon: <GeneralIcon /> },
     { id: 'editor', label: 'Editor', icon: <EditorIcon /> },
     { id: 'safety', label: 'Safety', icon: <SafetyIcon /> },
+    { id: 'largedoc', label: 'Large Docs', icon: <LargeDocIcon /> },
     { id: 'developer', label: 'Developer', icon: <DeveloperIcon /> },
   ]
 
@@ -641,6 +766,9 @@ export default function Settings({ onClose }: SettingsProps): JSX.Element {
             )}
             {activeTab === 'safety' && (
               <SafetyTab settings={settings} onChange={handleChange} />
+            )}
+            {activeTab === 'largedoc' && (
+              <LargeDocumentTab settings={settings} onChange={handleChange} />
             )}
             {activeTab === 'developer' && (
               <DeveloperTab />

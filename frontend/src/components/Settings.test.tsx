@@ -37,6 +37,12 @@ describe('Settings', () => {
         wordWrap: true,
         showLineNumbers: true,
         freezeIdColumn: false,
+        ldhWarningThresholdKB: 512,
+        ldhFieldCountThreshold: 50,
+        ldhMaxVisibleColumns: 30,
+        ldhMaxPagePayloadMB: 10,
+        ldhArrayDisplayLimit: 20,
+        ldhResponseSizeWarningMB: 10,
       })
     })
 
@@ -67,6 +73,12 @@ describe('Settings', () => {
         wordWrap: true,
         showLineNumbers: true,
         freezeIdColumn: false,
+        ldhWarningThresholdKB: 512,
+        ldhFieldCountThreshold: 50,
+        ldhMaxVisibleColumns: 30,
+        ldhMaxPagePayloadMB: 10,
+        ldhArrayDisplayLimit: 20,
+        ldhResponseSizeWarningMB: 10,
       })
     })
   })
@@ -81,6 +93,12 @@ describe('Settings', () => {
         wordWrap: true,
         showLineNumbers: true,
         freezeIdColumn: false,
+        ldhWarningThresholdKB: 512,
+        ldhFieldCountThreshold: 50,
+        ldhMaxVisibleColumns: 30,
+        ldhMaxPagePayloadMB: 10,
+        ldhArrayDisplayLimit: 20,
+        ldhResponseSizeWarningMB: 10,
       }
       saveSettings(settings)
 

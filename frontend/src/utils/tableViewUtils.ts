@@ -394,16 +394,36 @@ export function formatValue(value: unknown): FormattedValue {
 
 /**
  * Get raw value for copying to clipboard.
+ * Large values are truncated to prevent browser freezing (LDH-06).
  * @param value - The value to convert
+ * @param maxSize - Maximum string size in characters (default 1 MB)
  * @returns String representation of the value
  */
-export function getRawValue(value: unknown): string {
+export function getRawValue(value: unknown, maxSize: number = 1024 * 1024): string {
   if (value === null) return 'null'
   if (value === undefined) return 'undefined'
   if (typeof value === 'object') {
-    return JSON.stringify(value, null, 2)
+    const json = JSON.stringify(value, null, 2)
+    if (json.length > maxSize) {
+      return json.slice(0, maxSize) + '\n\n// ... Truncated (' + (json.length / 1024).toFixed(0) + ' KB total)'
+    }
+    return json
   }
   return String(value)
+}
+
+/**
+ * Truncate an array for display, returning a limited subset with metadata.
+ * Used to prevent rendering thousands of array elements (LDH-06).
+ * @param arr - The array to truncate
+ * @param limit - Maximum number of elements to show (default 20)
+ * @returns Object with truncated items, total count, and whether it was truncated
+ */
+export function truncateArrayForDisplay<T>(arr: T[], limit: number = 20): { items: T[]; total: number; truncated: boolean } {
+  if (arr.length <= limit) {
+    return { items: arr, total: arr.length, truncated: false }
+  }
+  return { items: arr.slice(0, limit), total: arr.length, truncated: true }
 }
 
 /**
@@ -480,9 +500,10 @@ export function columnHasExpandableObjects(documents: MongoDocument[], columnPat
  * Extract columns from documents, handling expanded columns.
  * @param documents - Array of documents
  * @param expandedColumns - Set of expanded column paths
+ * @param maxDepth - Maximum nesting depth for column expansion (default 3)
  * @returns Array of column names/paths
  */
-export function extractColumns(documents: MongoDocument[], expandedColumns: Set<string> = new Set()): string[] {
+export function extractColumns(documents: MongoDocument[], expandedColumns: Set<string> = new Set(), maxDepth: number = 3): string[] {
   const columnSet = new Set<string>()
   documents.forEach(doc => {
     Object.keys(doc).forEach(key => columnSet.add(key))
@@ -495,33 +516,28 @@ export function extractColumns(documents: MongoDocument[], expandedColumns: Set<
     return a.localeCompare(b)
   })
 
-  // Expand columns that are marked as expanded
+  // Expand columns that are marked as expanded, respecting maxDepth
   const result: string[] = []
-  for (const col of columns) {
-    if (expandedColumns.has(col)) {
-      // Get sub-keys and add them as column.subkey
-      const subKeys = getNestedKeys(documents, col)
-      if (subKeys.length > 0) {
-        subKeys.forEach(subKey => {
-          const subPath = `${col}.${subKey}`
-          // Check if this sub-column is also expanded
-          if (expandedColumns.has(subPath)) {
-            const deepSubKeys = getNestedKeys(documents, subPath)
-            if (deepSubKeys.length > 0) {
-              deepSubKeys.forEach(deepKey => result.push(`${subPath}.${deepKey}`))
-            } else {
-              result.push(subPath)
-            }
-          } else {
-            result.push(subPath)
-          }
-        })
-      } else {
-        result.push(col)
-      }
-    } else {
-      result.push(col)
+
+  function expandColumn(colPath: string, depth: number): void {
+    if (!expandedColumns.has(colPath) || depth >= maxDepth) {
+      result.push(colPath)
+      return
     }
+
+    const subKeys = getNestedKeys(documents, colPath)
+    if (subKeys.length > 0) {
+      subKeys.forEach(subKey => {
+        const subPath = `${colPath}.${subKey}`
+        expandColumn(subPath, depth + 1)
+      })
+    } else {
+      result.push(colPath)
+    }
+  }
+
+  for (const col of columns) {
+    expandColumn(col, 0)
   }
 
   return result

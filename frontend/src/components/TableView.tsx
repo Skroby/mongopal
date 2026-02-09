@@ -10,24 +10,11 @@ import {
   MongoDocument,
   FormattedValue,
 } from '../utils/tableViewUtils'
-import { loadSettings } from './Settings'
+import { loadSettings, AppSettings } from './Settings'
 
 // =============================================================================
 // Type Definitions
 // =============================================================================
-
-/**
- * Application settings interface
- */
-interface AppSettings {
-  queryLimit: number
-  queryTimeout: number
-  autoFormat: boolean
-  confirmDelete: boolean
-  wordWrap: boolean
-  showLineNumbers: boolean
-  freezeIdColumn: boolean
-}
 
 /**
  * Context menu state for document actions
@@ -398,14 +385,22 @@ export default function TableView({
     })
   }, [connectionId, database, collection])
 
-  // Reorder columns: filter out hidden, then put frozen first (Issue #4)
+  // Reorder columns: filter out hidden, then put frozen first (LDH-02)
   const columns = useMemo(() => {
-    // Filter out hidden columns for display (UI-side hiding for instant feedback)
     const visible = rawColumns.filter(col => !hiddenColumns.has(col))
     const frozen = visible.filter(col => frozenColumns.has(col))
     const unfrozen = visible.filter(col => !frozenColumns.has(col))
     return [...frozen, ...unfrozen]
   }, [rawColumns, frozenColumns, hiddenColumns])
+
+  // Memoize columnHasExpandableObjects into a Map (LDH-02)
+  const expandableColumnsMap = useMemo(() => {
+    const map = new Map<string, boolean>()
+    columns.forEach(col => {
+      map.set(col, columnHasExpandableObjects(documents, col))
+    })
+    return map
+  }, [columns, documents])
 
   // Toggle freeze on a column
   const toggleFreezeColumn = useCallback((column: string): void => {
@@ -793,7 +788,7 @@ export default function TableView({
                 />
               </th>
               {columns.map((col, _colIndex) => {
-                const canExpand = columnHasExpandableObjects(documents, col)
+                const canExpand = expandableColumnsMap.get(col) ?? false
                 const isExpanded = isColumnExpanded(col)
                 const isSub = isSubColumn(col)
                 const displayName = isSub ? col.split('.').pop()! : col

@@ -95,6 +95,20 @@ export interface WailsAppBindings {
   // Debug
   SetDebugEnabled?(enabled: boolean): void
 
+  // Collection profile (health check)
+  GetCollectionProfile?(
+    connectionId: string,
+    database: string,
+    collection: string
+  ): Promise<CollectionProfile>
+
+  // Collection stats
+  GetCollectionStats?(
+    connectionId: string,
+    database: string,
+    collection: string
+  ): Promise<CollectionStats>
+
   // Schema methods (may be added via backend)
   InferCollectionSchema?(
     connectionId: string,
@@ -169,6 +183,32 @@ export interface WailsAppBindings {
     entries: ExportEntry[],
     filename: string
   ): Promise<void>
+}
+
+/**
+ * Collection profile for pre-query health checks
+ */
+export interface CollectionProfile {
+  avgDocSizeBytes: number
+  docCount: number
+  fieldCount: number
+  totalFieldPaths: number
+  maxNestingDepth: number
+  topFields: string[]
+}
+
+/**
+ * Collection statistics from collStats command
+ */
+export interface CollectionStats {
+  namespace: string
+  count: number
+  size: number
+  storageSize: number
+  avgObjSize: number
+  indexCount: number
+  totalIndexSize: number
+  capped: boolean
 }
 
 /**

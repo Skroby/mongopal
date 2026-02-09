@@ -70,6 +70,7 @@ type CollectionsImportPreviewItem = types.CollectionsImportPreviewItem
 type ScriptResult = types.ScriptResult
 type CSVExportOptions = types.CSVExportOptions
 type SavedQuery = types.SavedQuery
+type CollectionProfile = types.CollectionProfile
 type PerformanceMetrics = performance.Metrics
 
 // =============================================================================
@@ -466,6 +467,10 @@ func (a *App) GetCollectionsForExport(connID, dbName string) ([]CollectionExport
 
 func (a *App) GetCollectionStats(connID, dbName, collName string) (*CollectionStats, error) {
 	return a.database.GetCollectionStats(connID, dbName, collName)
+}
+
+func (a *App) GetCollectionProfile(connID, dbName, collName string) (*CollectionProfile, error) {
+	return a.database.GetCollectionProfile(connID, dbName, collName)
 }
 
 func (a *App) ExplainQuery(connID, dbName, collName, filter string) (*ExplainResult, error) {

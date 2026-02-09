@@ -239,7 +239,10 @@ export function parseProjectionFromQuery(queryStr: string): string | null {
 /**
  * Build full MongoDB query string for display
  */
-export function buildFullQuery(collection: string, filter: string): string {
+export function buildFullQuery(collection: string, filter: string, projection?: string): string {
+  if (projection) {
+    return `db.getCollection("${collection}").find(${filter}, ${projection})`
+  }
   return `db.getCollection("${collection}").find(${filter})`
 }
 

@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react'
+import type { CollectionProfile } from '../../types/wails.d'
 
 // =============================================================================
 // Type Definitions
@@ -59,6 +60,10 @@ export interface SchemaContextValue {
   ) => Promise<FetchSchemaResult | null>
   prefetchSchema: (connectionId: string, database: string, collection: string) => void
 
+  // Collection profile (health check)
+  getCollectionProfile: (connectionId: string, database: string, collection: string) => CollectionProfile | null
+  fetchCollectionProfile: (connectionId: string, database: string, collection: string) => Promise<CollectionProfile | null>
+
   // Cache management
   invalidateSchema: (connectionId: string, database: string, collection: string) => void
   invalidateConnection: (connectionId: string) => void
@@ -88,6 +93,11 @@ interface SchemaAppBindings {
     collection: string,
     sampleSize: number
   ) => Promise<SchemaResult>
+  GetCollectionProfile?: (
+    connectionId: string,
+    database: string,
+    collection: string
+  ) => Promise<CollectionProfile>
 }
 
 // =============================================================================
@@ -147,6 +157,10 @@ export function SchemaProvider({ children }: SchemaProviderProps): JSX.Element {
   // Cache: Map of "connId:db:coll" -> { schema, fieldNames, timestamp }
   const [schemaCache, setSchemaCache] = useState<Map<string, SchemaCacheEntry>>(new Map())
   const [loadingSchemas, setLoadingSchemas] = useState<Set<string>>(new Set())
+
+  // Collection profile cache: Map of "connId:db:coll" -> CollectionProfile
+  const profileCacheRef = useRef<Map<string, CollectionProfile>>(new Map())
+  const profileLoadingRef = useRef<Set<string>>(new Set())
 
   /**
    * Generate cache key from connection, database, and collection
@@ -316,6 +330,12 @@ export function SchemaProvider({ children }: SchemaProviderProps): JSX.Element {
       }
       return next
     })
+    // Also clear profile cache for this connection
+    for (const key of profileCacheRef.current.keys()) {
+      if (key.startsWith(`${connectionId}:`)) {
+        profileCacheRef.current.delete(key)
+      }
+    }
   }, [])
 
   /**
@@ -323,6 +343,7 @@ export function SchemaProvider({ children }: SchemaProviderProps): JSX.Element {
    */
   const clearCache = useCallback((): void => {
     setSchemaCache(new Map())
+    profileCacheRef.current.clear()
   }, [])
 
   /**
@@ -385,6 +406,49 @@ export function SchemaProvider({ children }: SchemaProviderProps): JSX.Element {
     [getCacheKey]
   )
 
+  /**
+   * Get cached collection profile (synchronous)
+   */
+  const getCollectionProfile = useCallback(
+    (connectionId: string, database: string, collection: string): CollectionProfile | null => {
+      const key = getCacheKey(connectionId, database, collection)
+      return profileCacheRef.current.get(key) || null
+    },
+    [getCacheKey]
+  )
+
+  /**
+   * Fetch collection profile (async, cached after first call)
+   */
+  const fetchCollectionProfile = useCallback(
+    async (connectionId: string, database: string, collection: string): Promise<CollectionProfile | null> => {
+      const key = getCacheKey(connectionId, database, collection)
+
+      // Return cached
+      const cached = profileCacheRef.current.get(key)
+      if (cached) return cached
+
+      // Skip if already loading
+      if (profileLoadingRef.current.has(key)) return null
+
+      profileLoadingRef.current.add(key)
+      try {
+        const go = getGo()
+        if (go?.GetCollectionProfile) {
+          const profile = await go.GetCollectionProfile(connectionId, database, collection)
+          profileCacheRef.current.set(key, profile)
+          return profile
+        }
+      } catch (err) {
+        console.error('Failed to fetch collection profile:', err)
+      } finally {
+        profileLoadingRef.current.delete(key)
+      }
+      return null
+    },
+    [getCacheKey]
+  )
+
   const value: SchemaContextValue = {
     // Cache access
     getCachedSchema,
@@ -394,6 +458,10 @@ export function SchemaProvider({ children }: SchemaProviderProps): JSX.Element {
     // Fetch methods
     fetchSchema,
     prefetchSchema,
+
+    // Collection profile
+    getCollectionProfile,
+    fetchCollectionProfile,
 
     // Cache management
     invalidateSchema,

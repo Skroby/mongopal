@@ -1,4 +1,4 @@
-.PHONY: help dev build clean install test test-unit test-unit-go test-unit-frontend typecheck test-watch test-integration test-integration-go test-integration-frontend test-coverage test-coverage-go test-coverage-frontend setup setup-quick install-hooks install-frontend generate doctor fmt lint frontend-dist
+.PHONY: help dev build clean install test test-unit test-unit-go test-unit-frontend typecheck test-watch test-integration test-integration-go test-integration-frontend test-coverage test-coverage-go test-coverage-frontend setup setup-quick install-hooks install-frontend generate doctor fmt lint frontend-dist seed-testdb seed-testdb-stop
 
 # Ensure Go bin is in PATH
 GOBIN := $(shell go env GOPATH)/bin
@@ -52,6 +52,8 @@ help:
 	@echo "  fmt            Format Go and frontend code"
 	@echo "  lint           Lint Go and frontend code"
 	@echo "  clean          Remove build artifacts and node_modules"
+	@echo "  seed-testdb    Start local MongoDB and seed with test data"
+	@echo "  seed-testdb-stop  Stop and remove test MongoDB container"
 	@echo ""
 
 # ===========================================
@@ -195,3 +197,19 @@ fmt:
 lint:
 	go vet ./...
 	cd frontend && npm run lint 2>/dev/null || true
+
+# ===========================================
+# Test Data
+# ===========================================
+
+# Start local MongoDB container and seed with test data
+seed-testdb:
+	@./scripts/seed-testdb.sh
+
+# Re-seed existing container (drops and recreates data)
+seed-testdb-reseed:
+	@./scripts/seed-testdb.sh --seed
+
+# Stop and remove test MongoDB container
+seed-testdb-stop:
+	@./scripts/seed-testdb.sh --stop
