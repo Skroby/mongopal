@@ -16,6 +16,7 @@ import ImportDatabasesModal from './components/ImportDatabasesModal'
 import ExportCollectionsModal from './components/ExportCollectionsModal'
 import ImportCollectionsModal from './components/ImportCollectionsModal'
 import CollectionStatsModal from './components/CollectionStatsModal'
+import ServerInfoModal from './components/ServerInfoModal'
 import ConfirmDialog from './components/ConfirmDialog'
 import { useNotification, NotificationHistoryButton, NotificationHistoryDrawer } from './components/NotificationContext'
 import { useConnection, SavedConnection } from './components/contexts/ConnectionContext'
@@ -41,29 +42,38 @@ const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
 interface ExportModalState {
   connectionId: string
   connectionName: string
+  visible: boolean
 }
 
 interface ImportModalState {
   connectionId: string
   connectionName: string
+  visible: boolean
 }
 
 interface ExportCollectionsModalState {
   connectionId: string
   connectionName: string
   databaseName: string
+  visible: boolean
 }
 
 interface ImportCollectionsModalState {
   connectionId: string
   connectionName: string
   databaseName: string
+  visible: boolean
 }
 
 interface StatsModalState {
   connectionId: string
   database: string
   collection: string
+}
+
+interface ServerInfoModalState {
+  connectionId: string
+  connectionName: string
 }
 
 interface ConfirmDialogState {
@@ -124,6 +134,7 @@ function App(): JSX.Element {
   const [exportCollectionsModal, setExportCollectionsModal] = useState<ExportCollectionsModalState | null>(null)
   const [importCollectionsModal, setImportCollectionsModal] = useState<ImportCollectionsModalState | null>(null)
   const [statsModal, setStatsModal] = useState<StatsModalState | null>(null)
+  const [serverInfoModal, setServerInfoModal] = useState<ServerInfoModalState | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
 
   // Check for Wails bindings availability
@@ -349,11 +360,12 @@ function App(): JSX.Element {
             onManageConnections={() => setShowConnectionManager(true)}
             onEditConnection={handleEditConnection}
             onDeleteConnection={handleDeleteConnection}
-            onExportDatabases={(connId: string, connName: string) => setExportModal({ connectionId: connId, connectionName: connName })}
-            onImportDatabases={(connId: string, connName: string) => setImportModal({ connectionId: connId, connectionName: connName })}
-            onExportCollections={(connId: string, connName: string, dbName: string) => setExportCollectionsModal({ connectionId: connId, connectionName: connName, databaseName: dbName })}
-            onImportCollections={(connId: string, connName: string, dbName: string) => setImportCollectionsModal({ connectionId: connId, connectionName: connName, databaseName: dbName })}
+            onExportDatabases={(connId: string, connName: string) => setExportModal({ connectionId: connId, connectionName: connName, visible: true })}
+            onImportDatabases={(connId: string, connName: string) => setImportModal({ connectionId: connId, connectionName: connName, visible: true })}
+            onExportCollections={(connId: string, connName: string, dbName: string) => setExportCollectionsModal({ connectionId: connId, connectionName: connName, databaseName: dbName, visible: true })}
+            onImportCollections={(connId: string, connName: string, dbName: string) => setImportCollectionsModal({ connectionId: connId, connectionName: connName, databaseName: dbName, visible: true })}
             onShowStats={(connId: string, dbName: string, collName: string) => setStatsModal({ connectionId: connId, database: dbName, collection: collName })}
+            onShowServerInfo={(connId: string, connName: string) => setServerInfoModal({ connectionId: connId, connectionName: connName })}
             onManageIndexes={(connId: string, dbName: string, collName: string) => openIndexTab(connId, dbName, collName)}
           />
         </div>
@@ -457,7 +469,7 @@ function App(): JSX.Element {
               }
             })}
             {tabs.length === 0 && (
-              <div className="h-full flex items-center justify-center text-zinc-400">
+              <div className="h-full flex items-center justify-center text-text-muted">
                 <div className="text-center">
                   <p className="text-lg mb-2">No collection selected</p>
                   <p className="text-sm">Select a collection from the sidebar to view documents</p>
@@ -469,22 +481,22 @@ function App(): JSX.Element {
       </div>
 
       {/* Status bar */}
-      <div className="h-6 bg-surface-secondary border-t border-border flex items-center justify-between px-3 text-xs text-zinc-400 flex-shrink-0">
+      <div className="h-6 bg-surface-secondary border-t border-border flex items-center justify-between px-3 text-xs text-text-muted flex-shrink-0">
         <div className="flex items-center gap-2">
           {/* Connection info */}
           {currentTab ? (
             <>
-              <span className="text-zinc-400" title="Active connection">
+              <span className="text-text-muted" title="Active connection">
                 {getConnectionById(currentTab.connectionId)?.name || 'Unknown'}
               </span>
-              <span className="text-zinc-600">:</span>
+              <span className="text-text-dim">:</span>
               <span title="Database and collection">
                 {currentTab.database}.{currentTab.collection}
               </span>
               {/* Document count for collection views */}
               {currentTab.type === 'collection' && documentCount !== null && (
                 <>
-                  <span className="text-zinc-600">|</span>
+                  <span className="text-text-dim">|</span>
                   <span title="Documents in result">
                     {documentCount.toLocaleString()} doc{documentCount !== 1 ? 's' : ''}
                   </span>
@@ -493,8 +505,8 @@ function App(): JSX.Element {
               {/* Query time */}
               {currentTab.type === 'collection' && queryTime !== null && (
                 <>
-                  <span className="text-zinc-600">|</span>
-                  <span className="text-zinc-400" title="Query execution time">
+                  <span className="text-text-dim">|</span>
+                  <span className="text-text-muted" title="Query execution time">
                     {queryTime}ms
                   </span>
                 </>
@@ -507,51 +519,53 @@ function App(): JSX.Element {
         <div className="flex items-center gap-2">
           {/* Export manager */}
           <ExportManager />
-          {/* Global operation indicator */}
-          {activeOperations.length > 0 && (
-            <>
-              <div
-                className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-700/50 cursor-pointer hover:bg-zinc-700"
-                onClick={() => {
-                  // Click to open related modal if available
-                  const op = activeOperations[0]
-                  if (op?.modalOpener) op.modalOpener()
-                }}
-                title={activeOperations.map(op => op.label).join(', ')}
-              >
-                {/* Spinner */}
-                <svg className="w-3 h-3 animate-spin text-accent" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                {/* Label */}
-                <span className="text-zinc-300 max-w-[150px] truncate">
-                  {activeOperations[0].label}
-                </span>
-                {/* Progress percentage */}
-                {activeOperations[0].progress !== null && (
-                  <span className="text-accent font-medium">
-                    {activeOperations[0].progress}%
+          {/* Global operation indicator (bulk-delete only — exports/imports tracked in ExportManager) */}
+          {(() => {
+            const bulkDeleteOps = activeOperations.filter(op => op.type === 'bulk-delete')
+            return bulkDeleteOps.length > 0 ? (
+              <>
+                <div
+                  className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-hover/50 cursor-pointer hover:bg-surface-hover"
+                  onClick={() => {
+                    const op = bulkDeleteOps[0]
+                    if (op?.modalOpener) op.modalOpener()
+                  }}
+                  title={bulkDeleteOps.map(op => op.label).join(', ')}
+                >
+                  {/* Spinner */}
+                  <svg className="w-3 h-3 animate-spin text-primary" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  {/* Label */}
+                  <span className="text-text-secondary max-w-[150px] truncate">
+                    {bulkDeleteOps[0].label}
                   </span>
-                )}
-                {/* Additional operations count */}
-                {activeOperations.length > 1 && (
-                  <span className="text-zinc-500">
-                    +{activeOperations.length - 1}
-                  </span>
-                )}
-              </div>
-              <span className="text-zinc-600">|</span>
-            </>
-          )}
+                  {/* Progress percentage */}
+                  {bulkDeleteOps[0].progress !== null && (
+                    <span className="text-primary font-medium">
+                      {bulkDeleteOps[0].progress}%
+                    </span>
+                  )}
+                  {/* Additional operations count */}
+                  {bulkDeleteOps.length > 1 && (
+                    <span className="text-text-dim">
+                      +{bulkDeleteOps.length - 1}
+                    </span>
+                  )}
+                </div>
+                <span className="text-text-dim">|</span>
+              </>
+            ) : null
+          })()}
           {/* Active connections count */}
-          <span className="text-zinc-400" title="Number of active connections">
+          <span className="text-text-muted" title="Number of active connections">
             {activeConnections.length} connection{activeConnections.length !== 1 ? 's' : ''}
           </span>
           {/* Notification history button */}
           <NotificationHistoryButton />
           <button
-            className="p-1 rounded hover:bg-zinc-700 hover:text-zinc-300"
+            className="p-1 rounded hover:bg-surface-hover hover:text-text-secondary"
             onClick={() => setShowPerformance(true)}
             title="Performance"
           >
@@ -560,7 +574,7 @@ function App(): JSX.Element {
             </svg>
           </button>
           <button
-            className="p-1 rounded hover:bg-zinc-700 hover:text-zinc-300"
+            className="p-1 rounded hover:bg-surface-hover hover:text-text-secondary"
             onClick={() => setShowKeyboardShortcuts(true)}
             title="Keyboard Shortcuts (Cmd+?)"
           >
@@ -569,7 +583,7 @@ function App(): JSX.Element {
             </svg>
           </button>
           <button
-            className="p-1 rounded hover:bg-zinc-700 hover:text-zinc-300"
+            className="p-1 rounded hover:bg-surface-hover hover:text-text-secondary"
             onClick={() => setShowSettings(true)}
             title="Settings (Cmd+,)"
           >
@@ -621,52 +635,68 @@ function App(): JSX.Element {
 
       {/* Export databases modal */}
       {exportModal && (
-        <ExportDatabasesModal
-          connectionId={exportModal.connectionId}
-          connectionName={exportModal.connectionName}
-          onClose={() => setExportModal(null)}
-        />
+        <div style={{ display: exportModal.visible ? undefined : 'none' }}>
+          <ExportDatabasesModal
+            connectionId={exportModal.connectionId}
+            connectionName={exportModal.connectionName}
+            onClose={() => setExportModal(null)}
+            onHide={() => setExportModal(prev => prev ? { ...prev, visible: false } : null)}
+            onShow={() => setExportModal(prev => prev ? { ...prev, visible: true } : null)}
+          />
+        </div>
       )}
 
       {/* Import databases modal */}
       {importModal && (
-        <ImportDatabasesModal
-          connectionId={importModal.connectionId}
-          connectionName={importModal.connectionName}
-          onClose={() => setImportModal(null)}
-          onComplete={() => {
-            // Optionally refresh the connection tree after import
-            if (go?.ListDatabases) {
-              go.ListDatabases(importModal.connectionId).catch(console.error)
-            }
-          }}
-        />
+        <div style={{ display: importModal.visible ? undefined : 'none' }}>
+          <ImportDatabasesModal
+            connectionId={importModal.connectionId}
+            connectionName={importModal.connectionName}
+            onClose={() => setImportModal(null)}
+            onHide={() => setImportModal(prev => prev ? { ...prev, visible: false } : null)}
+            onShow={() => setImportModal(prev => prev ? { ...prev, visible: true } : null)}
+            onComplete={() => {
+              // Optionally refresh the connection tree after import
+              if (go?.ListDatabases) {
+                go.ListDatabases(importModal.connectionId).catch(console.error)
+              }
+            }}
+          />
+        </div>
       )}
 
       {/* Export collections modal */}
       {exportCollectionsModal && (
-        <ExportCollectionsModal
-          connectionId={exportCollectionsModal.connectionId}
-          connectionName={exportCollectionsModal.connectionName}
-          databaseName={exportCollectionsModal.databaseName}
-          onClose={() => setExportCollectionsModal(null)}
-        />
+        <div style={{ display: exportCollectionsModal.visible ? undefined : 'none' }}>
+          <ExportCollectionsModal
+            connectionId={exportCollectionsModal.connectionId}
+            connectionName={exportCollectionsModal.connectionName}
+            databaseName={exportCollectionsModal.databaseName}
+            onClose={() => setExportCollectionsModal(null)}
+            onHide={() => setExportCollectionsModal(prev => prev ? { ...prev, visible: false } : null)}
+            onShow={() => setExportCollectionsModal(prev => prev ? { ...prev, visible: true } : null)}
+          />
+        </div>
       )}
 
       {/* Import collections modal */}
       {importCollectionsModal && (
-        <ImportCollectionsModal
-          connectionId={importCollectionsModal.connectionId}
-          connectionName={importCollectionsModal.connectionName}
-          databaseName={importCollectionsModal.databaseName}
-          onClose={() => setImportCollectionsModal(null)}
-          onComplete={() => {
-            // Optionally refresh the database's collections after import
-            if (go?.ListCollections) {
-              go.ListCollections(importCollectionsModal.connectionId, importCollectionsModal.databaseName).catch(console.error)
-            }
-          }}
-        />
+        <div style={{ display: importCollectionsModal.visible ? undefined : 'none' }}>
+          <ImportCollectionsModal
+            connectionId={importCollectionsModal.connectionId}
+            connectionName={importCollectionsModal.connectionName}
+            databaseName={importCollectionsModal.databaseName}
+            onClose={() => setImportCollectionsModal(null)}
+            onHide={() => setImportCollectionsModal(prev => prev ? { ...prev, visible: false } : null)}
+            onShow={() => setImportCollectionsModal(prev => prev ? { ...prev, visible: true } : null)}
+            onComplete={() => {
+              // Optionally refresh the database's collections after import
+              if (go?.ListCollections) {
+                go.ListCollections(importCollectionsModal.connectionId, importCollectionsModal.databaseName).catch(console.error)
+              }
+            }}
+          />
+        </div>
       )}
 
       {/* Collection stats modal */}
@@ -676,6 +706,15 @@ function App(): JSX.Element {
           database={statsModal.database}
           collection={statsModal.collection}
           onClose={() => setStatsModal(null)}
+        />
+      )}
+
+      {/* Server info modal */}
+      {serverInfoModal && (
+        <ServerInfoModal
+          connectionId={serverInfoModal.connectionId}
+          connectionName={serverInfoModal.connectionName}
+          onClose={() => setServerInfoModal(null)}
         />
       )}
 

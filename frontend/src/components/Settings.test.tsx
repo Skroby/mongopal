@@ -1,3 +1,28 @@
+// Mock monacoConfig to avoid jsdom incompatibility (monaco-editor uses queryCommandSupported)
+vi.mock('../monacoConfig', () => ({
+  regenerateMonacoThemes: vi.fn(),
+  monaco: { editor: { defineTheme: vi.fn(), setTheme: vi.fn() } },
+}))
+
+// Mock ThemeContext to avoid needing ThemeProvider (which depends on Wails runtime)
+vi.mock('./contexts/ThemeContext', async () => {
+  const actual = await vi.importActual<typeof import('./contexts/ThemeContext')>('./contexts/ThemeContext')
+  return {
+    ...actual,
+    useTheme: () => ({
+      themes: [],
+      currentTheme: null,
+      setTheme: vi.fn(),
+      reloadThemes: vi.fn(),
+      openThemesDir: vi.fn(),
+      uiFontId: 'system',
+      monoFontId: 'jetbrains',
+      setUIFont: vi.fn(),
+      setMonoFont: vi.fn(),
+    }),
+  }
+})
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import Settings, { loadSettings, saveSettings, AppSettings } from './Settings'
@@ -114,15 +139,18 @@ describe('Settings', () => {
 
       expect(screen.getByText('Settings')).toBeInTheDocument()
       // Check tabs exist
+      expect(screen.getByRole('button', { name: /appearance/i })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /general/i })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /editor/i })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /safety/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /large docs/i })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /developer/i })).toBeInTheDocument()
     })
 
     it('renders query limit dropdown with default value on General tab', () => {
       renderWithProviders(<Settings onClose={mockOnClose} />)
 
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
       expect(screen.getByText('Default query limit')).toBeInTheDocument()
       const selects = screen.getAllByRole('combobox')
       expect(selects[0]).toHaveValue('50')
@@ -131,6 +159,7 @@ describe('Settings', () => {
     it('renders query timeout dropdown with default value on General tab', () => {
       renderWithProviders(<Settings onClose={mockOnClose} />)
 
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
       expect(screen.getByText('Query timeout')).toBeInTheDocument()
       const selects = screen.getAllByRole('combobox')
       expect(selects[1]).toHaveValue('30')
@@ -184,6 +213,7 @@ describe('Settings', () => {
     it('changes query limit and persists to localStorage', () => {
       renderWithProviders(<Settings onClose={mockOnClose} />)
 
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
       const selects = screen.getAllByRole('combobox')
       const select = selects[0] // queryLimit is first
       fireEvent.change(select, { target: { value: '100' } })
@@ -197,6 +227,7 @@ describe('Settings', () => {
     it('shows all query limit options', () => {
       renderWithProviders(<Settings onClose={mockOnClose} />)
 
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
       const options = screen.getAllByRole('option')
       const values = options.map(o => (o as HTMLOptionElement).value)
 
@@ -219,6 +250,7 @@ describe('Settings', () => {
     it('changes query timeout and persists to localStorage', () => {
       renderWithProviders(<Settings onClose={mockOnClose} />)
 
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
       const selects = screen.getAllByRole('combobox')
       const select = selects[1] // queryTimeout is second
       fireEvent.change(select, { target: { value: '60' } })
@@ -232,6 +264,7 @@ describe('Settings', () => {
     it('allows disabling timeout', () => {
       renderWithProviders(<Settings onClose={mockOnClose} />)
 
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
       const selects = screen.getAllByRole('combobox')
       const select = selects[1]
       fireEvent.change(select, { target: { value: '0' } })
@@ -366,6 +399,7 @@ describe('Settings', () => {
 
       renderWithProviders(<Settings onClose={mockOnClose} />)
 
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
       const selects = screen.getAllByRole('combobox')
       expect(selects[0]).toHaveValue('100')
       expect(selects[1]).toHaveValue('60')
@@ -376,6 +410,7 @@ describe('Settings', () => {
     it('shows saved indicator when a setting changes', async () => {
       renderWithProviders(<Settings onClose={mockOnClose} />)
 
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
       const selects = screen.getAllByRole('combobox')
       fireEvent.change(selects[0], { target: { value: '100' } })
 
@@ -387,6 +422,7 @@ describe('Settings', () => {
 
       renderWithProviders(<Settings onClose={mockOnClose} />)
 
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
       const selects = screen.getAllByRole('combobox')
       fireEvent.change(selects[0], { target: { value: '100' } })
 
@@ -416,6 +452,7 @@ describe('Settings', () => {
 
       renderWithProviders(<Settings onClose={mockOnClose} />)
 
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
       const selects = screen.getAllByRole('combobox')
 
       // First change
@@ -447,8 +484,13 @@ describe('Settings', () => {
     it('switches between tabs correctly', () => {
       renderWithProviders(<Settings onClose={mockOnClose} />)
 
-      // Initially on General tab
+      // Initially on Appearance tab (default)
+      expect(screen.getByText('UI Font')).toBeInTheDocument()
+
+      // Switch to General
+      fireEvent.click(screen.getByRole('button', { name: /general/i }))
       expect(screen.getByText('Default query limit')).toBeInTheDocument()
+      expect(screen.queryByText('UI Font')).not.toBeInTheDocument()
 
       // Switch to Editor
       fireEvent.click(screen.getByRole('button', { name: /editor/i }))
@@ -465,9 +507,9 @@ describe('Settings', () => {
       expect(screen.getByText('Debug logging')).toBeInTheDocument()
       expect(screen.queryByText('Confirm before delete')).not.toBeInTheDocument()
 
-      // Back to General
-      fireEvent.click(screen.getByRole('button', { name: /general/i }))
-      expect(screen.getByText('Default query limit')).toBeInTheDocument()
+      // Back to Appearance
+      fireEvent.click(screen.getByRole('button', { name: /appearance/i }))
+      expect(screen.getByText('UI Font')).toBeInTheDocument()
     })
   })
 })

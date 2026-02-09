@@ -15,7 +15,7 @@ interface TabNavigationProps {
 
 export function TabNavigation({ tabs, activeTab, onTabChange }: TabNavigationProps) {
   return (
-    <div className="border-b border-zinc-700">
+    <div className="border-b border-border">
       <nav className="flex space-x-1 px-4">
         {tabs.map(tab => {
           const isActive = tab.id === activeTab;
@@ -28,8 +28,8 @@ export function TabNavigation({ tabs, activeTab, onTabChange }: TabNavigationPro
               className={`
                 relative px-4 py-2.5 text-sm font-medium transition-colors
                 ${isActive
-                  ? 'text-white border-b-2 border-accent'
-                  : 'text-zinc-400 hover:text-white'
+                  ? 'text-text border-b-2 border-primary'
+                  : 'text-text-muted hover:text-text'
                 }
               `}
             >
@@ -42,7 +42,7 @@ export function TabNavigation({ tabs, activeTab, onTabChange }: TabNavigationPro
                       text-xs font-bold rounded-full
                       ${tab.errorCount > 0
                         ? 'bg-red-600 text-white'
-                        : 'bg-yellow-500 text-zinc-900'
+                        : 'bg-yellow-500 text-background'
                       }
                     `}
                     title={`${tab.errorCount} errors, ${tab.warningCount} warnings`}

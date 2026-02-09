@@ -183,6 +183,17 @@ export interface WailsAppBindings {
     entries: ExportEntry[],
     filename: string
   ): Promise<void>
+
+  // Server info
+  GetServerInfo?(connectionId: string): Promise<ServerInfo>
+
+  // Theme methods
+  GetThemes?(): Promise<Theme[]>
+  GetCurrentTheme?(): Promise<Theme>
+  SetTheme?(themeId: string): Promise<void>
+  ReloadThemes?(): Promise<void>
+  GetThemesDir?(): Promise<string>
+  OpenThemesDir?(): Promise<void>
 }
 
 /**
@@ -326,6 +337,125 @@ export interface BulkConnectionShareResult {
   version: number
   connections: Array<{ name: string; bundle: string }>
   key: string
+}
+
+/**
+ * Theme color tokens (27 colors)
+ */
+export interface ThemeColors {
+  background: string
+  surface: string
+  surfaceHover: string
+  surfaceActive: string
+  textDim: string
+  textMuted: string
+  textSecondary: string
+  textLight: string
+  text: string
+  border: string
+  borderLight: string
+  borderHover: string
+  primary: string
+  primaryHover: string
+  primaryMuted: string
+  error: string
+  errorDark: string
+  warning: string
+  warningDark: string
+  success: string
+  successDark: string
+  info: string
+  infoDark: string
+  scrollbarTrack: string
+  scrollbarThumb: string
+  scrollbarThumbHover: string
+}
+
+/**
+ * Theme font tokens
+ */
+export interface ThemeFonts {
+  ui: string
+  mono: string
+}
+
+/**
+ * Complete theme definition
+ */
+export interface Theme {
+  id: string
+  name: string
+  author?: string
+  builtin: boolean
+  colors: ThemeColors
+  fonts?: ThemeFonts
+}
+
+/**
+ * Server info diagnostics
+ */
+export interface ServerInfo {
+  serverVersion: string
+  gitVersion: string
+  modules: string[]
+  openSSLVersion: string
+  topology: string
+  maxBsonSize: number
+  maxMsgSize: number
+  maxWriteBatch: number
+  readOnly: boolean
+  fcv: string
+  fcvError?: string
+  host?: ServerHostInfo
+  status?: ServerStatusInfo
+  replicaSet?: ReplicaSetInfo
+  rawServerStatus?: string
+  rawReplStatus?: string
+  errors?: Record<string, string>
+}
+
+export interface ServerHostInfo {
+  hostname: string
+  os: string
+  arch: string
+  cpus: number
+  memoryMB: number
+}
+
+export interface ServerStatusInfo {
+  uptime: number
+  connsActive: number
+  connsCurrent: number
+  connsAvailable: number
+  connsTotalCreated: number
+  opsInsert: number
+  opsQuery: number
+  opsUpdate: number
+  opsDelete: number
+  opsGetmore: number
+  opsCommand: number
+  memResident: number
+  memVirtual: number
+  networkBytesIn: number
+  networkBytesOut: number
+  networkRequests: number
+  storageEngine: string
+}
+
+export interface ReplicaSetInfo {
+  name: string
+  members: ReplicaSetMember[]
+}
+
+export interface ReplicaSetMember {
+  id: number
+  name: string
+  stateStr: string
+  health: number
+  uptime: number
+  optimeDate: string
+  syncSource?: string
+  self: boolean
 }
 
 /**

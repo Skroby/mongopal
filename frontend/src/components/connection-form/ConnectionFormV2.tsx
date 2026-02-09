@@ -498,10 +498,10 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col relative">
+      <div className="bg-background text-text rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col relative">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700">
-          <h2 className="text-xl font-semibold text-white">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-xl font-semibold text-text">
             {connection ? 'Edit Connection' : 'New Connection'}
           </h2>
           <div className="flex items-center gap-4">
@@ -514,14 +514,14 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
                   className="sr-only peer"
                   data-testid="advanced-toggle"
                 />
-                <div className="w-8 h-[18px] bg-zinc-700 peer-focus:ring-2 peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-[14px] after:w-[14px] after:transition-all peer-checked:bg-accent"></div>
+                <div className="w-8 h-[18px] bg-surface-hover peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-[14px] after:w-[14px] after:transition-all peer-checked:bg-primary"></div>
               </div>
-              <span className="text-xs text-zinc-400">Advanced</span>
+              <span className="text-xs text-text-muted">Advanced</span>
             </label>
             <ModeToggle mode={mode} onModeChange={handleModeChange} />
             <button
               onClick={onCancel}
-              className="text-zinc-400 hover:text-white transition-colors"
+              className="text-text-muted hover:text-text transition-colors"
             >
               ✕
             </button>
@@ -608,14 +608,14 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Share as URI */}
             <div className="space-y-3">
-              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Share as URI</h3>
-              <div className="flex items-center gap-4 text-xs text-zinc-400">
+              <h3 className="text-xs font-semibold text-text-dim uppercase tracking-wider">Share as URI</h3>
+              <div className="flex items-center gap-4 text-xs text-text-muted">
                 <label className="flex items-center gap-1.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={uriIncludeCredentials}
                     onChange={e => setUriIncludeCredentials(e.target.checked)}
-                    className="rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent focus:ring-offset-0 w-3.5 h-3.5"
+                    className="rounded border-border-light bg-surface text-primary focus:ring-primary focus:ring-offset-0 w-3.5 h-3.5"
                   />
                   Include credentials
                 </label>
@@ -624,13 +624,13 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
                     type="checkbox"
                     checked={uriIncludeMongoPalParams}
                     onChange={e => setUriIncludeMongoPalParams(e.target.checked)}
-                    className="rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent focus:ring-offset-0 w-3.5 h-3.5"
+                    className="rounded border-border-light bg-surface text-primary focus:ring-primary focus:ring-offset-0 w-3.5 h-3.5"
                   />
                   Include MongoPal properties
                 </label>
               </div>
               <div
-                className="w-full px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-300 font-mono text-sm break-all min-h-[44px] cursor-text select-all"
+                className="w-full px-3 py-2.5 bg-surface border border-border rounded-md text-text-secondary font-mono text-sm break-all min-h-[44px] cursor-text select-all"
                 onClick={e => {
                   const sel = window.getSelection();
                   const range = document.createRange();
@@ -644,44 +644,44 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
                       includeCredentials: uriIncludeCredentials,
                       includeMongoPalParams: uriIncludeMongoPalParams,
                     })
-                  : <span className="text-zinc-500 italic">Fill in form fields to generate a URI</span>
+                  : <span className="text-text-dim italic">Fill in form fields to generate a URI</span>
                 }
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleCopyURI}
-                  className="px-3 py-1.5 text-sm bg-accent hover:bg-accent/80 text-white rounded-md transition-colors flex items-center gap-1.5"
+                  className="px-3 py-1.5 text-sm bg-primary hover:bg-primary/80 text-white rounded-md transition-colors flex items-center gap-1.5"
                 >
                   {uriCopied ? 'Copied' : 'Copy URI'}
                 </button>
                 <button
                   onClick={() => { setUriText(''); setUriParseError(null); setShowParseOverlay(true); }}
-                  className="px-3 py-1.5 text-sm border border-zinc-600 hover:border-zinc-500 text-zinc-300 hover:text-white rounded-md transition-colors"
+                  className="px-3 py-1.5 text-sm border border-border-light hover:border-border-hover text-text-secondary hover:text-text rounded-md transition-colors"
                 >
                   Import from URI...
                 </button>
               </div>
             </div>
 
-            <div className="border-t border-zinc-700" />
+            <div className="border-t border-border" />
 
             {/* Share Encrypted */}
             <div className="space-y-3">
-              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Share Encrypted</h3>
-              <p className="text-xs text-zinc-400">
+              <h3 className="text-xs font-semibold text-text-dim uppercase tracking-wider">Share Encrypted</h3>
+              <p className="text-xs text-text-muted">
                 Export the full connection config including credentials, SSH, TLS, and proxy settings — encrypted with a one-time key.
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShareOverlay('export')}
                   disabled={!connection?.id}
-                  className="px-3 py-1.5 text-sm bg-accent hover:bg-accent/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 text-sm bg-primary hover:bg-primary/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Export Encrypted...
                 </button>
                 <button
                   onClick={() => setShareOverlay('import')}
-                  className="px-3 py-1.5 text-sm border border-zinc-600 hover:border-zinc-500 text-zinc-300 hover:text-white rounded-md transition-colors"
+                  className="px-3 py-1.5 text-sm border border-border-light hover:border-border-hover text-text-secondary hover:text-text rounded-md transition-colors"
                 >
                   Import Encrypted...
                 </button>
@@ -693,12 +693,12 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
         {/* Parse URI overlay */}
         {showParseOverlay && (
           <div className="absolute inset-0 z-10 bg-black/60 flex items-center justify-center p-6">
-            <div className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-lg p-5 space-y-3">
+            <div className="bg-background text-text border border-border rounded-lg shadow-2xl w-full max-w-lg p-5 space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-white">Import from URI</h3>
+                <h3 className="text-sm font-medium text-text">Import from URI</h3>
                 <button
                   onClick={() => setShowParseOverlay(false)}
-                  className="text-zinc-400 hover:text-white text-lg leading-none"
+                  className="text-text-muted hover:text-text text-lg leading-none"
                 >
                   ✕
                 </button>
@@ -711,16 +711,16 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
                 }}
                 autoFocus
                 className={`
-                  w-full h-28 px-3 py-2 bg-zinc-800 border rounded-md text-white font-mono text-sm resize-none focus:outline-none focus:ring-2
-                  ${uriParseError ? 'border-red-500 focus:ring-red-500' : 'border-zinc-700 focus:ring-accent'}
+                  w-full h-28 px-3 py-2 bg-surface border rounded-md text-text font-mono text-sm resize-none focus:outline-none focus:ring-2
+                  ${uriParseError ? 'border-red-500 focus:ring-red-500' : 'border-border focus:ring-primary'}
                 `}
                 placeholder="mongodb://localhost:27017"
               />
               {uriParseError && (
-                <p className="text-xs text-red-400">{uriParseError}</p>
+                <p className="text-xs text-error">{uriParseError}</p>
               )}
               {uriValidation && !uriParseError && (
-                <span className={`text-xs flex items-center gap-1 ${uriValidation.valid ? 'text-green-400' : 'text-red-400'}`}>
+                <span className={`text-xs flex items-center gap-1 ${uriValidation.valid ? 'text-success' : 'text-error'}`}>
                   {uriValidation.valid ? (
                     <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -736,14 +736,14 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   onClick={() => setShowParseOverlay(false)}
-                  className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+                  className="px-3 py-1.5 text-sm text-text-muted hover:text-text transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => { handleParseURI(); setShowParseOverlay(false); }}
                   disabled={!uriText.trim()}
-                  className="px-3 py-1.5 text-sm bg-accent hover:bg-accent/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 text-sm bg-primary hover:bg-primary/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Parse into Form
                 </button>
@@ -777,20 +777,20 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
         {/* Test Result Panel */}
         {testResult && (
           <div className={`px-6 py-3 border-t ${
-            testResult.success ? 'bg-green-900/20 border-green-800' : 'bg-red-900/20 border-red-800'
+            testResult.success ? 'bg-success-dark/20 border-green-800' : 'bg-error-dark/20 border-red-800'
           }`}>
             <div className="flex items-start gap-3">
               {testResult.success ? (
-                <svg className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                <svg className="w-5 h-5 text-success flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
               ) : (
-                <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                <svg className="w-5 h-5 text-error flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
               )}
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm text-white">
+                <div className="font-medium text-sm text-text">
                   {testResult.success ? 'Connection successful' : 'Connection failed'}
                 </div>
                 {testResult.success && (
@@ -800,8 +800,8 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
                     {testResult.replicaSet && <span>RS: {testResult.replicaSet}</span>}
                     {testResult.latency !== undefined && (
                       <span className={
-                        testResult.latency < 100 ? 'text-green-400' :
-                        testResult.latency < 500 ? 'text-yellow-400' : 'text-red-400'
+                        testResult.latency < 100 ? 'text-success' :
+                        testResult.latency < 500 ? 'text-yellow-400' : 'text-error'
                       }>
                         {testResult.latency}ms
                       </span>
@@ -820,7 +820,7 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
               </div>
               <button
                 onClick={() => setTestResult(null)}
-                className="text-zinc-500 hover:text-white text-xs"
+                className="text-text-dim hover:text-text text-xs"
               >
                 ✕
               </button>
@@ -829,12 +829,12 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-zinc-700">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-border">
           <div className="flex items-center gap-4">
             <button
               onClick={handleTestConnection}
               disabled={isTesting}
-              className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-md transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-surface-hover hover:bg-surface-active text-text rounded-md transition-colors disabled:opacity-50"
               title="Test Connection (Cmd/Ctrl+T)"
             >
               {isTesting ? 'Testing...' : 'Test Connection'}
@@ -843,7 +843,7 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
           <div className="flex gap-2">
             <button
               onClick={onCancel}
-              className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-md transition-colors"
+              className="px-4 py-2 bg-surface-hover hover:bg-surface-active text-text rounded-md transition-colors"
               title="Cancel (Esc)"
             >
               Cancel
@@ -851,7 +851,7 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
             <button
               onClick={handleSave}
               disabled={errors.some(e => e.severity === 'error')}
-              className="px-4 py-2 bg-accent hover:bg-accent/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-primary hover:bg-primary/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title="Save Connection (Cmd/Ctrl+S)"
             >
               Save Connection

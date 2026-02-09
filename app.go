@@ -23,6 +23,7 @@ import (
 	"github.com/peternagy/mongopal/internal/schema"
 	"github.com/peternagy/mongopal/internal/script"
 	"github.com/peternagy/mongopal/internal/storage"
+	"github.com/peternagy/mongopal/internal/theme"
 	"github.com/peternagy/mongopal/internal/types"
 )
 
@@ -71,7 +72,16 @@ type ScriptResult = types.ScriptResult
 type CSVExportOptions = types.CSVExportOptions
 type SavedQuery = types.SavedQuery
 type CollectionProfile = types.CollectionProfile
+type ServerInfo = types.ServerInfo
+type ServerHostInfo = types.ServerHostInfo
+type ServerStatusInfo = types.ServerStatusInfo
+type ReplicaSetInfo = types.ReplicaSetInfo
+type ReplicaSetMember = types.ReplicaSetMember
 type PerformanceMetrics = performance.Metrics
+type Theme = types.Theme
+type ThemeColors = types.ThemeColors
+type ThemeFonts = types.ThemeFonts
+type ThemeConfig = types.ThemeConfig
 
 // =============================================================================
 // App - Thin Facade for Wails Bindings
@@ -96,6 +106,7 @@ type App struct {
 	script           *script.Service
 	performance      *performance.Service
 	auth             *auth.Service
+	theme            *theme.ThemeManager
 }
 
 // NewApp creates a new App instance
@@ -160,6 +171,7 @@ func (a *App) startup(ctx context.Context) {
 	a.importer = importer.NewService(a.state, a.connStore)
 	a.script = script.NewService(a.connStore)
 	a.performance = performance.NewService(a.state)
+	a.theme = theme.NewThemeManager(a.state, configDir)
 }
 
 // shutdown is called when the app is closing
@@ -197,6 +209,10 @@ func (a *App) GetConnectionStatus(connID string) ConnectionStatus {
 
 func (a *App) GetConnectionInfo(connID string) ConnectionInfo {
 	return a.connection.GetConnectionInfo(connID)
+}
+
+func (a *App) GetServerInfo(connID string) (*ServerInfo, error) {
+	return a.connection.GetServerInfo(connID)
 }
 
 // =============================================================================

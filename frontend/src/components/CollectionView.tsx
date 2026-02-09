@@ -308,15 +308,15 @@ function QueryHistoryDropdown({
   return (
     <div
       ref={historyRef}
-      className="absolute right-0 top-full mt-1 w-[500px] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-[100] flex flex-col max-h-72 isolate"
+      className="absolute right-0 top-full mt-1 w-[500px] bg-surface border border-border rounded-lg shadow-xl z-[100] flex flex-col max-h-72 isolate"
       onKeyDown={handleKeyDown}
     >
       {/* Filter input */}
-      <div className="flex-shrink-0 p-2 border-b border-zinc-700">
+      <div className="flex-shrink-0 p-2 border-b border-border">
         <input
           ref={filterInputRef}
           type="text"
-          className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+          className="w-full px-2 py-1.5 bg-background border border-border rounded text-sm text-text-light placeholder-text-dim focus:outline-none focus:border-border-light"
           placeholder="Type to filter history..."
           value={filterText}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setFilterText(e.target.value)}
@@ -329,7 +329,7 @@ function QueryHistoryDropdown({
       {/* History list */}
       <div ref={listRef} className="flex-1 overflow-auto">
         {filteredHistory.length === 0 ? (
-          <div className="px-3 py-2 text-sm text-zinc-500">
+          <div className="px-3 py-2 text-sm text-text-dim">
             {queryHistory.length === 0 ? 'No query history' : 'No matching queries'}
           </div>
         ) : (
@@ -337,8 +337,8 @@ function QueryHistoryDropdown({
             <button
               key={idx}
               data-history-item
-              className={`w-full px-3 py-2 text-left border-b border-zinc-700 last:border-0 transition-colors ${
-                idx === highlightedIndex ? 'bg-zinc-600' : 'hover:bg-zinc-700'
+              className={`w-full px-3 py-2 text-left border-b border-border last:border-0 transition-colors ${
+                idx === highlightedIndex ? 'bg-surface-active' : 'hover:bg-surface-hover'
               }`}
               onClick={() => {
                 onSelect(item.query)
@@ -346,22 +346,22 @@ function QueryHistoryDropdown({
               }}
               onMouseEnter={() => setHighlightedIndex(idx)}
             >
-              <div className="font-mono text-sm text-zinc-200 truncate">{item.query}</div>
-              <div className="text-xs text-zinc-500">{item.collection}</div>
+              <div className="font-mono text-sm text-text-light truncate">{item.query}</div>
+              <div className="text-xs text-text-dim">{item.collection}</div>
             </button>
           ))
         )}
       </div>
       {/* Keyboard hints */}
-      <div className="flex-shrink-0 px-3 py-1.5 border-t border-zinc-700 text-xs text-zinc-500 flex gap-3">
+      <div className="flex-shrink-0 px-3 py-1.5 border-t border-border text-xs text-text-dim flex gap-3">
         <span>
-          <kbd className="px-1 py-0.5 bg-zinc-700 rounded text-zinc-400">up/down</kbd> navigate
+          <kbd className="px-1 py-0.5 bg-surface-hover rounded text-text-muted">up/down</kbd> navigate
         </span>
         <span>
-          <kbd className="px-1 py-0.5 bg-zinc-700 rounded text-zinc-400">Enter</kbd> select
+          <kbd className="px-1 py-0.5 bg-surface-hover rounded text-text-muted">Enter</kbd> select
         </span>
         <span>
-          <kbd className="px-1 py-0.5 bg-zinc-700 rounded text-zinc-400">Esc</kbd> close
+          <kbd className="px-1 py-0.5 bg-surface-hover rounded text-text-muted">Esc</kbd> close
         </span>
       </div>
     </div>
@@ -1420,7 +1420,7 @@ export default function CollectionView({
             <div className="flex items-center gap-2">
               {loading ? (
                 <button
-                  className="btn btn-secondary flex items-center gap-1.5 text-red-400 hover:text-red-300"
+                  className="btn btn-secondary flex items-center gap-1.5 text-error hover:text-red-300"
                   onClick={cancelQuery}
                 >
                   <StopIcon className="w-4 h-4" />
@@ -1469,7 +1469,7 @@ export default function CollectionView({
                 refreshTrigger={savedQueriesRefreshKey}
               />
               <button
-                className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-accent"
+                className="icon-btn p-1.5 hover:bg-surface-hover text-text-muted hover:text-primary"
                 onClick={() => setShowSaveQueryModal(true)}
                 title="Save current query"
               >
@@ -1477,7 +1477,7 @@ export default function CollectionView({
               </button>
               <div className="relative z-40">
                 <button
-                  className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
+                  className="icon-btn p-1.5 hover:bg-surface-hover text-text-muted hover:text-text-light"
                   onClick={() => setShowHistory(!showHistory)}
                   title="Query history"
                 >
@@ -1493,7 +1493,7 @@ export default function CollectionView({
                 )}
               </div>
               <button
-                className={`icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ${
+                className={`icon-btn p-1.5 hover:bg-surface-hover text-text-muted hover:text-text-light ${
                   explaining ? 'animate-pulse' : ''
                 } ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
                 onClick={explainQuery}
@@ -1512,11 +1512,11 @@ export default function CollectionView({
             </div>
           </div>
           {/* Monaco Editor with resizable height */}
-          <div className="border border-zinc-700 rounded overflow-visible">
+          <div className="border border-border rounded overflow-visible">
             <Editor
               height={`${editorHeight}px`}
               defaultLanguage="mongoquery"
-              theme="vs-dark"
+              theme="mongopal-dark"
               value={query}
               onChange={(value) => setQuery(value || '')}
               options={{
@@ -1556,7 +1556,7 @@ export default function CollectionView({
           </div>
           {/* Resize handle */}
           <div
-            className="h-1.5 cursor-ns-resize bg-transparent hover:bg-zinc-600 transition-colors -mt-1 rounded-b"
+            className="h-1.5 cursor-ns-resize bg-transparent hover:bg-surface-active transition-colors -mt-1 rounded-b"
             onMouseDown={(e: MouseEvent<HTMLDivElement>) => {
               e.preventDefault()
               resizingRef.current = true
@@ -1587,7 +1587,7 @@ export default function CollectionView({
 
       {/* Read-only indicator */}
       {readOnly && (
-        <div className="flex-shrink-0 px-3 py-1 bg-amber-900/20 border-b border-amber-800 text-amber-400 text-xs flex items-center gap-2">
+        <div className="flex-shrink-0 px-3 py-1 bg-warning-dark/20 border-b border-amber-800 text-warning text-xs flex items-center gap-2">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
               strokeLinecap="round"
@@ -1609,8 +1609,8 @@ export default function CollectionView({
                 key={mode}
                 className={`view-mode-btn px-2 py-1 rounded text-xs capitalize ${
                   viewMode === mode
-                    ? 'bg-zinc-700 text-zinc-100'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    ? 'bg-surface-hover text-text'
+                    : 'text-text-muted hover:text-text-light hover:bg-surface'
                 }`}
                 onClick={() => setViewMode(mode)}
                 role="tab"
@@ -1622,19 +1622,19 @@ export default function CollectionView({
           </div>
 
           {queryTime !== null && (
-            <span className="text-zinc-400 text-xs">Query: {queryTime}ms</span>
+            <span className="text-text-muted text-xs">Query: {queryTime}ms</span>
           )}
         </div>
 
         {/* Pagination controls */}
         <div
-          className={`flex items-center gap-2 text-zinc-400 text-xs ${
+          className={`flex items-center gap-2 text-text-muted text-xs ${
             paginationResetHighlight ? 'pagination-reset-highlight' : ''
           }`}
         >
           {/* Page size selector */}
           <select
-            className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-xs text-zinc-300"
+            className="bg-surface border border-border rounded px-1.5 py-0.5 text-xs text-text-secondary"
             value={userLimit}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => {
               const newLimit = parseInt(e.target.value, 10)
@@ -1656,18 +1656,18 @@ export default function CollectionView({
           </select>
           <span>per page</span>
 
-          <span className="mx-1 text-zinc-600">|</span>
+          <span className="mx-1 text-text-dim">|</span>
 
           <span>
             {total > 0 ? `${skip + 1}-${Math.min(skip + limit, total)}` : '0'} of {total}
           </span>
 
-          <span className="mx-1 text-zinc-600">|</span>
+          <span className="mx-1 text-text-dim">|</span>
 
           {/* Navigation buttons */}
           <div className="flex gap-0.5">
             <button
-              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
               onClick={() => setSkip(0)}
               disabled={skip === 0}
               title="First page"
@@ -1675,7 +1675,7 @@ export default function CollectionView({
               &#xAB;&#xAB;
             </button>
             <button
-              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
               onClick={() => setSkip(Math.max(0, skip - limit))}
               disabled={skip === 0}
               title="Previous page"
@@ -1687,7 +1687,7 @@ export default function CollectionView({
             <div className="flex items-center gap-1 mx-1">
               <input
                 type="text"
-                className="w-10 px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-center text-xs"
+                className="w-10 px-1.5 py-0.5 bg-surface border border-border rounded text-center text-xs"
                 value={goToPage || currentPage}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => setGoToPage(e.target.value)}
                 onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
@@ -1709,7 +1709,7 @@ export default function CollectionView({
             </div>
 
             <button
-              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
               onClick={() => setSkip(skip + limit)}
               disabled={skip + limit >= total}
               title="Next page"
@@ -1717,7 +1717,7 @@ export default function CollectionView({
               &#xBB;
             </button>
             <button
-              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="pagination-btn px-1.5 py-0.5 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
               onClick={() => setSkip((totalPages - 1) * limit)}
               disabled={skip + limit >= total}
               title="Last page"
@@ -1729,9 +1729,9 @@ export default function CollectionView({
           {/* Column visibility toggle - only in table view */}
           {viewMode === 'table' && (
             <>
-              <span className="mx-1 text-zinc-600">|</span>
+              <span className="mx-1 text-text-dim">|</span>
               {columnCountInfo && (
-                <span className="text-xs text-zinc-400">
+                <span className="text-xs text-text-muted">
                   {columnCountInfo.visible} / {columnCountInfo.total} columns
                 </span>
               )}
@@ -1761,19 +1761,19 @@ export default function CollectionView({
 
       {/* Health check warning banner (LDH-01) */}
       {healthWarnings.length > 0 && (
-        <div className="flex-shrink-0 px-3 py-2 bg-amber-900/20 border-b border-amber-800/50">
+        <div className="flex-shrink-0 px-3 py-2 bg-warning-dark/20 border-b border-amber-800/50">
           <div className="flex items-start gap-2">
-            <svg className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
             <div className="flex-1">
               <div className="text-sm text-amber-300 font-medium">Large Collection Warning</div>
               {healthWarnings.map((w, i) => (
-                <div key={i} className="text-xs text-amber-400/80 mt-0.5">{w}</div>
+                <div key={i} className="text-xs text-warning/80 mt-0.5">{w}</div>
               ))}
             </div>
             <button
-              className="text-amber-400/60 hover:text-amber-300 p-0.5 flex-shrink-0"
+              className="text-warning/60 hover:text-amber-300 p-0.5 flex-shrink-0"
               onClick={() => setHealthWarningDismissed(true)}
               title="Dismiss warning for this session"
             >
@@ -1787,15 +1787,15 @@ export default function CollectionView({
 
       {/* Auto-projection info bar (LDH-03) */}
       {autoProjectionInfo && (
-        <div className="flex-shrink-0 px-3 py-1.5 bg-blue-900/20 border-b border-blue-800/40 flex items-center gap-2 text-xs">
-          <svg className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="flex-shrink-0 px-3 py-1.5 bg-info-dark/20 border-b border-blue-800/40 flex items-center gap-2 text-xs">
+          <svg className="w-3.5 h-3.5 text-info flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span className="text-blue-300">
             Showing {autoProjectionInfo.fieldCount} of {autoProjectionInfo.totalFields} fields (auto-projected). Edit the query to change.
           </span>
           <button
-            className="text-blue-400 hover:text-blue-200 underline"
+            className="text-info hover:text-blue-200 underline"
             onClick={handleShowAllFields}
           >
             Show All Fields
@@ -1805,20 +1805,20 @@ export default function CollectionView({
 
       {/* Adaptive page size info (LDH-05) */}
       {isAdaptive && (
-        <div className="flex-shrink-0 px-3 py-1.5 bg-blue-900/15 border-b border-blue-800/30 flex items-center gap-2 text-xs">
-          <svg className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="flex-shrink-0 px-3 py-1.5 bg-info-dark/15 border-b border-blue-800/30 flex items-center gap-2 text-xs">
+          <svg className="w-3.5 h-3.5 text-info flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span className="text-blue-300/80">{adaptiveInfo}</span>
-          <span className="text-zinc-500">Adjust in pagination controls.</span>
+          <span className="text-text-dim">Adjust in pagination controls.</span>
         </div>
       )}
 
       {/* Response size warning (LDH-04) */}
       {responseSizeWarning && (
-        <div className="flex-shrink-0 px-3 py-2 bg-red-900/20 border-b border-red-800/50">
+        <div className="flex-shrink-0 px-3 py-2 bg-error-dark/20 border-b border-red-800/50">
           <div className="flex items-start gap-2">
-            <svg className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-4 h-4 text-error mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
             <div className="flex-1">
@@ -1827,7 +1827,7 @@ export default function CollectionView({
               </div>
               <div className="flex items-center gap-3 mt-1.5">
                 <button
-                  className="px-2 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded"
+                  className="px-2 py-1 text-xs bg-surface-hover hover:bg-surface-active text-text-light rounded"
                   onClick={() => {
                     responseSizeBypassRef.current = true
                     setResponseSizeWarning(null)
@@ -1837,7 +1837,7 @@ export default function CollectionView({
                   Continue Anyway
                 </button>
                 <button
-                  className="px-2 py-1 text-xs bg-accent/20 hover:bg-accent/30 text-accent rounded"
+                  className="px-2 py-1 text-xs bg-primary/20 hover:bg-primary/30 text-primary rounded"
                   onClick={() => {
                     setResponseSizeWarning(null)
                     setUserLimit(responseSizeWarning.suggestedPageSize)
@@ -1847,7 +1847,7 @@ export default function CollectionView({
                   Reduce to {responseSizeWarning.suggestedPageSize} docs
                 </button>
                 <button
-                  className="px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+                  className="px-2 py-1 text-xs text-text-muted hover:text-text-light"
                   onClick={() => setResponseSizeWarning(null)}
                 >
                   Cancel
@@ -1862,9 +1862,9 @@ export default function CollectionView({
       <div className="flex-1 overflow-auto relative">
         {/* Connection states */}
         {!isConnected && !isConnecting ? (
-          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+          <div className="h-full flex flex-col items-center justify-center text-text-muted gap-4">
             <svg
-              className="w-12 h-12 text-zinc-500"
+              className="w-12 h-12 text-text-dim"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -1879,20 +1879,20 @@ export default function CollectionView({
             <span>Not connected to database</span>
             <button
               onClick={() => connect(connectionId)}
-              className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium"
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-background rounded-lg font-medium"
             >
               Connect
             </button>
           </div>
         ) : isConnecting ? (
-          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-3">
+          <div className="h-full flex flex-col items-center justify-center text-text-muted gap-3">
             <div className="spinner" />
             <span>Connecting to database...</span>
           </div>
         ) : isRestoredTab && documents.length === 0 && !loading && !error ? (
-          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+          <div className="h-full flex flex-col items-center justify-center text-text-muted gap-4">
             <svg
-              className="w-12 h-12 text-zinc-500"
+              className="w-12 h-12 text-text-dim"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -1905,25 +1905,25 @@ export default function CollectionView({
               />
             </svg>
             <span>Session restored</span>
-            <p className="text-sm text-zinc-500">Click Run to execute query</p>
+            <p className="text-sm text-text-dim">Click Run to execute query</p>
             <button
               onClick={() => {
                 markTabActivated(tabId)
                 setIsRestoredTab(false)
               }}
-              className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium flex items-center gap-2"
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-background rounded-lg font-medium flex items-center gap-2"
             >
               <PlayIcon className="w-4 h-4" />
               Run Query
             </button>
           </div>
         ) : loading ? (
-          <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-3">
+          <div className="h-full flex flex-col items-center justify-center text-text-muted gap-3">
             <div className="spinner" />
             <span>Loading documents...</span>
           </div>
         ) : documents.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-zinc-400">
+          <div className="h-full flex items-center justify-center text-text-muted">
             <span>No documents found</span>
           </div>
         ) : viewMode === 'table' ? (
@@ -1952,7 +1952,7 @@ export default function CollectionView({
             <Editor
               height="100%"
               language="json"
-              theme="vs-dark"
+              theme="mongopal-dark"
               value={documentsJson}
               options={{
                 readOnly: true,
@@ -1973,7 +1973,7 @@ export default function CollectionView({
             <Editor
               height="100%"
               language="javascript"
-              theme="vs-dark"
+              theme="mongopal-dark"
               value={rawOutput || JSON.stringify(documents, null, 2)}
               options={{
                 readOnly: true,
@@ -2010,31 +2010,31 @@ export default function CollectionView({
         <div className="fixed inset-0 bg-black/70 z-50 p-[5%]">
           <div className="h-full w-full bg-surface border border-border rounded-lg flex flex-col shadow-2xl">
             <div className="flex-shrink-0 px-4 py-3 border-b border-border">
-              <h3 className="text-lg font-medium text-zinc-100">Delete Document</h3>
-              <p className="text-sm text-zinc-400">
+              <h3 className="text-lg font-medium text-text">Delete Document</h3>
+              <p className="text-sm text-text-muted">
                 {database} &gt; {collection}
               </p>
             </div>
             <div className="flex-1 p-4 overflow-auto">
               <div className="mb-4">
-                <p className="text-zinc-300 mb-2">
+                <p className="text-text-secondary mb-2">
                   This will execute the following delete operation:
                 </p>
-                <div className="bg-zinc-900 border border-zinc-700 rounded p-3 font-mono text-sm">
-                  <span className="text-zinc-500">db.</span>
-                  <span className="text-amber-400">{collection}</span>
-                  <span className="text-zinc-500">.deleteOne(</span>
-                  <span className="text-green-400">{'{ "_id": '}</span>
+                <div className="bg-background border border-border rounded p-3 font-mono text-sm">
+                  <span className="text-text-dim">db.</span>
+                  <span className="text-warning">{collection}</span>
+                  <span className="text-text-dim">.deleteOne(</span>
+                  <span className="text-success">{'{ "_id": '}</span>
                   <span className="text-purple-400">
                     {formatIdForShell(getDocIdForApi(deleteDoc) || '')}
                   </span>
-                  <span className="text-green-400">{' }'}</span>
-                  <span className="text-zinc-500">)</span>
+                  <span className="text-success">{' }'}</span>
+                  <span className="text-text-dim">)</span>
                 </div>
               </div>
               <div className="mb-4">
-                <p className="text-zinc-400 mb-2 text-sm">Document to delete:</p>
-                <pre className="bg-zinc-900 border border-zinc-700 rounded p-3 font-mono text-sm text-zinc-300 overflow-auto max-h-[50vh]">
+                <p className="text-text-muted mb-2 text-sm">Document to delete:</p>
+                <pre className="bg-background border border-border rounded p-3 font-mono text-sm text-text-secondary overflow-auto max-h-[50vh]">
                   {JSON.stringify(deleteDoc, null, 2)}
                 </pre>
               </div>
@@ -2064,47 +2064,47 @@ export default function CollectionView({
         <div className="fixed inset-0 bg-black/70 z-50 p-[5%]">
           <div className="h-full w-full bg-surface border border-border rounded-lg flex flex-col shadow-2xl">
             <div className="flex-shrink-0 px-4 py-3 border-b border-border">
-              <h3 className="text-lg font-medium text-zinc-100">
+              <h3 className="text-lg font-medium text-text">
                 Delete {selectedIds.size} Document{selectedIds.size !== 1 ? 's' : ''}
               </h3>
-              <p className="text-sm text-zinc-400">
+              <p className="text-sm text-text-muted">
                 {database} &gt; {collection}
               </p>
             </div>
             <div className="flex-1 p-4 overflow-hidden flex flex-col">
-              <p className="text-zinc-300 mb-2 flex-shrink-0">
+              <p className="text-text-secondary mb-2 flex-shrink-0">
                 This will execute the following delete operation:
               </p>
-              <div className="bg-zinc-900 border border-zinc-700 rounded p-3 font-mono text-sm flex-1 overflow-auto mb-4">
-                <span className="text-zinc-500">db.</span>
-                <span className="text-amber-400">{collection}</span>
-                <span className="text-zinc-500">.deleteMany(</span>
-                <span className="text-green-400">{'{ "_id": { "$in": ['}</span>
+              <div className="bg-background border border-border rounded p-3 font-mono text-sm flex-1 overflow-auto mb-4">
+                <span className="text-text-dim">db.</span>
+                <span className="text-warning">{collection}</span>
+                <span className="text-text-dim">.deleteMany(</span>
+                <span className="text-success">{'{ "_id": { "$in": ['}</span>
                 <br />
                 {Array.from(selectedIds).map((id, idx) => (
                   <span key={id}>
-                    <span className="text-zinc-500"> </span>
+                    <span className="text-text-dim"> </span>
                     <span className="text-purple-400">{formatIdForShell(id)}</span>
-                    {idx < selectedIds.size - 1 && <span className="text-zinc-500">,</span>}
+                    {idx < selectedIds.size - 1 && <span className="text-text-dim">,</span>}
                     <br />
                   </span>
                 ))}
-                <span className="text-green-400">{'] } }'}</span>
-                <span className="text-zinc-500">)</span>
+                <span className="text-success">{'] } }'}</span>
+                <span className="text-text-dim">)</span>
               </div>
 
               {/* Progress indicator during deletion */}
               {bulkDeleting && (
                 <div className="mb-4 flex-shrink-0">
-                  <div className="flex items-center justify-between text-sm text-zinc-400 mb-2">
+                  <div className="flex items-center justify-between text-sm text-text-muted mb-2">
                     <span>Deleting documents...</span>
                     <span>
                       {bulkDeleteProgress.done} / {bulkDeleteProgress.total}
                     </span>
                   </div>
-                  <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                  <div className="h-2 bg-surface rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-accent transition-all duration-200"
+                      className="h-full bg-primary transition-all duration-200"
                       style={{
                         width: `${(bulkDeleteProgress.done / bulkDeleteProgress.total) * 100}%`,
                       }}
@@ -2113,7 +2113,7 @@ export default function CollectionView({
                 </div>
               )}
 
-              <div className="bg-red-900/20 border border-red-800 rounded p-3 text-red-400 text-sm flex-shrink-0">
+              <div className="bg-error-dark/20 border border-red-800 rounded p-3 text-error text-sm flex-shrink-0">
                 This action cannot be undone. All selected documents will be permanently deleted.
               </div>
             </div>

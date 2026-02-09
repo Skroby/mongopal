@@ -5,7 +5,7 @@ import './monacoConfig'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { NotificationProvider } from './components/NotificationContext'
-import { ConnectionProvider, TabProvider, StatusProvider, OperationProvider, ExportQueueProvider, DebugProvider, SchemaProvider } from './components/contexts'
+import { ConnectionProvider, TabProvider, StatusProvider, OperationProvider, ExportQueueProvider, DebugProvider, SchemaProvider, ThemeProvider } from './components/contexts'
 import './index.css'
 
 const container = document.getElementById('root')
@@ -17,6 +17,7 @@ const root = createRoot(container)
 root.render(
   <React.StrictMode>
     <ErrorBoundary>
+      <ThemeProvider>
       <DebugProvider>
         <NotificationProvider>
           <ConnectionProvider>
@@ -34,6 +35,7 @@ root.render(
           </ConnectionProvider>
         </NotificationProvider>
       </DebugProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   </React.StrictMode>
 )

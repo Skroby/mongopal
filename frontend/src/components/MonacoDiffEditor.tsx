@@ -195,15 +195,15 @@ export default function MonacoDiffEditor({
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
         <style>{diffStyles}</style>
-        <div className="flex-1 border-b border-zinc-700" style={{ minHeight: '50%' }}>
-          <div className="text-xs text-zinc-400 px-2 py-1 bg-zinc-800 border-b border-zinc-700 flex items-center gap-2">
+        <div className="flex-1 border-b border-border" style={{ minHeight: '50%' }}>
+          <div className="text-xs text-text-muted px-2 py-1 bg-surface border-b border-border flex items-center gap-2">
             <span className="w-3 h-3 rounded bg-red-500/30 border border-red-500"></span>
             Original
           </div>
           <div ref={leftContainerRef} style={{ width: '100%', height: 'calc(100% - 28px)' }} />
         </div>
         <div className="flex-1" style={{ minHeight: '50%' }}>
-          <div className="text-xs text-zinc-400 px-2 py-1 bg-zinc-800 border-b border-zinc-700 flex items-center gap-2">
+          <div className="text-xs text-text-muted px-2 py-1 bg-surface border-b border-border flex items-center gap-2">
             <span className="w-3 h-3 rounded bg-green-500/30 border border-green-500"></span>
             Modified
           </div>
@@ -218,14 +218,14 @@ export default function MonacoDiffEditor({
     <div style={{ width: '100%', height: '100%', display: 'flex', position: 'relative' }}>
       <style>{diffStyles}</style>
       <div style={{ width: '50%', height: '100%', borderRight: '1px solid #3f3f46' }}>
-        <div className="text-xs text-zinc-400 px-2 py-1 bg-zinc-800 border-b border-zinc-700 flex items-center gap-2">
+        <div className="text-xs text-text-muted px-2 py-1 bg-surface border-b border-border flex items-center gap-2">
           <span className="w-3 h-3 rounded bg-red-500/30 border border-red-500"></span>
           Original
         </div>
         <div ref={leftContainerRef} style={{ width: '100%', height: 'calc(100% - 28px)' }} />
       </div>
       <div style={{ width: '50%', height: '100%' }}>
-        <div className="text-xs text-zinc-400 px-2 py-1 bg-zinc-800 border-b border-zinc-700 flex items-center gap-2">
+        <div className="text-xs text-text-muted px-2 py-1 bg-surface border-b border-border flex items-center gap-2">
           <span className="w-3 h-3 rounded bg-green-500/30 border border-green-500"></span>
           Modified
         </div>

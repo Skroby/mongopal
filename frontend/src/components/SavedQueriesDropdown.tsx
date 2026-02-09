@@ -136,7 +136,7 @@ export default function SavedQueriesDropdown({
         </svg>
         <span className="hidden sm:inline">Saved</span>
         {hasQueries && (
-          <span className="bg-zinc-700 text-zinc-300 text-xs px-1.5 py-0.5 rounded">
+          <span className="bg-surface-hover text-text-secondary text-xs px-1.5 py-0.5 rounded">
             {queries.length}
           </span>
         )}
@@ -157,12 +157,12 @@ export default function SavedQueriesDropdown({
           onKeyDown={handleKeyDown}
         >
           <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-300">
+            <span className="text-sm font-medium text-text-secondary">
               Saved Queries
             </span>
             <button
               type="button"
-              className="text-xs text-accent hover:text-accent/80"
+              className="text-xs text-primary hover:text-primary/80"
               onClick={handleManageClick}
             >
               Manage All
@@ -171,11 +171,11 @@ export default function SavedQueriesDropdown({
 
           <div className="max-h-64 overflow-y-auto">
             {loading ? (
-              <div className="px-3 py-4 text-center text-sm text-zinc-500">
+              <div className="px-3 py-4 text-center text-sm text-text-dim">
                 Loading...
               </div>
             ) : queries.length === 0 ? (
-              <div className="px-3 py-4 text-center text-sm text-zinc-500">
+              <div className="px-3 py-4 text-center text-sm text-text-dim">
                 No saved queries for this collection
               </div>
             ) : (
@@ -184,14 +184,14 @@ export default function SavedQueriesDropdown({
                   <li key={query.id}>
                     <button
                       type="button"
-                      className="w-full px-3 py-2 text-left hover:bg-zinc-800 transition-colors"
+                      className="w-full px-3 py-2 text-left hover:bg-surface transition-colors"
                       onClick={() => handleSelectQuery(query)}
                     >
-                      <div className="text-sm text-zinc-200 truncate">
+                      <div className="text-sm text-text-light truncate">
                         {query.name}
                       </div>
                       {query.description && (
-                        <div className="text-xs text-zinc-500 truncate mt-0.5">
+                        <div className="text-xs text-text-dim truncate mt-0.5">
                           {query.description}
                         </div>
                       )}
@@ -203,7 +203,7 @@ export default function SavedQueriesDropdown({
           </div>
 
           <div className="px-3 py-2 border-t border-border">
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-text-dim">
               Click to load query into filter
             </p>
           </div>

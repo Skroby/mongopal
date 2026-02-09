@@ -452,3 +452,134 @@ type SavedQuery struct {
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
 }
+
+// =============================================================================
+// Theme Types
+// =============================================================================
+
+// ThemeColors defines the 27 color tokens that constitute a theme.
+type ThemeColors struct {
+	Background   string `json:"background"`
+	Surface      string `json:"surface"`
+	SurfaceHover string `json:"surfaceHover"`
+	SurfaceActive string `json:"surfaceActive"`
+	TextDim      string `json:"textDim"`
+	TextMuted    string `json:"textMuted"`
+	TextSecondary string `json:"textSecondary"`
+	TextLight    string `json:"textLight"`
+	Text         string `json:"text"`
+	Border       string `json:"border"`
+	BorderLight  string `json:"borderLight"`
+	BorderHover  string `json:"borderHover"`
+
+	Primary      string `json:"primary"`
+	PrimaryHover string `json:"primaryHover"`
+	PrimaryMuted string `json:"primaryMuted"`
+
+	Error       string `json:"error"`
+	ErrorDark   string `json:"errorDark"`
+	Warning     string `json:"warning"`
+	WarningDark string `json:"warningDark"`
+	Success     string `json:"success"`
+	SuccessDark string `json:"successDark"`
+	Info        string `json:"info"`
+	InfoDark    string `json:"infoDark"`
+
+	ScrollbarTrack      string `json:"scrollbarTrack"`
+	ScrollbarThumb      string `json:"scrollbarThumb"`
+	ScrollbarThumbHover string `json:"scrollbarThumbHover"`
+}
+
+// ThemeFonts defines the 2 font tokens.
+type ThemeFonts struct {
+	UI   string `json:"ui"`
+	Mono string `json:"mono"`
+}
+
+// Theme is a complete color + font theme.
+type Theme struct {
+	ID      string      `json:"id"`
+	Name    string      `json:"name"`
+	Author  string      `json:"author,omitempty"`
+	Builtin bool        `json:"builtin"`
+	Colors  ThemeColors `json:"colors"`
+	Fonts   ThemeFonts  `json:"fonts,omitempty"`
+}
+
+// ThemeConfig persists the user's current theme selection.
+type ThemeConfig struct {
+	ActiveThemeID string `json:"activeThemeId"`
+}
+
+// =============================================================================
+// Server Info Types
+// =============================================================================
+
+// ServerInfo contains comprehensive server diagnostics from multiple MongoDB commands.
+type ServerInfo struct {
+	ServerVersion  string            `json:"serverVersion"`
+	GitVersion     string            `json:"gitVersion"`
+	Modules        []string          `json:"modules"`
+	OpenSSLVersion string            `json:"openSSLVersion"`
+	Topology       string            `json:"topology"` // "standalone", "replicaset", "sharded"
+	MaxBsonSize    int64             `json:"maxBsonSize"`
+	MaxMsgSize     int64             `json:"maxMsgSize"`
+	MaxWriteBatch  int64             `json:"maxWriteBatch"`
+	ReadOnly       bool              `json:"readOnly"`
+	FCV            string            `json:"fcv"`
+	FCVError       string            `json:"fcvError,omitempty"`
+	Host           *ServerHostInfo   `json:"host,omitempty"`
+	Status         *ServerStatusInfo `json:"status,omitempty"`
+	ReplicaSet     *ReplicaSetInfo   `json:"replicaSet,omitempty"`
+	RawServerStatus string           `json:"rawServerStatus,omitempty"`
+	RawReplStatus   string           `json:"rawReplStatus,omitempty"`
+	Errors         map[string]string `json:"errors,omitempty"`
+}
+
+// ServerHostInfo contains host system information.
+type ServerHostInfo struct {
+	Hostname string  `json:"hostname"`
+	OS       string  `json:"os"`
+	Arch     string  `json:"arch"`
+	CPUs     int     `json:"cpus"`
+	MemoryMB float64 `json:"memoryMB"`
+}
+
+// ServerStatusInfo contains key metrics from serverStatus.
+type ServerStatusInfo struct {
+	Uptime              int64  `json:"uptime"`
+	ConnsActive         int64  `json:"connsActive"`
+	ConnsCurrent        int64  `json:"connsCurrent"`
+	ConnsAvailable      int64  `json:"connsAvailable"`
+	ConnsTotalCreated   int64  `json:"connsTotalCreated"`
+	OpsInsert           int64  `json:"opsInsert"`
+	OpsQuery            int64  `json:"opsQuery"`
+	OpsUpdate           int64  `json:"opsUpdate"`
+	OpsDelete           int64  `json:"opsDelete"`
+	OpsGetmore          int64  `json:"opsGetmore"`
+	OpsCommand          int64  `json:"opsCommand"`
+	MemResident         int64  `json:"memResident"`
+	MemVirtual          int64  `json:"memVirtual"`
+	NetworkBytesIn      int64  `json:"networkBytesIn"`
+	NetworkBytesOut     int64  `json:"networkBytesOut"`
+	NetworkRequests     int64  `json:"networkRequests"`
+	StorageEngine       string `json:"storageEngine"`
+}
+
+// ReplicaSetInfo contains replica set topology information.
+type ReplicaSetInfo struct {
+	Name    string             `json:"name"`
+	Members []ReplicaSetMember `json:"members"`
+}
+
+// ReplicaSetMember describes a single replica set member.
+type ReplicaSetMember struct {
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	StateStr   string `json:"stateStr"`
+	Health     int    `json:"health"`
+	Uptime     int64  `json:"uptime"`
+	OptimeDate string `json:"optimeDate"`
+	SyncSource string `json:"syncSource,omitempty"`
+	Self       bool   `json:"self"`
+}

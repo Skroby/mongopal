@@ -119,14 +119,14 @@ const ExplainPanel: FC<ExplainPanelProps> = ({ result, onClose }) => {
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-zinc-100">Explain Plan</span>
+          <span className="text-sm font-medium text-text">Explain Plan</span>
           {isEfficient ? (
-            <span className="flex items-center gap-1 text-xs text-green-400">
+            <span className="flex items-center gap-1 text-xs text-success">
               <CheckIcon className="w-3.5 h-3.5" />
               Efficient
             </span>
           ) : hasWarning ? (
-            <span className="flex items-center gap-1 text-xs text-amber-400">
+            <span className="flex items-center gap-1 text-xs text-warning">
               <WarningIcon className="w-3.5 h-3.5" />
               Collection Scan
             </span>
@@ -134,7 +134,7 @@ const ExplainPanel: FC<ExplainPanelProps> = ({ result, onClose }) => {
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="text-xs text-zinc-400 hover:text-zinc-200 flex items-center gap-1"
+            className="text-xs text-text-muted hover:text-text-light flex items-center gap-1"
             onClick={() => setShowRaw(!showRaw)}
           >
             {showRaw ? (
@@ -150,7 +150,7 @@ const ExplainPanel: FC<ExplainPanelProps> = ({ result, onClose }) => {
             )}
           </button>
           <button
-            className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
+            className="p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text-light"
             onClick={onClose}
             title="Close"
           >
@@ -163,11 +163,11 @@ const ExplainPanel: FC<ExplainPanelProps> = ({ result, onClose }) => {
       <div className="px-3 py-2">
         {/* Warning for collection scan */}
         {hasWarning && (
-          <div className="mb-3 px-3 py-2 bg-amber-900/20 border border-amber-800 rounded text-amber-400 text-xs flex items-start gap-2">
+          <div className="mb-3 px-3 py-2 bg-warning-dark/20 border border-amber-800 rounded text-warning text-xs flex items-start gap-2">
             <WarningIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-medium">Collection Scan Detected</p>
-              <p className="mt-1 text-amber-400/80">
+              <p className="mt-1 text-warning/80">
                 This query examined {formatNumber(docsExamined)} documents without using an index.
                 Consider adding an index to improve performance.
               </p>
@@ -178,53 +178,53 @@ const ExplainPanel: FC<ExplainPanelProps> = ({ result, onClose }) => {
         {/* Stats grid - 2 column layout with wrapping values */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 mb-3">
           <div>
-            <div className="text-xs text-zinc-400 mb-0.5">Stage</div>
-            <div className={`text-sm font-mono ${isCollectionScan ? 'text-amber-400' : 'text-green-400'}`}>
+            <div className="text-xs text-text-muted mb-0.5">Stage</div>
+            <div className={`text-sm font-mono ${isCollectionScan ? 'text-warning' : 'text-success'}`}>
               {queryPlanner.winningPlanStage}
             </div>
           </div>
           <div>
-            <div className="text-xs text-zinc-400 mb-0.5">Index Used</div>
-            <div className={`text-sm font-mono break-words ${indexUsed ? 'text-green-400' : 'text-zinc-400'}`}>
+            <div className="text-xs text-text-muted mb-0.5">Index Used</div>
+            <div className={`text-sm font-mono break-words ${indexUsed ? 'text-success' : 'text-text-muted'}`}>
               {indexUsed || 'None'}
             </div>
           </div>
           <div>
-            <div className="text-xs text-zinc-400 mb-0.5">Docs Returned / Examined</div>
-            <div className="text-sm font-mono text-zinc-200">
+            <div className="text-xs text-text-muted mb-0.5">Docs Returned / Examined</div>
+            <div className="text-sm font-mono text-text-light">
               {formatNumber(docsReturned)} / {formatNumber(docsExamined)}
-              <span className={`ml-2 text-xs ${parseFloat(efficiency) >= 50 ? 'text-green-400' : 'text-amber-400'}`}>
+              <span className={`ml-2 text-xs ${parseFloat(efficiency) >= 50 ? 'text-success' : 'text-warning'}`}>
                 ({efficiency}%)
               </span>
             </div>
           </div>
           <div>
-            <div className="text-xs text-zinc-400 mb-0.5">Execution Time</div>
-            <div className="text-sm font-mono text-zinc-200">
+            <div className="text-xs text-text-muted mb-0.5">Execution Time</div>
+            <div className="text-sm font-mono text-text-light">
               {executionStats.executionTimeMs}ms
             </div>
           </div>
           <div>
-            <div className="text-xs text-zinc-400 mb-0.5">Keys Examined</div>
-            <div className="text-sm font-mono text-zinc-200">
+            <div className="text-xs text-text-muted mb-0.5">Keys Examined</div>
+            <div className="text-sm font-mono text-text-light">
               {formatNumber(executionStats.totalKeysExamined)}
             </div>
           </div>
           <div>
-            <div className="text-xs text-zinc-400 mb-0.5">Rejected Plans</div>
-            <div className="text-sm font-mono text-zinc-200">
+            <div className="text-xs text-text-muted mb-0.5">Rejected Plans</div>
+            <div className="text-sm font-mono text-text-light">
               {queryPlanner.rejectedPlans}
             </div>
           </div>
           <div>
-            <div className="text-xs text-zinc-400 mb-0.5">Namespace</div>
-            <div className="text-sm font-mono text-zinc-200 break-words">
+            <div className="text-xs text-text-muted mb-0.5">Namespace</div>
+            <div className="text-sm font-mono text-text-light break-words">
               {queryPlanner.namespace}
             </div>
           </div>
           <div>
-            <div className="text-xs text-zinc-400 mb-0.5">Plan Summary</div>
-            <div className="text-sm font-mono text-zinc-200 break-words">
+            <div className="text-xs text-text-muted mb-0.5">Plan Summary</div>
+            <div className="text-sm font-mono text-text-light break-words">
               {winningPlan}
             </div>
           </div>
@@ -234,16 +234,16 @@ const ExplainPanel: FC<ExplainPanelProps> = ({ result, onClose }) => {
         {showRaw && (
           <div className="mt-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-zinc-400">Raw Explain Output</span>
+              <span className="text-xs text-text-muted">Raw Explain Output</span>
               <button
-                className={`p-1 rounded hover:bg-zinc-700 ${copied ? 'text-accent' : 'text-zinc-400 hover:text-zinc-200'}`}
+                className={`p-1 rounded hover:bg-surface-hover ${copied ? 'text-primary' : 'text-text-muted hover:text-text-light'}`}
                 onClick={handleCopyRaw}
                 title={copied ? 'Copied!' : 'Copy raw output'}
               >
                 {copied ? <CopyCheckIcon className="w-3.5 h-3.5" /> : <CopyIcon className="w-3.5 h-3.5" />}
               </button>
             </div>
-            <pre className="p-2 bg-zinc-900 border border-zinc-700 rounded text-xs text-zinc-300 overflow-auto max-h-64">
+            <pre className="p-2 bg-background border border-border rounded text-xs text-text-secondary overflow-auto max-h-64">
               {rawExplain}
             </pre>
           </div>

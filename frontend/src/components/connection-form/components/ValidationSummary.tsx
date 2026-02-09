@@ -14,10 +14,10 @@ export function ValidationSummary({ errors, onJumpToError }: ValidationSummaryPr
   const warningCount = errors.filter(e => e.severity === 'warning').length;
 
   return (
-    <div className="border-t border-zinc-700 p-4 bg-zinc-800/50">
+    <div className="border-t border-border p-4 bg-surface/50">
       <div className="flex items-center gap-2 mb-2">
         {errorCount > 0 && (
-          <span className="text-sm font-medium text-red-400">
+          <span className="text-sm font-medium text-error">
             {errorCount} {errorCount === 1 ? 'error' : 'errors'}
           </span>
         )}
@@ -32,12 +32,12 @@ export function ValidationSummary({ errors, onJumpToError }: ValidationSummaryPr
           <button
             key={`${error.field}-${index}`}
             onClick={() => onJumpToError(error.tab, error.field)}
-            className="block w-full text-left text-xs hover:bg-zinc-700/50 px-2 py-1 rounded transition-colors"
+            className="block w-full text-left text-xs hover:bg-surface-hover/50 px-2 py-1 rounded transition-colors"
           >
-            <span className={error.severity === 'error' ? 'text-red-400' : 'text-yellow-400'}>
+            <span className={error.severity === 'error' ? 'text-error' : 'text-yellow-400'}>
               {error.tab}:
             </span>
-            <span className="text-zinc-300 ml-1">{error.message}</span>
+            <span className="text-text-secondary ml-1">{error.message}</span>
           </button>
         ))}
       </div>

@@ -36,30 +36,30 @@ export default function ExportEncryptedOverlay({
 
   return (
     <div className="absolute inset-0 z-10 bg-black/60 flex items-center justify-center p-6">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-lg p-5 space-y-4">
+      <div className="bg-background text-text border border-border rounded-lg shadow-2xl w-full max-w-lg p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">Export Encrypted Connection</h3>
-          <button onClick={onClose} className="text-zinc-400 hover:text-white text-lg leading-none">
+          <h3 className="text-sm font-medium text-text">Export Encrypted Connection</h3>
+          <button onClick={onClose} className="text-text-muted hover:text-text text-lg leading-none">
             ✕
           </button>
         </div>
 
-        <p className="text-xs text-zinc-400">
-          &ldquo;{connectionName}&rdquo; encrypted successfully. Share the bundle and key via <strong className="text-zinc-300">separate channels</strong>.
+        <p className="text-xs text-text-muted">
+          &ldquo;{connectionName}&rdquo; encrypted successfully. Share the bundle and key via <strong className="text-text-secondary">separate channels</strong>.
         </p>
 
         {/* Encrypted Bundle */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-zinc-300">Encrypted Bundle</label>
+          <label className="text-xs font-medium text-text-secondary">Encrypted Bundle</label>
           <div
             onClick={selectAll}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-400 font-mono text-xs break-all max-h-24 overflow-y-auto cursor-text select-all"
+            className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-muted font-mono text-xs break-all max-h-24 overflow-y-auto cursor-text select-all"
           >
             {bundle}
           </div>
           <button
             onClick={() => handleCopy(bundle, setBundleCopied)}
-            className="px-2.5 py-1 text-xs border border-zinc-600 hover:border-zinc-500 text-zinc-300 hover:text-white rounded transition-colors"
+            className="px-2.5 py-1 text-xs border border-border-light hover:border-border-hover text-text-secondary hover:text-text rounded transition-colors"
           >
             {bundleCopied ? 'Copied!' : 'Copy Bundle'}
           </button>
@@ -67,30 +67,30 @@ export default function ExportEncryptedOverlay({
 
         {/* Decryption Key */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-zinc-300">Decryption Key</label>
+          <label className="text-xs font-medium text-text-secondary">Decryption Key</label>
           <div
             onClick={selectAll}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white font-mono text-sm tracking-wide cursor-text select-all"
+            className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text font-mono text-sm tracking-wide cursor-text select-all"
           >
             {decryptionKey}
           </div>
           <button
             onClick={() => handleCopy(decryptionKey, setKeyCopied)}
-            className="px-2.5 py-1 text-xs border border-zinc-600 hover:border-zinc-500 text-zinc-300 hover:text-white rounded transition-colors"
+            className="px-2.5 py-1 text-xs border border-border-light hover:border-border-hover text-text-secondary hover:text-text rounded transition-colors"
           >
             {keyCopied ? 'Copied!' : 'Copy Key'}
           </button>
         </div>
 
         {/* Warning */}
-        <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded px-3 py-2">
+        <p className="text-xs text-warning/80 bg-warning/10 border border-warning/20 rounded px-3 py-2">
           Anyone with both the bundle and key can access this connection with full credentials. Send them through separate channels.
         </p>
 
         <div className="flex justify-end pt-1">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 text-white rounded-md transition-colors"
+            className="px-3 py-1.5 text-sm bg-surface-hover hover:bg-surface-active text-text rounded-md transition-colors"
           >
             Done
           </button>

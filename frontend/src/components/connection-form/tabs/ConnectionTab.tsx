@@ -58,7 +58,7 @@ export function ConnectionTab({ data, errors, folders, onChange, showAdvanced }:
           type="text"
           value={data.name}
           onChange={e => onChange({ name: e.target.value })}
-          className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           placeholder="My MongoDB Connection"
           data-testid="connection-name"
         />
@@ -69,7 +69,7 @@ export function ConnectionTab({ data, errors, folders, onChange, showAdvanced }:
         <select
           value={data.folderId || ''}
           onChange={e => onChange({ folderId: e.target.value })}
-          className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         >
           <option value="">No folder</option>
           {folders.map(folder => (
@@ -85,7 +85,7 @@ export function ConnectionTab({ data, errors, folders, onChange, showAdvanced }:
         <select
           value={data.connectionType}
           onChange={e => handleConnectionTypeChange(e.target.value as ConnectionType)}
-          className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           data-testid="connection-type-select"
         >
           <option value="standalone">Standalone</option>
@@ -107,7 +107,7 @@ export function ConnectionTab({ data, errors, folders, onChange, showAdvanced }:
             type="text"
             value={data.srvHostname}
             onChange={e => onChange({ srvHostname: e.target.value })}
-            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             placeholder="cluster0.mongodb.net"
             data-testid="srv-hostname"
           />
@@ -116,18 +116,18 @@ export function ConnectionTab({ data, errors, folders, onChange, showAdvanced }:
         <>
           {/* Hosts */}
           <div className="space-y-3">
-            <label className="block text-sm font-medium text-white">
+            <label className="block text-sm font-medium text-text">
               {data.connectionType === 'replicaset' && 'Replica Set Hosts'}
               {data.connectionType === 'sharded' && 'Mongos Routers'}
               {data.connectionType === 'standalone' && 'Host'}
-              <span className="text-red-400 ml-1 font-bold">*</span>
+              <span className="text-error ml-1 font-bold">*</span>
             </label>
             {data.hosts.map((host, index) => {
               // In basic mode, only show the first host (unless multi-host type)
               const isMultiHostType = data.connectionType === 'replicaset' || data.connectionType === 'sharded';
               if (!showAdvanced && !isMultiHostType && index > 0) return null;
               return (
-                <div key={index} className="flex gap-2 items-start p-3 bg-zinc-800/50 rounded-md border border-zinc-700">
+                <div key={index} className="flex gap-2 items-start p-3 bg-surface/50 rounded-md border border-border">
                   <FieldWithError
                     label=""
                     error={getError(`hosts[${index}].host`)}
@@ -136,7 +136,7 @@ export function ConnectionTab({ data, errors, folders, onChange, showAdvanced }:
                       type="text"
                       value={host.host}
                       onChange={e => handleHostChange(index, 'host', e.target.value)}
-                      className="flex-1 px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                      className="flex-1 px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       placeholder="localhost or 192.168.1.1"
                     />
                   </FieldWithError>
@@ -148,7 +148,7 @@ export function ConnectionTab({ data, errors, folders, onChange, showAdvanced }:
                       type="number"
                       value={host.port}
                       onChange={e => handleHostChange(index, 'port', parseInt(e.target.value, 10) || 27017)}
-                      className="w-24 px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                      className="w-24 px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       min={1}
                       max={65535}
                     />
@@ -168,7 +168,7 @@ export function ConnectionTab({ data, errors, folders, onChange, showAdvanced }:
             {(data.connectionType === 'replicaset' || data.connectionType === 'sharded') && (
               <button
                 onClick={addHost}
-                className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-md transition-colors w-full"
+                className="px-3 py-1.5 bg-surface-hover hover:bg-surface-active text-text text-sm rounded-md transition-colors w-full"
               >
                 + Add Host
               </button>
@@ -187,7 +187,7 @@ export function ConnectionTab({ data, errors, folders, onChange, showAdvanced }:
                 type="text"
                 value={data.replicaSetName || ''}
                 onChange={e => onChange({ replicaSetName: e.target.value })}
-                className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="rs0"
                 data-testid="replica-set-name"
               />
@@ -205,7 +205,7 @@ export function ConnectionTab({ data, errors, folders, onChange, showAdvanced }:
           type="text"
           value={data.defaultDatabase || ''}
           onChange={e => onChange({ defaultDatabase: e.target.value })}
-          className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           placeholder="mydb"
         />
       </FieldWithError>

@@ -127,12 +127,12 @@ export default function SaveQueryModal({
       className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
       onKeyDown={handleKeyDown}
     >
-      <div className="bg-surface border border-border rounded-lg shadow-xl w-full max-w-md">
+      <div className="bg-surface text-text border border-border rounded-lg shadow-xl w-full max-w-md">
         <div className="px-4 py-3 border-b border-border">
-          <h3 className="text-lg font-medium text-zinc-100">
+          <h3 className="text-lg font-medium text-text">
             {existingQuery ? 'Edit Saved Query' : 'Save Query'}
           </h3>
-          <p className="text-sm text-zinc-400 mt-0.5">
+          <p className="text-sm text-text-muted mt-0.5">
             {database} &gt; {collection}
           </p>
         </div>
@@ -141,8 +141,8 @@ export default function SaveQueryModal({
           <div className="p-4 space-y-4">
             {/* Name input */}
             <div>
-              <label htmlFor="query-name" className="block text-sm font-medium text-zinc-300 mb-1">
-                Name <span className="text-red-400">*</span>
+              <label htmlFor="query-name" className="block text-sm font-medium text-text-secondary mb-1">
+                Name <span className="text-error">*</span>
               </label>
               <input
                 ref={nameInputRef}
@@ -160,8 +160,8 @@ export default function SaveQueryModal({
 
             {/* Description input */}
             <div>
-              <label htmlFor="query-description" className="block text-sm font-medium text-zinc-300 mb-1">
-                Description <span className="text-zinc-500">(optional)</span>
+              <label htmlFor="query-description" className="block text-sm font-medium text-text-secondary mb-1">
+                Description <span className="text-text-dim">(optional)</span>
               </label>
               <textarea
                 id="query-description"
@@ -178,10 +178,10 @@ export default function SaveQueryModal({
 
             {/* Query preview */}
             <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-1">
+              <label className="block text-sm font-medium text-text-secondary mb-1">
                 Query
               </label>
-              <pre className="bg-zinc-900 border border-zinc-700 rounded p-2 text-xs text-zinc-400 font-mono overflow-auto max-h-24">
+              <pre className="bg-background border border-border rounded p-2 text-xs text-text-muted font-mono overflow-auto max-h-24">
                 {query}
               </pre>
             </div>

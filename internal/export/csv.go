@@ -196,8 +196,18 @@ func (s *Service) ExportCollectionAsCSV(connID, dbName, collName, defaultFilenam
 
 	var docCount int64
 	for cursor.Next(ctx) {
-		// Check for cancellation
+		// Check for pause/cancellation periodically
 		if docCount%100 == 0 {
+			// Wait if paused (also checks for cancellation)
+			if !s.state.WaitIfExportPaused(exportCtx) {
+				cursor.Close(ctx)
+				tempWriter.Flush()
+				tempFile.Close()
+				os.Remove(filePath)
+				s.state.EmitEvent("export:cancelled", map[string]interface{}{"exportId": exportID, "database": dbName, "collection": collName})
+				return fmt.Errorf("export cancelled")
+			}
+			// Also check context directly
 			select {
 			case <-exportCtx.Done():
 				cursor.Close(ctx)
@@ -308,8 +318,17 @@ func (s *Service) ExportCollectionAsCSV(connID, dbName, collName, defaultFilenam
 
 	var exportedCount int64
 	for scanner.Scan() {
-		// Check for cancellation
+		// Check for pause/cancellation periodically
 		if exportedCount%100 == 0 {
+			// Wait if paused (also checks for cancellation)
+			if !s.state.WaitIfExportPaused(exportCtx) {
+				writer.Flush()
+				file.Close()
+				os.Remove(filePath)
+				s.state.EmitEvent("export:cancelled", map[string]interface{}{"exportId": exportID, "database": dbName, "collection": collName})
+				return fmt.Errorf("export cancelled")
+			}
+			// Also check context directly
 			select {
 			case <-exportCtx.Done():
 				writer.Flush()

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { useNotification } from './NotificationContext'
-import { useOperation } from './contexts/OperationContext'
+import { useExportQueue } from './contexts/ExportQueueContext'
 import { useProgressETA } from '../hooks/useProgressETA'
 import ConfirmDialog from './ConfirmDialog'
 import { getErrorSummary } from '../utils/errorParser'
@@ -95,6 +95,8 @@ export interface ImportDatabasesModalProps {
   connectionId: string
   connectionName: string
   onClose: () => void
+  onHide?: () => void
+  onShow?: () => void
   onComplete?: () => void
 }
 
@@ -135,10 +137,12 @@ export default function ImportDatabasesModal({
   connectionId,
   connectionName,
   onClose,
+  onHide,
+  onShow,
   onComplete,
 }: ImportDatabasesModalProps): React.ReactElement {
   const { notify } = useNotification()
-  const { startOperation, updateOperation, completeOperation } = useOperation()
+  const { trackImport, updateTrackedImport, completeTrackedImport, removeTrackedImport } = useExportQueue()
   const { recordProgress, getETA, reset: resetETA } = useProgressETA()
 
   // Step: 'select' | 'configure' | 'previewing' | 'preview' | 'importing' | 'done' | 'error'
@@ -151,7 +155,7 @@ export default function ImportDatabasesModal({
   const [result, setResult] = useState<ImportResult | null>(null)
   const [dryRunResult, setDryRunResult] = useState<ImportResult | null>(null)
   const [showOverrideConfirm, setShowOverrideConfirm] = useState<boolean>(false)
-  const operationId = useRef<string | null>(null)
+  const importId = useRef<string | null>(null)
   const [errorInfo, setErrorInfo] = useState<ImportErrorEventData | null>(null)
   const previewCancelledRef = useRef<boolean>(false)
   const totalDocsRef = useRef<number>(0)
@@ -171,10 +175,9 @@ export default function ImportDatabasesModal({
         recordProgress(data.processedDocs)
       }
 
-      // Update global operation indicator
-      if (operationId.current) {
-        let progressPercent: number | null = null
-        let label = `Importing to ${connectionName}...`
+      // Update transfer manager
+      if (importId.current) {
+        let progressPercent = 0
 
         if (data.total && data.total > 0 && data.current && data.current > 0) {
           progressPercent = Math.min(100, Math.round((data.current / data.total) * 100))
@@ -182,23 +185,27 @@ export default function ImportDatabasesModal({
           progressPercent = Math.round((((data.databaseIndex || 1) - 1) / data.databaseTotal) * 100)
         }
 
-        if (data.collection) {
-          label = `Importing ${data.collection}...`
-        } else if (data.database) {
-          label = `Importing ${data.database}...`
-        }
-
-        updateOperation(operationId.current, { progress: progressPercent, label })
+        updateTrackedImport(importId.current, {
+          phase: 'importing',
+          progress: progressPercent,
+          currentItem: data.collection || data.database || null,
+          itemIndex: data.databaseIndex || 0,
+          itemTotal: data.databaseTotal || 0,
+          processedDocs: data.processedDocs || 0,
+          totalDocs: data.totalDocs || 0,
+        })
       }
     })
     const unsubComplete = EventsOn('import:complete', (data: ImportResult) => {
       setStep('done')
       setProgress(null)
       setResult(data)
-      if (operationId.current) {
-        completeOperation(operationId.current)
-        operationId.current = null
+      if (importId.current) {
+        completeTrackedImport(importId.current)
+        importId.current = null
       }
+      // Auto-show modal so user sees the result
+      onShow?.()
     })
     const unsubCancelled = EventsOn('import:cancelled', (data: ImportResult) => {
       setStep('done')
@@ -206,10 +213,12 @@ export default function ImportDatabasesModal({
       setPaused(false)
       setResult({ ...data, cancelled: true })
       notify.info('Import cancelled')
-      if (operationId.current) {
-        completeOperation(operationId.current)
-        operationId.current = null
+      if (importId.current) {
+        removeTrackedImport(importId.current)
+        importId.current = null
       }
+      // Auto-show modal so user sees the result
+      onShow?.()
     })
     const unsubError = EventsOn('import:error', (data: ImportErrorEventData) => {
       setStep('error')
@@ -249,7 +258,7 @@ export default function ImportDatabasesModal({
       if (unsubDryRunProgress) unsubDryRunProgress()
       if (unsubDryRunComplete) unsubDryRunComplete()
     }
-  }, [connectionName, updateOperation, completeOperation, recordProgress, notify])
+  }, [connectionName, updateTrackedImport, completeTrackedImport, removeTrackedImport, recordProgress, notify])
 
   // Handle Escape key to close modal (respects nested ConfirmDialog)
   useEffect(() => {
@@ -330,13 +339,14 @@ export default function ImportDatabasesModal({
     totalDocsRef.current = 0
     processedDocsRef.current = 0
 
-    // Register global operation (imports with override mode are destructive)
-    operationId.current = startOperation({
-      type: 'import',
-      label: `Importing to ${connectionName}...`,
-      progress: null,
-      destructive: mode === 'override',
-    })
+    // Track in transfer manager
+    importId.current = trackImport(
+      connectionId,
+      connectionName,
+      Array.from(selectedDbs),
+      `Import to ${connectionName} (${selectedDbs.size} databases)`,
+      onShow
+    )
 
     try {
       await getGo()?.ImportDatabases?.(connectionId, {
@@ -362,9 +372,9 @@ export default function ImportDatabasesModal({
         failedCollection: '',
         remainingDatabases: Array.from(selectedDbs),
       })
-      if (operationId.current) {
-        completeOperation(operationId.current)
-        operationId.current = null
+      if (importId.current) {
+        removeTrackedImport(importId.current)
+        importId.current = null
       }
     }
   }
@@ -507,13 +517,13 @@ export default function ImportDatabasesModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-secondary border border-border rounded-lg w-[500px] max-h-[80vh] flex flex-col">
+      <div className="bg-surface-secondary text-text border border-border rounded-lg w-[500px] max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="px-4 py-3 border-b border-border">
-          <h2 className="text-lg font-medium text-zinc-100">Import Databases</h2>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h2 className="text-lg font-medium text-text">Import Databases</h2>
+          <p className="text-sm text-text-muted mt-1">
             {connectionName}
-            {preview && <span className="text-zinc-400"> - {preview.databases.length} databases in archive</span>}
+            {preview && <span className="text-text-muted"> - {preview.databases.length} databases in archive</span>}
           </p>
         </div>
 
@@ -521,10 +531,10 @@ export default function ImportDatabasesModal({
         <div className="flex-1 overflow-hidden flex flex-col">
           {step === 'select' && (
             <div className="p-6 flex flex-col items-center justify-center">
-              <svg className="w-16 h-16 text-zinc-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-16 h-16 text-text-dim mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
-              <p className="text-zinc-400 mb-4 text-center">
+              <p className="text-text-muted mb-4 text-center">
                 Select a previously exported .zip archive to import
               </p>
               <button className="btn btn-primary" onClick={handleSelectFile}>
@@ -536,20 +546,20 @@ export default function ImportDatabasesModal({
           {step === 'configure' && preview && (
             <>
               {/* File info */}
-              <div className="px-4 py-2 bg-zinc-800/50 border-b border-border text-xs text-zinc-400">
+              <div className="px-4 py-2 bg-surface/50 border-b border-border text-xs text-text-muted">
                 Exported: {preview.exportedAt}
               </div>
 
               {/* Selection controls */}
               <div className="px-4 py-2 border-b border-border flex items-center gap-2">
-                <button className="text-sm text-accent hover:text-accent/80" onClick={selectAll}>
+                <button className="text-sm text-primary hover:text-primary/80" onClick={selectAll}>
                   Select All
                 </button>
-                <span className="text-zinc-600">|</span>
-                <button className="text-sm text-accent hover:text-accent/80" onClick={deselectAll}>
+                <span className="text-text-dim">|</span>
+                <button className="text-sm text-primary hover:text-primary/80" onClick={deselectAll}>
                   Deselect All
                 </button>
-                <span className="ml-auto text-sm text-zinc-400">
+                <span className="ml-auto text-sm text-text-muted">
                   {selectedDbs.size} selected
                 </span>
               </div>
@@ -559,19 +569,19 @@ export default function ImportDatabasesModal({
                 {preview.databases.map(db => (
                   <label
                     key={db.name}
-                    className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer hover:bg-zinc-700/50 ${
-                      selectedDbs.has(db.name) ? 'bg-zinc-700/30' : ''
+                    className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer hover:bg-surface-hover/50 ${
+                      selectedDbs.has(db.name) ? 'bg-surface-hover/30' : ''
                     }`}
                   >
                     <input
                       type="checkbox"
-                      className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent/50"
+                      className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
                       checked={selectedDbs.has(db.name)}
                       onChange={() => toggleDatabase(db.name)}
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-zinc-200 truncate">{db.name}</div>
-                      <div className="text-xs text-zinc-400">
+                      <div className="text-sm text-text-light truncate">{db.name}</div>
+                      <div className="text-xs text-text-muted">
                         {db.collectionCount} collections, {formatNumber(db.documentCount)} docs
                       </div>
                     </div>
@@ -581,11 +591,11 @@ export default function ImportDatabasesModal({
 
               {/* Import mode */}
               <div className="p-4 border-t border-border">
-                <label className="block text-sm font-medium text-zinc-300 mb-3">
+                <label className="block text-sm font-medium text-text-secondary mb-3">
                   Import Mode
                 </label>
                 <div className="space-y-2">
-                  <label className="flex items-start gap-3 p-3 rounded border border-zinc-700 cursor-pointer hover:bg-zinc-700/30">
+                  <label className="flex items-start gap-3 p-3 rounded border border-border cursor-pointer hover:bg-surface-hover/30">
                     <input
                       type="radio"
                       name="mode"
@@ -595,14 +605,14 @@ export default function ImportDatabasesModal({
                       className="mt-0.5"
                     />
                     <div>
-                      <div className="text-sm text-zinc-200">Keep Existing (Skip)</div>
-                      <div className="text-xs text-zinc-400">
+                      <div className="text-sm text-text-light">Keep Existing (Skip)</div>
+                      <div className="text-xs text-text-muted">
                         Keep existing documents in the database, skip importing conflicting documents (by _id).
                       </div>
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-3 p-3 rounded border border-zinc-700 cursor-pointer hover:bg-zinc-700/30">
+                  <label className="flex items-start gap-3 p-3 rounded border border-border cursor-pointer hover:bg-surface-hover/30">
                     <input
                       type="radio"
                       name="mode"
@@ -612,8 +622,8 @@ export default function ImportDatabasesModal({
                       className="mt-0.5"
                     />
                     <div>
-                      <div className="text-sm text-zinc-200">Override (Drop & Replace)</div>
-                      <div className="text-xs text-red-400">
+                      <div className="text-sm text-text-light">Override (Drop & Replace)</div>
+                      <div className="text-xs text-error">
                         Drops the selected databases first, then imports fresh.
                       </div>
                     </div>
@@ -626,13 +636,13 @@ export default function ImportDatabasesModal({
           {step === 'previewing' && (
             <div className="p-4 min-h-[160px]">
               <div className="mb-4">
-                <div className="flex items-center justify-between text-sm text-zinc-300 mb-2 h-5">
+                <div className="flex items-center justify-between text-sm text-text-secondary mb-2 h-5">
                   {progress?.databaseTotal && progress.databaseTotal > 0 && (
                     <>
                       <span>
                         Analyzing {progress?.databaseIndex || 0} of {progress?.databaseTotal}
                       </span>
-                      <span className="text-zinc-400">
+                      <span className="text-text-muted">
                         {progress?.database}
                       </span>
                     </>
@@ -641,27 +651,27 @@ export default function ImportDatabasesModal({
 
                 <div className="text-sm mb-2 h-5">
                   {progress?.collection && (
-                    <span className="text-zinc-400">Collection: <span className="text-zinc-300">{progress.collection}</span></span>
+                    <span className="text-text-muted">Collection: <span className="text-text-secondary">{progress.collection}</span></span>
                   )}
                 </div>
 
-                <div className="h-2 bg-zinc-700 rounded-full overflow-hidden">
+                <div className="h-2 bg-surface-hover rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-blue-500 transition-all duration-300"
+                    className="h-full bg-info transition-all duration-300"
                     style={{ width: `${getProgressPercent()}%` }}
                   />
                 </div>
 
-                <div className="text-xs text-zinc-400 mt-1 h-4">
+                <div className="text-xs text-text-muted mt-1 h-4">
                   {progress?.total && progress.total > 0 && (
                     <span>{formatNumber(progress.current)} / {formatNumber(progress.total)} documents</span>
                   )}
                 </div>
               </div>
-              <p className="text-sm text-zinc-400 text-center">
+              <p className="text-sm text-text-muted text-center">
                 Analyzing changes...
               </p>
-              <p className="text-xs text-zinc-600 text-center mt-2">
+              <p className="text-xs text-text-dim text-center mt-2">
                 This may take a while for large files
               </p>
             </div>
@@ -673,23 +683,23 @@ export default function ImportDatabasesModal({
                 <svg className="w-6 h-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
-                <span className="text-lg font-medium text-zinc-100">Preview Changes</span>
+                <span className="text-lg font-medium text-text">Preview Changes</span>
               </div>
 
               <div className="flex flex-wrap gap-4 mb-4 text-sm">
                 {dryRunResult.documentsDropped && dryRunResult.documentsDropped > 0 && (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-zinc-400">Will Drop:</span>
-                    <span className="text-red-400 font-medium">{formatNumber(dryRunResult.documentsDropped)}</span>
+                    <span className="text-text-muted">Will Drop:</span>
+                    <span className="text-error font-medium">{formatNumber(dryRunResult.documentsDropped)}</span>
                   </div>
                 )}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-zinc-400">Will Insert:</span>
-                  <span className="text-green-400 font-medium">{formatNumber(dryRunResult.documentsInserted)}</span>
+                  <span className="text-text-muted">Will Insert:</span>
+                  <span className="text-success font-medium">{formatNumber(dryRunResult.documentsInserted)}</span>
                 </div>
                 {dryRunResult.documentsSkipped > 0 && (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-zinc-400">Will Skip:</span>
+                    <span className="text-text-muted">Will Skip:</span>
                     <span className="text-yellow-400 font-medium">{formatNumber(dryRunResult.documentsSkipped)}</span>
                   </div>
                 )}
@@ -697,11 +707,11 @@ export default function ImportDatabasesModal({
 
               <div className="flex-1 overflow-y-auto space-y-3">
                 {dryRunResult.databases?.map(db => (
-                  <div key={db.name} className="bg-zinc-800/50 rounded p-3">
-                    <div className="flex items-center justify-between text-sm font-medium text-zinc-200 mb-2">
+                  <div key={db.name} className="bg-surface/50 rounded p-3">
+                    <div className="flex items-center justify-between text-sm font-medium text-text-light mb-2">
                       <span>{db.name}</span>
                       {db.currentCount && db.currentCount > 0 && (
-                        <span className="text-xs text-red-400 font-normal">
+                        <span className="text-xs text-error font-normal">
                           {formatNumber(db.currentCount)} docs will be dropped
                         </span>
                       )}
@@ -709,12 +719,12 @@ export default function ImportDatabasesModal({
                     <div className="space-y-1">
                       {db.collections?.map(coll => (
                         <div key={coll.name} className="flex items-center justify-between text-xs">
-                          <span className="text-zinc-400 truncate mr-2">{coll.name}</span>
+                          <span className="text-text-muted truncate mr-2">{coll.name}</span>
                           <div className="flex items-center gap-3 shrink-0">
                             {coll.currentCount && coll.currentCount > 0 && (
-                              <span className="text-red-400">-{formatNumber(coll.currentCount)}</span>
+                              <span className="text-error">-{formatNumber(coll.currentCount)}</span>
                             )}
-                            <span className="text-green-400">+{formatNumber(coll.documentsInserted)}</span>
+                            <span className="text-success">+{formatNumber(coll.documentsInserted)}</span>
                             {coll.documentsSkipped > 0 && (
                               <span className="text-yellow-400">~{formatNumber(coll.documentsSkipped)}</span>
                             )}
@@ -727,7 +737,7 @@ export default function ImportDatabasesModal({
               </div>
 
               {mode === 'override' && dryRunResult.documentsDropped && dryRunResult.documentsDropped > 0 && (
-                <div className="mt-4 p-3 bg-red-900/20 border border-red-800/50 rounded text-sm text-red-400">
+                <div className="mt-4 p-3 bg-error-dark border border-red-800/50 rounded text-sm text-error">
                   Warning: {formatNumber(dryRunResult.documentsDropped)} documents will be permanently deleted.
                 </div>
               )}
@@ -747,7 +757,7 @@ export default function ImportDatabasesModal({
                   </div>
                 )}
                 {/* Database progress */}
-                <div className="flex items-center justify-between text-sm text-zinc-300 mb-2 h-5">
+                <div className="flex items-center justify-between text-sm text-text-secondary mb-2 h-5">
                   {progress?.databaseTotal && progress.databaseTotal > 0 && (
                     <>
                       <span>
@@ -756,9 +766,9 @@ export default function ImportDatabasesModal({
                       <div className="flex items-center gap-3">
                         {(() => {
                           const eta = getETA(processedDocsRef.current, totalDocsRef.current)
-                          return eta ? <span className="text-accent text-xs font-mono">{eta} left</span> : null
+                          return eta ? <span className="text-primary text-xs font-mono">{eta} left</span> : null
                         })()}
-                        <span className="text-zinc-400">
+                        <span className="text-text-muted">
                           {progress?.database}
                         </span>
                       </div>
@@ -771,26 +781,26 @@ export default function ImportDatabasesModal({
                   {progress?.phase === 'dropping' ? (
                     <span className="text-yellow-400">Dropping database: {progress?.database}</span>
                   ) : progress?.collection && progress?.phase === 'importing' ? (
-                    <span className="text-zinc-400">Collection: <span className="text-zinc-300">{progress.collection}</span></span>
+                    <span className="text-text-muted">Collection: <span className="text-text-secondary">{progress.collection}</span></span>
                   ) : null}
                 </div>
 
                 {/* Progress bar */}
-                <div className="h-2 bg-zinc-700 rounded-full overflow-hidden">
+                <div className="h-2 bg-surface-hover rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-accent transition-all duration-300"
+                    className="h-full bg-primary transition-all duration-300"
                     style={{ width: `${getProgressPercent()}%` }}
                   />
                 </div>
 
                 {/* Document count - fixed height slot */}
-                <div className="text-xs text-zinc-400 mt-1 h-4">
+                <div className="text-xs text-text-muted mt-1 h-4">
                   {progress?.total && progress.total > 0 && progress?.phase === 'importing' && (
                     <span>{formatNumber(progress.current)} / {formatNumber(progress.total)} documents</span>
                   )}
                 </div>
               </div>
-              <p className="text-sm text-zinc-400 text-center">
+              <p className="text-sm text-text-muted text-center">
                 Please wait while your databases are being imported...
               </p>
             </div>
@@ -809,12 +819,12 @@ export default function ImportDatabasesModal({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   )}
-                  <span className="text-lg font-medium text-zinc-100">
+                  <span className="text-lg font-medium text-text">
                     {result.cancelled ? 'Import Cancelled' : 'Import Complete'}
                   </span>
                 </div>
                 <button
-                  className="text-xs text-zinc-400 hover:text-zinc-200 flex items-center gap-1"
+                  className="text-xs text-text-muted hover:text-text-light flex items-center gap-1"
                   onClick={() => {
                     navigator.clipboard.writeText(formatResultForClipboard(result, connectionName))
                     notify.success('Copied to clipboard')
@@ -831,12 +841,12 @@ export default function ImportDatabasesModal({
               {/* Summary totals */}
               <div className="flex gap-4 mb-4 text-sm">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-zinc-400">Total Inserted:</span>
-                  <span className="text-green-400 font-medium">{formatNumber(result.documentsInserted)}</span>
+                  <span className="text-text-muted">Total Inserted:</span>
+                  <span className="text-success font-medium">{formatNumber(result.documentsInserted)}</span>
                 </div>
                 {result.documentsSkipped > 0 && (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-zinc-400">Skipped:</span>
+                    <span className="text-text-muted">Skipped:</span>
                     <span className="text-yellow-400 font-medium">{formatNumber(result.documentsSkipped)}</span>
                   </div>
                 )}
@@ -845,14 +855,14 @@ export default function ImportDatabasesModal({
               {/* Per-database breakdown */}
               <div className="flex-1 overflow-y-auto space-y-3">
                 {result.databases?.map(db => (
-                  <div key={db.name} className="bg-zinc-800/50 rounded p-3">
-                    <div className="text-sm font-medium text-zinc-200 mb-2">{db.name}</div>
+                  <div key={db.name} className="bg-surface/50 rounded p-3">
+                    <div className="text-sm font-medium text-text-light mb-2">{db.name}</div>
                     <div className="space-y-1">
                       {db.collections?.map(coll => (
                         <div key={coll.name} className="flex items-center justify-between text-xs">
-                          <span className="text-zinc-400 truncate mr-2">{coll.name}</span>
+                          <span className="text-text-muted truncate mr-2">{coll.name}</span>
                           <div className="flex items-center gap-3 shrink-0">
-                            <span className="text-green-400">+{formatNumber(coll.documentsInserted)}</span>
+                            <span className="text-success">+{formatNumber(coll.documentsInserted)}</span>
                             {coll.documentsSkipped > 0 && (
                               <span className="text-yellow-400">~{formatNumber(coll.documentsSkipped)}</span>
                             )}
@@ -866,10 +876,10 @@ export default function ImportDatabasesModal({
 
               {result.errors?.length > 0 && (
                 <div className="mt-4">
-                  <div className="text-sm text-red-400 mb-2">Errors ({result.errors.length}):</div>
-                  <div className="bg-zinc-800 rounded p-2 max-h-32 overflow-y-auto">
+                  <div className="text-sm text-error mb-2">Errors ({result.errors.length}):</div>
+                  <div className="bg-surface rounded p-2 max-h-32 overflow-y-auto">
                     {result.errors.map((err, i) => (
-                      <div key={i} className="text-xs text-zinc-400">{err}</div>
+                      <div key={i} className="text-xs text-text-muted">{err}</div>
                     ))}
                   </div>
                 </div>
@@ -884,15 +894,15 @@ export default function ImportDatabasesModal({
                 <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span className="text-lg font-medium text-zinc-100">Import Failed</span>
+                <span className="text-lg font-medium text-text">Import Failed</span>
               </div>
 
               {/* Error message */}
-              <div className="bg-red-900/20 border border-red-800/50 rounded p-3 mb-4">
-                <div className="text-sm text-red-400 font-medium mb-1">Error:</div>
-                <div className="text-sm text-zinc-300">{errorInfo.error}</div>
+              <div className="bg-error-dark border border-red-800/50 rounded p-3 mb-4">
+                <div className="text-sm text-error font-medium mb-1">Error:</div>
+                <div className="text-sm text-text-secondary">{errorInfo.error}</div>
                 {errorInfo.failedDatabase && (
-                  <div className="text-xs text-zinc-400 mt-2">
+                  <div className="text-xs text-text-muted mt-2">
                     Failed at: {errorInfo.failedDatabase}
                     {errorInfo.failedCollection && ` / ${errorInfo.failedCollection}`}
                   </div>
@@ -902,15 +912,15 @@ export default function ImportDatabasesModal({
               {/* Partial results */}
               {errorInfo.partialResult?.documentsInserted > 0 && (
                 <div className="mb-4">
-                  <div className="text-sm font-medium text-zinc-300 mb-2">Partial Progress (before failure):</div>
+                  <div className="text-sm font-medium text-text-secondary mb-2">Partial Progress (before failure):</div>
                   <div className="flex gap-4 mb-3 text-sm">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-zinc-400">Inserted:</span>
-                      <span className="text-green-400 font-medium">{formatNumber(errorInfo.partialResult.documentsInserted)}</span>
+                      <span className="text-text-muted">Inserted:</span>
+                      <span className="text-success font-medium">{formatNumber(errorInfo.partialResult.documentsInserted)}</span>
                     </div>
                     {errorInfo.partialResult.documentsSkipped > 0 && (
                       <div className="flex items-center gap-1.5">
-                        <span className="text-zinc-400">Skipped:</span>
+                        <span className="text-text-muted">Skipped:</span>
                         <span className="text-yellow-400 font-medium">{formatNumber(errorInfo.partialResult.documentsSkipped)}</span>
                       </div>
                     )}
@@ -918,13 +928,13 @@ export default function ImportDatabasesModal({
                   {errorInfo.partialResult.databases?.length > 0 && (
                     <div className="max-h-32 overflow-y-auto space-y-2">
                       {errorInfo.partialResult.databases.map(db => (
-                        <div key={db.name} className="bg-zinc-800/50 rounded p-2">
-                          <div className="text-xs font-medium text-zinc-200 mb-1">{db.name}</div>
+                        <div key={db.name} className="bg-surface/50 rounded p-2">
+                          <div className="text-xs font-medium text-text-light mb-1">{db.name}</div>
                           <div className="space-y-0.5">
                             {db.collections?.map(coll => (
                               <div key={coll.name} className="flex items-center justify-between text-xs">
-                                <span className="text-zinc-400 truncate mr-2">{coll.name}</span>
-                                <span className="text-green-400 shrink-0">+{formatNumber(coll.documentsInserted)}</span>
+                                <span className="text-text-muted truncate mr-2">{coll.name}</span>
+                                <span className="text-success shrink-0">+{formatNumber(coll.documentsInserted)}</span>
                               </div>
                             ))}
                           </div>
@@ -938,10 +948,10 @@ export default function ImportDatabasesModal({
               {/* Remaining databases */}
               {errorInfo.remainingDatabases?.length > 0 && (
                 <div className="mb-4">
-                  <div className="text-sm font-medium text-zinc-300 mb-2">Remaining ({errorInfo.remainingDatabases.length}):</div>
-                  <div className="bg-zinc-800/50 rounded p-2 max-h-24 overflow-y-auto">
+                  <div className="text-sm font-medium text-text-secondary mb-2">Remaining ({errorInfo.remainingDatabases.length}):</div>
+                  <div className="bg-surface/50 rounded p-2 max-h-24 overflow-y-auto">
                     {errorInfo.remainingDatabases.map(db => (
-                      <div key={db} className="text-xs text-zinc-400 py-0.5">{db}</div>
+                      <div key={db} className="text-xs text-text-muted py-0.5">{db}</div>
                     ))}
                   </div>
                 </div>
@@ -974,6 +984,15 @@ export default function ImportDatabasesModal({
             </button>
           ) : step === 'importing' ? (
             <>
+              {!paused && (
+                <button
+                  className="btn btn-ghost mr-auto"
+                  onClick={onHide ?? onClose}
+                  title="Hide this dialog and continue in background"
+                >
+                  Hide
+                </button>
+              )}
               <button
                 className="btn btn-ghost inline-flex items-center"
                 onClick={togglePause}
@@ -1045,22 +1064,22 @@ export default function ImportDatabasesModal({
           <div>
             {/* Impact summary when we have dry-run data */}
             {dryRunResult && dryRunResult.documentsDropped && dryRunResult.documentsDropped > 0 && (
-              <div className="mb-4 p-3 bg-red-900/30 border border-red-800/50 rounded">
-                <div className="text-red-400 font-medium text-sm">
+              <div className="mb-4 p-3 bg-error-dark border border-red-800/50 rounded">
+                <div className="text-error font-medium text-sm">
                   This will permanently delete {formatNumber(dryRunResult.documentsDropped)} documents across {dryRunResult.databases?.length || 0} database{(dryRunResult.databases?.length || 0) !== 1 ? 's' : ''}
                 </div>
               </div>
             )}
 
             <p className="mb-3">This will DROP and replace the following databases:</p>
-            <div className="max-h-40 overflow-y-auto bg-zinc-800 rounded p-2 mb-3 space-y-1">
+            <div className="max-h-40 overflow-y-auto bg-surface rounded p-2 mb-3 space-y-1">
               {dryRunResult?.databases ? (
                 // Show with document counts from dry-run
                 dryRunResult.databases.map(db => (
                   <div key={db.name} className="py-1.5 px-2 flex items-center justify-between">
-                    <span className="text-zinc-200">{db.name}</span>
+                    <span className="text-text-light">{db.name}</span>
                     {db.currentCount && db.currentCount > 0 && (
-                      <span className="text-red-400 text-sm font-medium">
+                      <span className="text-error text-sm font-medium">
                         {formatNumber(db.currentCount)} docs
                       </span>
                     )}
@@ -1069,11 +1088,11 @@ export default function ImportDatabasesModal({
               ) : (
                 // Fallback: just show names (no preview was done)
                 Array.from(selectedDbs).map(db => (
-                  <div key={db} className="py-1 px-2 text-zinc-200">{db}</div>
+                  <div key={db} className="py-1 px-2 text-text-light">{db}</div>
                 ))
               )}
             </div>
-            <p className="text-red-400 text-sm">This action cannot be undone.</p>
+            <p className="text-error text-sm">This action cannot be undone.</p>
           </div>
         }
         confirmLabel="Drop & Import"

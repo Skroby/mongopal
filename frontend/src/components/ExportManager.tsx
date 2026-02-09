@@ -1,9 +1,15 @@
 import { useState, useRef, useEffect } from 'react'
-import { useExportQueue, ExportEntryUnion, CompletedExport, ExportPhase, ExportType, ZipExportEntry } from './contexts/ExportQueueContext'
+import { useExportQueue, ExportEntryUnion, ImportEntry, TransferEntry, CompletedExport, ZipExportEntry } from './contexts/ExportQueueContext'
 
 // Go bindings type
 interface GoApp {
   RevealInFinder?: (filePath: string) => Promise<void>
+  CancelExport?: () => void
+  CancelImport?: () => void
+  PauseExport?: () => void
+  ResumeExport?: () => void
+  PauseImport?: () => void
+  ResumeImport?: () => void
 }
 
 // Access go at call time, not module load time (bindings may not be ready yet)
@@ -18,6 +24,12 @@ interface IconProps {
 const DownloadIcon = ({ className = "w-4 h-4" }: IconProps): React.ReactElement => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+  </svg>
+)
+
+const UploadIcon = ({ className = "w-4 h-4" }: IconProps): React.ReactElement => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
   </svg>
 )
 
@@ -45,23 +57,68 @@ const TableIcon = ({ className = "w-4 h-4" }: IconProps): React.ReactElement => 
   </svg>
 )
 
-function getPhaseLabel(phase: ExportPhase, type: ExportType): string {
-  switch (phase) {
+const PauseIcon = ({ className = "w-3.5 h-3.5" }: IconProps): React.ReactElement => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+)
+
+const PlayIcon = ({ className = "w-3.5 h-3.5" }: IconProps): React.ReactElement => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+)
+
+function getPhaseLabel(entry: TransferEntry): string {
+  if (entry.paused) return 'Paused'
+  if (entry.direction === 'import') {
+    const imp = entry as ImportEntry
+    switch (imp.phase) {
+      case 'starting': return 'Starting...'
+      case 'importing': return 'Importing'
+      case 'complete': return 'Complete'
+      default: return imp.phase
+    }
+  }
+  const exp = entry as ExportEntryUnion
+  switch (exp.phase) {
     case 'queued': return 'Queued'
     case 'starting': return 'Starting...'
-    case 'downloading': return type === 'zip' ? 'Exporting' : 'Downloading'
+    case 'downloading': return exp.type === 'zip' ? 'Exporting' : 'Downloading'
     case 'complete': return 'Complete'
-    default: return phase
+    default: return exp.phase
   }
 }
 
-function getPhaseColor(phase: ExportPhase): string {
-  switch (phase) {
-    case 'queued': return 'text-zinc-500'
-    case 'downloading': return 'text-blue-400'
-    case 'complete': return 'text-green-400'
-    default: return 'text-zinc-400'
+function getPhaseColor(entry: TransferEntry): string {
+  if (entry.paused) return 'text-yellow-400'
+  if (entry.direction === 'import') {
+    const imp = entry as ImportEntry
+    switch (imp.phase) {
+      case 'importing': return 'text-info'
+      case 'complete': return 'text-success'
+      default: return 'text-text-muted'
+    }
   }
+  const exp = entry as ExportEntryUnion
+  switch (exp.phase) {
+    case 'queued': return 'text-text-dim'
+    case 'downloading': return 'text-info'
+    case 'complete': return 'text-success'
+    default: return 'text-text-muted'
+  }
+}
+
+function getTransferProgress(entry: TransferEntry): number {
+  if (entry.direction === 'import') {
+    return (entry as ImportEntry).progress
+  }
+  return (entry as ExportEntryUnion).progress
+}
+
+function isQueued(entry: TransferEntry): boolean {
+  return entry.direction === 'export' && (entry as ExportEntryUnion).phase === 'queued'
 }
 
 function formatTimeAgo(timestamp: number): string {
@@ -75,7 +132,7 @@ function formatTimeAgo(timestamp: number): string {
 }
 
 export default function ExportManager(): React.ReactElement {
-  const { exports, completedExports, getLeadingExport, cancelExport, cancelAllExports, clearHistory, activeCount, queuedCount } = useExportQueue()
+  const { allTransfers, imports, completedExports, getLeadingExport, cancelExport, cancelAllExports, clearHistory, activeCount, queuedCount } = useExportQueue()
   const [open, setOpen] = useState<boolean>(false)
   const popoverRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -114,9 +171,45 @@ export default function ExportManager(): React.ReactElement {
     }
   }
 
+  const handleCancel = (entry: TransferEntry): void => {
+    if (entry.direction === 'import') {
+      getGo()?.CancelImport?.()
+    } else {
+      cancelExport(entry.id)
+    }
+  }
+
+  const handlePauseResume = (entry: TransferEntry): void => {
+    if (entry.paused) {
+      if (entry.direction === 'import') {
+        getGo()?.ResumeImport?.()
+      } else {
+        getGo()?.ResumeExport?.()
+      }
+    } else {
+      if (entry.direction === 'import') {
+        getGo()?.PauseImport?.()
+      } else {
+        getGo()?.PauseExport?.()
+      }
+    }
+  }
+
+  const handleRowClick = (entry: TransferEntry): void => {
+    if (entry.modalOpener) {
+      entry.modalOpener()
+      setOpen(false)
+    }
+  }
+
   const leading = getLeadingExport()
-  const totalActive = exports.length
+  const hasImports = imports.length > 0
+  const totalActive = allTransfers.length
   const hasActivity = totalActive > 0 || completedExports.length > 0
+
+  // Pick label for status bar: prefer leading export, fall back to first import
+  const statusLabel = leading?.label || (hasImports ? imports[0].label : null)
+  const statusProgress = leading?.progress || (hasImports ? imports[0].progress : 0)
 
   return (
     <div className="relative">
@@ -124,24 +217,28 @@ export default function ExportManager(): React.ReactElement {
       <button
         ref={buttonRef}
         className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-colors ${
-          totalActive > 0 ? 'bg-zinc-700/50 hover:bg-zinc-700' : 'hover:bg-zinc-700/50'
+          totalActive > 0 ? 'bg-surface-hover/50 hover:bg-surface-hover' : 'hover:bg-surface-hover/50'
         }`}
         onClick={() => setOpen(!open)}
-        title="Export manager"
+        title="Transfer manager"
       >
-        <DownloadIcon className={`w-3 h-3 ${totalActive > 0 ? 'text-accent' : 'text-zinc-400'}`} />
+        {hasImports ? (
+          <UploadIcon className={`w-3 h-3 ${totalActive > 0 ? 'text-primary' : 'text-text-muted'}`} />
+        ) : (
+          <DownloadIcon className={`w-3 h-3 ${totalActive > 0 ? 'text-primary' : 'text-text-muted'}`} />
+        )}
         {totalActive > 0 && (
           <>
-            <span className="text-zinc-300 max-w-[120px] truncate">
-              {leading ? leading.label : 'Queued...'}
+            <span className="text-text-secondary max-w-[120px] truncate">
+              {statusLabel || 'Queued...'}
             </span>
-            {leading && leading.progress > 0 && (
-              <span className="text-accent font-medium">
-                {leading.progress}%
+            {statusProgress > 0 && (
+              <span className="text-primary font-medium">
+                {statusProgress}%
               </span>
             )}
             {totalActive > 1 && (
-              <span className="text-zinc-500">
+              <span className="text-text-dim">
                 +{totalActive - 1}
               </span>
             )}
@@ -157,50 +254,73 @@ export default function ExportManager(): React.ReactElement {
         >
           {/* Header */}
           <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-200">Exports</span>
+            <span className="text-sm font-medium text-text-light">Transfers</span>
             {totalActive > 0 && (
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-text-dim">
                 {activeCount} active{queuedCount > 0 ? `, ${queuedCount} queued` : ''}
               </span>
             )}
           </div>
 
-          {/* Export list */}
+          {/* Transfer list */}
           <div className="max-h-64 overflow-y-auto">
-            {/* Active exports */}
-            {exports.map((exp: ExportEntryUnion) => {
-              const zipExp = exp.type === 'zip' ? (exp as ZipExportEntry) : null
+            {/* Active transfers */}
+            {allTransfers.map((entry: TransferEntry) => {
+              const isExport = entry.direction === 'export'
+              const expEntry = isExport ? (entry as ExportEntryUnion) : null
+              const impEntry = !isExport ? (entry as ImportEntry) : null
+              const zipExp = expEntry?.type === 'zip' ? (expEntry as ZipExportEntry) : null
+              const progress = getTransferProgress(entry)
+              const queued = isQueued(entry)
+              const hasOpener = !!entry.modalOpener
+
               return (
                 <div
-                  key={exp.id}
-                  className="px-3 py-2 border-b border-border/50 last:border-b-0 hover:bg-zinc-800/30"
+                  key={entry.id}
+                  className={`px-3 py-2 border-b border-border/50 last:border-b-0 hover:bg-surface/30 ${hasOpener ? 'cursor-pointer' : ''}`}
+                  onClick={hasOpener ? () => handleRowClick(entry) : undefined}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-zinc-500"><TableIcon className="w-3 h-3" /></span>
-                        <span className="text-sm text-zinc-200 truncate" title={exp.label}>
-                          {exp.label}
+                        <span className="text-text-dim">
+                          {isExport ? <TableIcon className="w-3 h-3" /> : <UploadIcon className="w-3 h-3" />}
+                        </span>
+                        <span className="text-sm text-text-light truncate" title={entry.label}>
+                          {entry.label}
                         </span>
                       </div>
-                      <div className="text-xs text-zinc-500 truncate mt-0.5">
-                        {exp.type === 'zip' ? (
-                          // Show current item for ZIP exports (multi-collection/database)
-                          zipExp?.currentItem ? `${exp.database} / ${zipExp.currentItem}` : exp.database
-                        ) : (
-                          // CSV exports show database.collection
-                          `${exp.database}.${'collection' in exp ? exp.collection : ''}`
-                        )}
+                      <div className="text-xs text-text-dim truncate mt-0.5">
+                        {isExport && expEntry ? (
+                          expEntry.type === 'zip' ? (
+                            zipExp?.currentItem ? `${expEntry.database} / ${zipExp.currentItem}` : expEntry.database
+                          ) : (
+                            `${expEntry.database}.${'collection' in expEntry ? expEntry.collection : ''}`
+                          )
+                        ) : impEntry ? (
+                          impEntry.currentItem ? `${impEntry.database} / ${impEntry.currentItem}` : impEntry.database
+                        ) : null}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 ml-2">
-                      <span className={`text-xs ${getPhaseColor(exp.phase)}`}>
-                        {getPhaseLabel(exp.phase, exp.type)}
+                    <div className="flex items-center gap-1 ml-2" onClick={(e) => e.stopPropagation()}>
+                      <span className={`text-xs ${getPhaseColor(entry)}`}>
+                        {getPhaseLabel(entry)}
                       </span>
+                      {/* Pause/Resume button */}
+                      {!queued && (
+                        <button
+                          className="p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text-light transition-colors"
+                          onClick={() => handlePauseResume(entry)}
+                          title={entry.paused ? 'Resume' : 'Pause'}
+                        >
+                          {entry.paused ? <PlayIcon className="w-3.5 h-3.5" /> : <PauseIcon className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                      {/* Cancel button */}
                       <button
-                        className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition-colors"
-                        onClick={() => cancelExport(exp.id)}
-                        title={exp.phase === 'queued' ? 'Remove from queue' : 'Cancel export'}
+                        className="p-1 rounded hover:bg-surface-hover text-text-muted hover:text-error transition-colors"
+                        onClick={() => handleCancel(entry)}
+                        title={queued ? 'Remove from queue' : `Cancel ${isExport ? 'export' : 'import'}`}
                       >
                         <XIcon className="w-3.5 h-3.5" />
                       </button>
@@ -208,34 +328,45 @@ export default function ExportManager(): React.ReactElement {
                   </div>
 
                   {/* Progress bar */}
-                  {exp.phase !== 'queued' && (
+                  {!queued && (
                     <div className="mt-1.5">
-                      <div className="h-1.5 bg-zinc-700 rounded-full overflow-hidden">
-                        {exp.progress > 0 ? (
+                      <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
+                        {entry.paused ? (
                           <div
-                            className="h-full bg-accent transition-all duration-300"
-                            style={{ width: `${exp.progress}%` }}
+                            className="h-full bg-yellow-500/70"
+                            style={{ width: `${progress}%` }}
+                          />
+                        ) : progress > 0 ? (
+                          <div
+                            className="h-full bg-primary transition-all duration-300"
+                            style={{ width: `${progress}%` }}
                           />
                         ) : (
                           <div className="h-full w-full relative">
-                            <div className="absolute inset-0 bg-accent/30" />
+                            <div className="absolute inset-0 bg-primary/30" />
                             <div className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-accent to-transparent progress-indeterminate" />
                           </div>
                         )}
                       </div>
                       <div className="flex justify-between mt-0.5">
-                        <span className="text-xs text-zinc-500">
-                          {exp.type === 'zip' && zipExp && zipExp.itemTotal > 0 ? (
-                            // Show item progress for ZIP exports
-                            `${zipExp.itemIndex || 0}/${zipExp.itemTotal} ${zipExp.itemTotal === 1 ? 'item' : 'items'}${exp.current > 0 ? ` - ${exp.current.toLocaleString()} docs` : ''}`
-                          ) : (
-                            // Show doc count for CSV exports
-                            exp.current > 0 ? `${exp.current.toLocaleString()} docs` : ''
-                          )}
+                        <span className="text-xs text-text-dim">
+                          {isExport && expEntry ? (
+                            expEntry.type === 'zip' && zipExp && zipExp.itemTotal > 0 ? (
+                              `${zipExp.itemIndex || 0}/${zipExp.itemTotal} ${zipExp.itemTotal === 1 ? 'item' : 'items'}${expEntry.current > 0 ? ` - ${expEntry.current.toLocaleString()} docs` : ''}`
+                            ) : (
+                              expEntry.current > 0 ? `${expEntry.current.toLocaleString()} docs` : ''
+                            )
+                          ) : impEntry ? (
+                            impEntry.itemTotal > 0 ? (
+                              `${impEntry.itemIndex || 0}/${impEntry.itemTotal} ${impEntry.itemTotal === 1 ? 'item' : 'items'}${impEntry.processedDocs > 0 ? ` - ${impEntry.processedDocs.toLocaleString()} docs` : ''}`
+                            ) : (
+                              impEntry.processedDocs > 0 ? `${impEntry.processedDocs.toLocaleString()} docs` : ''
+                            )
+                          ) : null}
                         </span>
-                        {exp.progress > 0 && (
-                          <span className="text-xs text-accent font-medium">
-                            {exp.progress}%
+                        {progress > 0 && (
+                          <span className={`text-xs font-medium ${entry.paused ? 'text-yellow-400' : 'text-primary'}`}>
+                            {progress}%
                           </span>
                         )}
                       </div>
@@ -243,8 +374,8 @@ export default function ExportManager(): React.ReactElement {
                   )}
 
                   {/* Queued indicator */}
-                  {exp.phase === 'queued' && (
-                    <div className="mt-1 text-xs text-zinc-500 italic">
+                  {queued && (
+                    <div className="mt-1 text-xs text-text-dim italic">
                       Waiting in queue...
                     </div>
                   )}
@@ -252,51 +383,53 @@ export default function ExportManager(): React.ReactElement {
               )
             })}
 
-            {/* Completed exports */}
+            {/* Completed transfers */}
             {completedExports.map((exp: CompletedExport) => (
               <div
                 key={exp.id}
-                className="px-3 py-2 border-b border-border/50 last:border-b-0 hover:bg-zinc-800/30"
+                className="px-3 py-2 border-b border-border/50 last:border-b-0 hover:bg-surface/30"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-green-400"><CheckIcon className="w-3 h-3" /></span>
-                      <span className="text-sm text-zinc-200 truncate" title={exp.filePath}>
-                        {exp.filePath?.split('/').pop() || exp.label}
+                      <span className="text-success"><CheckIcon className="w-3 h-3" /></span>
+                      <span className="text-sm text-text-light truncate" title={exp.filePath || exp.label}>
+                        {exp.direction === 'import' ? exp.label : (exp.filePath?.split('/').pop() || exp.label)}
                       </span>
                     </div>
-                    <div className="text-xs text-zinc-500 truncate mt-0.5">
-                      {exp.database}.{exp.collection} - {formatTimeAgo(exp.completedAt)}
+                    <div className="text-xs text-text-dim truncate mt-0.5">
+                      {exp.direction === 'import' ? 'Import' : 'Export'} - {exp.database}.{exp.collection} - {formatTimeAgo(exp.completedAt)}
                     </div>
                   </div>
-                  <button
-                    className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors ml-2"
-                    onClick={() => handleShowInFolder(exp.filePath)}
-                    title="Show in folder"
-                  >
-                    <FolderIcon className="w-3.5 h-3.5" />
-                  </button>
+                  {exp.direction === 'export' && exp.filePath && (
+                    <button
+                      className="p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text-light transition-colors ml-2"
+                      onClick={() => handleShowInFolder(exp.filePath)}
+                      title="Show in folder"
+                    >
+                      <FolderIcon className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
 
             {/* Empty state */}
             {!hasActivity && (
-              <div className="px-3 py-6 text-center text-zinc-500 text-sm">
+              <div className="px-3 py-6 text-center text-text-dim text-sm">
                 <DownloadIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>No exports yet</p>
-                <p className="text-xs mt-1">Exports will appear here</p>
+                <p>No transfers yet</p>
+                <p className="text-xs mt-1">Exports and imports will appear here</p>
               </div>
             )}
           </div>
 
           {/* Footer */}
-          {(exports.length > 1 || completedExports.length > 0) && (
+          {(allTransfers.length > 1 || completedExports.length > 0) && (
             <div className="px-3 py-2 border-t border-border flex justify-between">
-              {exports.length > 1 && (
+              {allTransfers.length > 1 && (
                 <button
-                  className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                  className="text-xs text-error hover:text-red-300 transition-colors"
                   onClick={() => {
                     cancelAllExports()
                   }}
@@ -306,7 +439,7 @@ export default function ExportManager(): React.ReactElement {
               )}
               {completedExports.length > 0 && (
                 <button
-                  className="text-xs text-zinc-400 hover:text-zinc-300 transition-colors ml-auto"
+                  className="text-xs text-text-muted hover:text-text-secondary transition-colors ml-auto"
                   onClick={clearHistory}
                 >
                   Clear history
@@ -319,4 +452,3 @@ export default function ExportManager(): React.ReactElement {
     </div>
   )
 }
-

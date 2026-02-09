@@ -96,12 +96,12 @@ export default function KeyboardShortcuts({ onClose }: KeyboardShortcutsProps): 
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-secondary rounded-lg shadow-xl w-full max-w-2xl mx-4 border border-border max-h-[80vh] flex flex-col">
+      <div className="bg-surface-secondary text-text rounded-lg shadow-xl w-full max-w-2xl mx-4 border border-border max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
-          <h2 className="text-lg font-medium">Keyboard Shortcuts</h2>
+          <h2 className="text-lg font-medium text-text">Keyboard Shortcuts</h2>
           <button
-            className="p-1 rounded hover:bg-zinc-700"
+            className="p-1 rounded hover:bg-surface-hover"
             onClick={onClose}
           >
             <CloseIcon className="w-5 h-5" />
@@ -113,7 +113,7 @@ export default function KeyboardShortcuts({ onClose }: KeyboardShortcutsProps): 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {shortcuts.map((section) => (
               <div key={section.category}>
-                <h3 className="text-sm font-medium text-accent mb-3">
+                <h3 className="text-sm font-medium text-primary mb-3">
                   {section.category}
                 </h3>
                 <div className="space-y-2">
@@ -122,16 +122,16 @@ export default function KeyboardShortcuts({ onClose }: KeyboardShortcutsProps): 
                       key={idx}
                       className="flex items-center justify-between gap-4 py-1"
                     >
-                      <span className="text-sm text-zinc-300">
+                      <span className="text-sm text-text-secondary">
                         {item.description}
                       </span>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         {item.keys.map((key, keyIdx) => (
                           <span key={keyIdx} className="flex items-center gap-1">
                             {keyIdx > 0 && (
-                              <span className="text-zinc-500 text-xs">to</span>
+                              <span className="text-text-dim text-xs">to</span>
                             )}
-                            <kbd className="px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-xs font-mono text-zinc-200">
+                            <kbd className="px-2 py-0.5 bg-surface border border-border rounded text-xs font-mono text-text-light">
                               {key}
                             </kbd>
                           </span>
@@ -147,8 +147,8 @@ export default function KeyboardShortcuts({ onClose }: KeyboardShortcutsProps): 
 
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-surface flex-shrink-0">
-          <p className="text-xs text-zinc-500">
-            Press <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-xs font-mono">{modKey}+?</kbd> anytime to show this reference
+          <p className="text-xs text-text-dim">
+            Press <kbd className="px-1.5 py-0.5 bg-surface border border-border rounded text-xs font-mono">{modKey}+?</kbd> anytime to show this reference
           </p>
           <button
             className="btn btn-primary"

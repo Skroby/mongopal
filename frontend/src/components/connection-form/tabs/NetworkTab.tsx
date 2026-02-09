@@ -59,12 +59,12 @@ export function NetworkTab({
     <div className="space-y-4 p-4">
       {/* Advanced sections hint */}
       {!showAdvanced && (
-        <div className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-md">
-          <p className="text-sm text-zinc-400">
+        <div className="p-4 bg-surface/50 border border-border rounded-md">
+          <p className="text-sm text-text-muted">
             TLS/SSL, SSH tunnels, and SOCKS5 proxy settings are available in{' '}
             <button
               onClick={onEnableAdvanced}
-              className="text-accent hover:text-accent/80 underline"
+              className="text-primary hover:text-primary/80 underline"
             >
               Advanced Options
             </button>
@@ -75,9 +75,9 @@ export function NetworkTab({
 
       {/* TLS/SSL Section (Advanced) */}
       {showAdvanced && (
-      <div className="border-b border-zinc-700 pb-6">
+      <div className="border-b border-border pb-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-white">TLS/SSL</h3>
+          <h3 className="text-base font-semibold text-text">TLS/SSL</h3>
           <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
@@ -86,13 +86,13 @@ export function NetworkTab({
               className="sr-only peer"
               data-testid="tls-enabled"
             />
-            <div className="w-11 h-6 bg-zinc-700 peer-focus:ring-2 peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+            <div className="w-11 h-6 bg-surface-hover peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
             <span className="sr-only">Enable TLS/SSL</span>
           </label>
         </div>
 
         {data.tlsEnabled && (
-          <div className="space-y-4 pl-4 border-l-2 border-accent/30">
+          <div className="space-y-4 pl-4 border-l-2 border-primary/30">
             {/* Allow Invalid Certificates */}
             <div className="flex items-center gap-2">
               <input
@@ -100,9 +100,9 @@ export function NetworkTab({
                 id="tlsInsecure"
                 checked={data.tlsInsecure}
                 onChange={e => onChange({ tlsInsecure: e.target.checked })}
-                className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded focus:ring-2 focus:ring-accent"
+                className="w-4 h-4 bg-surface border-border rounded focus:ring-2 focus:ring-primary"
               />
-              <label htmlFor="tlsInsecure" className="text-sm text-zinc-300">
+              <label htmlFor="tlsInsecure" className="text-sm text-text-secondary">
                 Allow invalid certificates (insecure)
               </label>
             </div>
@@ -124,7 +124,7 @@ export function NetworkTab({
                   value={data.tlsCACert ? '✓ Certificate loaded' : ''}
                   readOnly
                   placeholder="No certificate"
-                  className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white"
+                  className="flex-1 px-3 py-2 bg-surface border border-border rounded-md text-text"
                 />
                 <input
                   ref={caCertInputRef}
@@ -135,7 +135,7 @@ export function NetworkTab({
                 />
                 <button
                   onClick={() => caCertInputRef.current?.click()}
-                  className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-md transition-colors"
+                  className="px-4 py-2 bg-surface-hover hover:bg-surface-active text-text text-sm rounded-md transition-colors"
                 >
                   Browse
                 </button>
@@ -162,7 +162,7 @@ export function NetworkTab({
                   value={data.tlsClientCert ? '✓ Certificate loaded' : ''}
                   readOnly
                   placeholder="No certificate"
-                  className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white"
+                  className="flex-1 px-3 py-2 bg-surface border border-border rounded-md text-text"
                 />
                 <input
                   ref={clientCertInputRef}
@@ -173,7 +173,7 @@ export function NetworkTab({
                 />
                 <button
                   onClick={() => clientCertInputRef.current?.click()}
-                  className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-md transition-colors"
+                  className="px-4 py-2 bg-surface-hover hover:bg-surface-active text-text text-sm rounded-md transition-colors"
                 >
                   Browse
                 </button>
@@ -200,7 +200,7 @@ export function NetworkTab({
                   value={data.tlsClientKey ? '✓ Key loaded' : ''}
                   readOnly
                   placeholder="No key"
-                  className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white"
+                  className="flex-1 px-3 py-2 bg-surface border border-border rounded-md text-text"
                 />
                 <input
                   ref={clientKeyInputRef}
@@ -211,7 +211,7 @@ export function NetworkTab({
                 />
                 <button
                   onClick={() => clientKeyInputRef.current?.click()}
-                  className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-md transition-colors"
+                  className="px-4 py-2 bg-surface-hover hover:bg-surface-active text-text text-sm rounded-md transition-colors"
                 >
                   Browse
                 </button>
@@ -236,7 +236,7 @@ export function NetworkTab({
                 <PasswordField
                   value={data.tlsClientKeyPassword || ''}
                   onChange={value => onChange({ tlsClientKeyPassword: value })}
-                  className="w-full px-2 py-1.5 pr-10 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full px-2 py-1.5 pr-10 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="••••••••"
                   autoComplete="new-password"
                   passwordExists={tlsKeyPasswordExists}
@@ -251,9 +251,9 @@ export function NetworkTab({
 
       {/* SSH Tunnel Section (Advanced) */}
       {showAdvanced && (
-      <div className="border-b border-zinc-700 pb-6">
+      <div className="border-b border-border pb-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-white">SSH Tunnel</h3>
+          <h3 className="text-base font-semibold text-text">SSH Tunnel</h3>
           <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
@@ -262,13 +262,13 @@ export function NetworkTab({
               className="sr-only peer"
               data-testid="ssh-enabled"
             />
-            <div className="w-11 h-6 bg-zinc-700 peer-focus:ring-2 peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+            <div className="w-11 h-6 bg-surface-hover peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
             <span className="sr-only">Enable SSH Tunnel</span>
           </label>
         </div>
 
         {data.sshEnabled && (
-          <div className="space-y-4 pl-4 border-l-2 border-accent/30">
+          <div className="space-y-4 pl-4 border-l-2 border-primary/30">
             {getWarning('sshEnabled') && (
               <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-md">
                 <p className="text-sm text-yellow-300">{getWarning('sshEnabled')}</p>
@@ -285,7 +285,7 @@ export function NetworkTab({
                   type="text"
                   value={data.sshHost || ''}
                   onChange={e => onChange({ sshHost: e.target.value })}
-                  className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="ssh.example.com"
                   data-testid="ssh-host"
                   id="field-sshHost"
@@ -301,7 +301,7 @@ export function NetworkTab({
                   type="number"
                   value={data.sshPort}
                   onChange={e => onChange({ sshPort: parseInt(e.target.value, 10) || 22 })}
-                  className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   min={1}
                   max={65535}
                   id="field-sshPort"
@@ -318,7 +318,7 @@ export function NetworkTab({
                 type="text"
                 value={data.sshUser || ''}
                 onChange={e => onChange({ sshUser: e.target.value })}
-                className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="ubuntu"
                 id="field-sshUser"
               />
@@ -326,7 +326,7 @@ export function NetworkTab({
 
             {/* SSH Auth Method - Radio Button Group pattern (exclusive selection) */}
             <FieldWithError label="Authentication Method" required>
-              <div className="flex gap-2 p-1 bg-zinc-800 rounded-lg" role="radiogroup">
+              <div className="flex gap-2 p-1 bg-surface rounded-lg" role="radiogroup">
                 {(['password', 'privatekey'] as const).map(method => (
                   <button
                     key={method}
@@ -334,8 +334,8 @@ export function NetworkTab({
                     className={`
                       flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors
                       ${data.sshAuthMethod === method
-                        ? 'bg-white text-zinc-900'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
+                        ? 'bg-white text-background'
+                        : 'text-text-muted hover:text-text hover:bg-surface-hover'
                       }
                     `}
                     role="radio"
@@ -356,7 +356,7 @@ export function NetworkTab({
                 <PasswordField
                   value={data.sshPassword || ''}
                   onChange={value => onChange({ sshPassword: value })}
-                  className="w-full px-2 py-1.5 pr-10 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full px-2 py-1.5 pr-10 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="••••••••"
                   autoComplete="new-password"
                   passwordExists={sshPasswordExists}
@@ -377,7 +377,7 @@ export function NetworkTab({
                       value={data.sshPrivateKey ? '✓ Key loaded' : ''}
                       readOnly
                       placeholder="No key"
-                      className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white"
+                      className="flex-1 px-3 py-2 bg-surface border border-border rounded-md text-text"
                     />
                     <input
                       ref={sshKeyInputRef}
@@ -388,7 +388,7 @@ export function NetworkTab({
                     />
                     <button
                       onClick={() => sshKeyInputRef.current?.click()}
-                      className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-md transition-colors"
+                      className="px-4 py-2 bg-surface-hover hover:bg-surface-active text-text text-sm rounded-md transition-colors"
                     >
                       Browse
                     </button>
@@ -412,7 +412,7 @@ export function NetworkTab({
                     <PasswordField
                       value={data.sshPassphrase || ''}
                       onChange={value => onChange({ sshPassphrase: value })}
-                      className="w-full px-2 py-1.5 pr-10 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                      className="w-full px-2 py-1.5 pr-10 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       placeholder="••••••••"
                       autoComplete="new-password"
                       passwordExists={sshPassphraseExists}
@@ -430,9 +430,9 @@ export function NetworkTab({
 
       {/* SOCKS5 Proxy Section (Advanced) */}
       {showAdvanced && (
-      <div className="border-b border-zinc-700 pb-6">
+      <div className="border-b border-border pb-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-white">SOCKS5 Proxy</h3>
+          <h3 className="text-base font-semibold text-text">SOCKS5 Proxy</h3>
           <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
@@ -440,13 +440,13 @@ export function NetworkTab({
               onChange={e => onChange({ socks5Enabled: e.target.checked })}
               className="sr-only peer"
             />
-            <div className="w-11 h-6 bg-zinc-700 peer-focus:ring-2 peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+            <div className="w-11 h-6 bg-surface-hover peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
             <span className="sr-only">Enable SOCKS5 Proxy</span>
           </label>
         </div>
 
         {data.socks5Enabled && (
-          <div className="space-y-4 pl-4 border-l-2 border-accent/30">
+          <div className="space-y-4 pl-4 border-l-2 border-primary/30">
             <div className="grid grid-cols-2 gap-4">
               <FieldWithError
                 label="Proxy Host"
@@ -457,7 +457,7 @@ export function NetworkTab({
                   type="text"
                   value={data.socks5Host || ''}
                   onChange={e => onChange({ socks5Host: e.target.value })}
-                  className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="proxy.example.com"
                   id="field-socks5Host"
                 />
@@ -472,7 +472,7 @@ export function NetworkTab({
                   type="number"
                   value={data.socks5Port}
                   onChange={e => onChange({ socks5Port: parseInt(e.target.value, 10) || 1080 })}
-                  className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   min={1}
                   max={65535}
                   id="field-socks5Port"
@@ -486,15 +486,15 @@ export function NetworkTab({
                 id="socks5RequiresAuth"
                 checked={data.socks5RequiresAuth}
                 onChange={e => onChange({ socks5RequiresAuth: e.target.checked })}
-                className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded focus:ring-2 focus:ring-accent"
+                className="w-4 h-4 bg-surface border-border rounded focus:ring-2 focus:ring-primary"
               />
-              <label htmlFor="socks5RequiresAuth" className="text-sm text-zinc-300">
+              <label htmlFor="socks5RequiresAuth" className="text-sm text-text-secondary">
                 Proxy requires authentication
               </label>
             </div>
 
             {data.socks5RequiresAuth && (
-              <div className="space-y-4 pl-4 border-l-2 border-accent/20">
+              <div className="space-y-4 pl-4 border-l-2 border-primary/20">
                 <FieldWithError
                   label="Proxy Username"
                   error={getError('socks5User')}
@@ -504,7 +504,7 @@ export function NetworkTab({
                     type="text"
                     value={data.socks5User || ''}
                     onChange={e => onChange({ socks5User: e.target.value })}
-                    className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="proxyuser"
                     id="field-socks5User"
                   />
@@ -518,7 +518,7 @@ export function NetworkTab({
                   <PasswordField
                     value={data.socks5Password || ''}
                     onChange={value => onChange({ socks5Password: value })}
-                    className="w-full px-2 py-1.5 pr-10 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="w-full px-2 py-1.5 pr-10 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="••••••••"
                     autoComplete="new-password"
                     passwordExists={socks5PasswordExists}
@@ -535,7 +535,7 @@ export function NetworkTab({
 
       {/* Timeouts Section (always visible) */}
       <div>
-        <h3 className="text-base font-semibold text-white mb-4">Timeouts</h3>
+        <h3 className="text-base font-semibold text-text mb-4">Timeouts</h3>
         <div className="space-y-4">
           <FieldWithError
             label="Connect Timeout"
@@ -546,7 +546,7 @@ export function NetworkTab({
               type="number"
               value={data.connectTimeout}
               onChange={e => onChange({ connectTimeout: parseInt(e.target.value, 10) || 10 })}
-              className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               min={0}
               max={300}
               id="field-connectTimeout"
@@ -562,7 +562,7 @@ export function NetworkTab({
               type="number"
               value={data.socketTimeout}
               onChange={e => onChange({ socketTimeout: parseInt(e.target.value, 10) || 30 })}
-              className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               min={0}
               max={300}
               id="field-socketTimeout"
@@ -578,7 +578,7 @@ export function NetworkTab({
               type="number"
               value={data.serverSelectionTimeout}
               onChange={e => onChange({ serverSelectionTimeout: parseInt(e.target.value, 10) || 30 })}
-              className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               min={0}
               max={300}
               id="field-serverSelectionTimeout"

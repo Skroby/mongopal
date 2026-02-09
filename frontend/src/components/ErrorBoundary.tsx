@@ -188,22 +188,22 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     if (this.state.hasError) {
       return (
         <div className="h-screen flex items-center justify-center bg-surface p-8">
-          <div className="max-w-lg w-full bg-surface-secondary border border-border rounded-lg p-6">
+          <div className="max-w-lg w-full bg-surface-secondary text-text border border-border rounded-lg p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-900/30 flex items-center justify-center">
-                <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="w-10 h-10 rounded-full bg-error-dark/30 flex items-center justify-center">
+                <svg className="w-5 h-5 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-zinc-100">Something went wrong</h2>
-                <p className="text-sm text-zinc-400">The application encountered an unexpected error</p>
+                <h2 className="text-lg font-semibold text-text">Something went wrong</h2>
+                <p className="text-sm text-text-muted">The application encountered an unexpected error</p>
               </div>
             </div>
 
             {this.state.error && (
-              <div className="mb-4 p-3 bg-zinc-900 rounded border border-zinc-700 overflow-auto max-h-32">
-                <code className="text-sm text-red-400 whitespace-pre-wrap">
+              <div className="mb-4 p-3 bg-background rounded border border-border overflow-auto max-h-32">
+                <code className="text-sm text-error whitespace-pre-wrap">
                   {this.state.error.toString()}
                 </code>
               </div>
@@ -211,11 +211,11 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
             {this.state.errorInfo?.componentStack && (
               <details className="mb-4">
-                <summary className="text-sm text-zinc-400 cursor-pointer hover:text-zinc-300">
+                <summary className="text-sm text-text-muted cursor-pointer hover:text-text-secondary">
                   Show stack trace
                 </summary>
-                <div className="mt-2 p-3 bg-zinc-900 rounded border border-zinc-700 overflow-auto max-h-48">
-                  <code className="text-xs text-zinc-400 whitespace-pre-wrap">
+                <div className="mt-2 p-3 bg-background rounded border border-border overflow-auto max-h-48">
+                  <code className="text-xs text-text-muted whitespace-pre-wrap">
                     {this.state.errorInfo.componentStack}
                   </code>
                 </div>
@@ -223,7 +223,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             )}
 
             {/* Warning about state reset */}
-            <div className="mb-4 p-3 bg-amber-900/20 border border-amber-700/50 rounded flex items-start gap-2">
+            <div className="mb-4 p-3 bg-warning-dark/20 border border-amber-700/50 rounded flex items-start gap-2">
               <svg className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
@@ -237,7 +237,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
             {/* Save confirmation */}
             {this.state.showSaveConfirmation && (
-              <div className="mb-4 p-2 bg-green-900/20 border border-green-700/50 rounded text-sm text-green-400 text-center">
+              <div className="mb-4 p-2 bg-success-dark/20 border border-green-700/50 rounded text-sm text-success text-center">
                 State saved for recovery
               </div>
             )}
@@ -245,7 +245,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             <div className="flex flex-col gap-2">
               <button
                 onClick={this.handleCopy}
-                className="w-full py-2 px-4 bg-zinc-700 hover:bg-zinc-600 text-zinc-100 rounded flex items-center justify-center gap-2 transition-colors"
+                className="w-full py-2 px-4 bg-surface-hover hover:bg-surface-active text-text rounded flex items-center justify-center gap-2 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -270,14 +270,14 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               {/* Report Issue link */}
               <button
                 onClick={this.handleReportIssue}
-                className="w-full py-2 px-4 text-zinc-400 hover:text-zinc-200 text-sm flex items-center justify-center gap-2 transition-colors"
+                className="w-full py-2 px-4 text-text-muted hover:text-text-light text-sm flex items-center justify-center gap-2 transition-colors"
               >
                 {this.state.showReportCopied ? (
                   <>
-                    <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-4 h-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    <span className="text-green-400">Error details copied to clipboard</span>
+                    <span className="text-success">Error details copied to clipboard</span>
                   </>
                 ) : (
                   <>

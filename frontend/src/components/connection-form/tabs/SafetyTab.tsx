@@ -13,7 +13,7 @@ export function SafetyTab({ data, errors, onChange }: SafetyTabProps) {
 
   return (
     <div className="space-y-4 p-4">
-      <h3 className="text-base font-semibold text-white mb-4">Destructive Operation Safety</h3>
+      <h3 className="text-base font-semibold text-text mb-4">Destructive Operation Safety</h3>
       <div className="space-y-4">
         <FieldWithError
           label="Delay Before Destructive Operations"
@@ -28,10 +28,10 @@ export function SafetyTab({ data, errors, onChange }: SafetyTabProps) {
               max={10}
               value={data.destructiveDelay}
               onChange={e => onChange({ destructiveDelay: parseInt(e.target.value, 10) })}
-              className="flex-1 accent-accent"
+              className="flex-1 accent-primary"
               id="field-destructiveDelay"
             />
-            <div className="w-16 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white text-center">
+            <div className="w-16 px-3 py-2 bg-surface border border-border rounded-md text-text text-center">
               {data.destructiveDelay}s
             </div>
           </div>
@@ -43,13 +43,13 @@ export function SafetyTab({ data, errors, onChange }: SafetyTabProps) {
             id="requireDeleteConfirmation"
             checked={data.requireDeleteConfirmation}
             onChange={e => onChange({ requireDeleteConfirmation: e.target.checked })}
-            className="mt-1 w-4 h-4 bg-zinc-800 border-zinc-700 rounded focus:ring-2 focus:ring-accent"
+            className="mt-1 w-4 h-4 bg-surface border-border rounded focus:ring-2 focus:ring-primary"
           />
           <div>
-            <label htmlFor="requireDeleteConfirmation" className="text-sm text-zinc-300 block">
+            <label htmlFor="requireDeleteConfirmation" className="text-sm text-text-secondary block">
               Require typing "DELETE" to confirm destructive operations
             </label>
-            <p className="text-xs text-zinc-500 mt-1">
+            <p className="text-xs text-text-dim mt-1">
               Forces manual confirmation before dropping databases or collections
             </p>
           </div>

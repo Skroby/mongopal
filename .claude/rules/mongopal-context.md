@@ -69,6 +69,7 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | Keyboard shortcuts modal | `frontend/src/components/KeyboardShortcuts.tsx` |
 | Actionable error display | `frontend/src/components/ActionableError.tsx` |
 | Performance metrics panel | `frontend/src/components/PerformancePanel.tsx` |
+| Server info diagnostics modal | `frontend/src/components/ServerInfoModal.tsx` |
 
 ### Contexts
 | Purpose | File |
@@ -228,7 +229,7 @@ The backend uses a thin facade pattern:
 ### Method Categories (in App facade)
 | Category | Methods | Internal Package |
 |----------|---------|------------------|
-| Connection | Connect, Disconnect, TestConnection | `internal/connection` |
+| Connection | Connect, Disconnect, TestConnection, GetServerInfo | `internal/connection` |
 | Storage | SaveConnection, SaveExtendedConnection, GetExtendedConnection, ListSavedConnections, CreateFolder, etc. | `internal/storage` |
 | Database | ListDatabases, ListCollections, DropDatabase, DropCollection | `internal/database` |
 | Document | FindDocuments, GetDocument, InsertDocument, UpdateDocument, DeleteDocument | `internal/document` |

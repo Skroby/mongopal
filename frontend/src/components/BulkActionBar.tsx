@@ -106,7 +106,7 @@ export default function BulkActionBar({
       ref={toolbarRef}
       role="toolbar"
       aria-label={`Bulk actions for ${selectedCount} selected document${selectedCount !== 1 ? 's' : ''}`}
-      className="h-12 bg-zinc-800 border-t border-accent/50 flex items-center justify-between px-4 animate-slide-in-bottom shadow-lg"
+      className="h-12 bg-surface border-t border-primary/50 flex items-center justify-between px-4 animate-slide-in-bottom shadow-lg"
     >
       {/* Screen reader announcement */}
       <div className="sr-only" role="status" aria-live="polite">
@@ -118,14 +118,14 @@ export default function BulkActionBar({
       <div className="flex items-center gap-3">
         <button
           ref={clearButtonRef}
-          className="icon-btn p-1 hover:bg-zinc-700/50 text-zinc-400 hover:text-zinc-200"
+          className="icon-btn p-1 hover:bg-surface-hover/50 text-text-muted hover:text-text-light"
           onClick={onClear}
           aria-label="Clear selection (Escape)"
           title="Clear selection (Escape)"
         >
           <XIcon className="w-4 h-4" />
         </button>
-        <span className="text-sm text-zinc-200" aria-hidden="true">
+        <span className="text-sm text-text-light" aria-hidden="true">
           {selectedCount} document{selectedCount !== 1 ? 's' : ''} selected
         </span>
       </div>
@@ -133,7 +133,7 @@ export default function BulkActionBar({
       {/* Right side: action buttons */}
       <div className="flex items-center gap-2" role="group" aria-label="Bulk actions">
         <button
-          className="btn btn-secondary flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1 focus:ring-offset-zinc-900"
+          className="btn btn-secondary flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 focus:ring-offset-background"
           onClick={onExport}
           disabled={isExporting}
           aria-label={`Export ${selectedCount} document${selectedCount !== 1 ? 's' : ''} (${isMac ? 'Cmd' : 'Ctrl'}+E)`}

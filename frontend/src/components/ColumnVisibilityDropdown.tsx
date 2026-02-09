@@ -148,8 +148,8 @@ export default function ColumnVisibilityDropdown({
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        className={`icon-btn p-1.5 hover:bg-zinc-700 flex items-center gap-1 ${
-          hiddenCount > 0 ? 'text-amber-400' : 'text-zinc-400 hover:text-zinc-200'
+        className={`icon-btn p-1.5 hover:bg-surface-hover flex items-center gap-1 ${
+          hiddenCount > 0 ? 'text-amber-400' : 'text-text-muted hover:text-text-light'
         }`}
         onClick={() => setIsOpen(!isOpen)}
         title={hiddenCount > 0 ? `${hiddenCount} column${hiddenCount !== 1 ? 's' : ''} hidden` : 'Manage columns'}
@@ -161,14 +161,14 @@ export default function ColumnVisibilityDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-64 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 flex flex-col" style={{ maxHeight: 400 }}>
+        <div className="absolute right-0 top-full mt-1 w-64 bg-surface border border-border rounded-lg shadow-xl z-50 flex flex-col" style={{ maxHeight: 400 }}>
           {/* Header with bulk actions */}
-          <div className="flex-shrink-0 px-3 py-2 border-b border-zinc-700 flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-200">Column Visibility</span>
+          <div className="flex-shrink-0 px-3 py-2 border-b border-border flex items-center justify-between">
+            <span className="text-sm font-medium text-text-light">Column Visibility</span>
             <div className="flex items-center gap-2">
               {onHideAll && visibleCount > 1 && (
                 <button
-                  className="text-xs text-zinc-400 hover:text-zinc-200"
+                  className="text-xs text-text-muted hover:text-text-light"
                   onClick={handleHideAll}
                 >
                   Hide All
@@ -176,7 +176,7 @@ export default function ColumnVisibilityDropdown({
               )}
               {hiddenCount > 0 && (
                 <button
-                  className="text-xs text-accent hover:text-accent/80"
+                  className="text-xs text-primary hover:text-primary/80"
                   onClick={() => {
                     onShowAll()
                     setIsOpen(false)
@@ -190,11 +190,11 @@ export default function ColumnVisibilityDropdown({
 
           {/* Filter input */}
           {allColumns.length > 10 && (
-            <div className="flex-shrink-0 p-2 border-b border-zinc-700">
+            <div className="flex-shrink-0 p-2 border-b border-border">
               <input
                 ref={filterInputRef}
                 type="text"
-                className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+                className="w-full px-2 py-1.5 bg-background border border-border rounded text-sm text-text-light placeholder-text-dim focus:outline-none focus:border-border-light"
                 placeholder="Filter columns..."
                 value={filterText}
                 onChange={handleFilterChange}
@@ -214,7 +214,7 @@ export default function ColumnVisibilityDropdown({
             onScroll={handleScroll}
           >
             {filteredColumns.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-zinc-500">
+              <div className="px-3 py-2 text-sm text-text-dim">
                 {allColumns.length === 0 ? 'No columns' : 'No matching columns'}
               </div>
             ) : useVirtualization ? (
@@ -226,14 +226,14 @@ export default function ColumnVisibilityDropdown({
                     return (
                       <button
                         key={column}
-                        className="w-full px-3 text-left text-sm hover:bg-zinc-700 flex items-center gap-2 transition-colors"
+                        className="w-full px-3 text-left text-sm hover:bg-surface-hover flex items-center gap-2 transition-colors"
                         style={{ height: ITEM_HEIGHT }}
                         onClick={() => onToggleColumn(column)}
                       >
-                        <span className={isHidden ? 'text-zinc-500' : 'text-accent'}>
+                        <span className={isHidden ? 'text-text-dim' : 'text-primary'}>
                           {isHidden ? <EyeOffIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
                         </span>
-                        <span className={`flex-1 truncate ${isHidden ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+                        <span className={`flex-1 truncate ${isHidden ? 'text-text-dim line-through' : 'text-text-light'}`}>
                           {column}
                         </span>
                       </button>
@@ -248,13 +248,13 @@ export default function ColumnVisibilityDropdown({
                 return (
                   <button
                     key={column}
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-700 flex items-center gap-2 transition-colors"
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-surface-hover flex items-center gap-2 transition-colors"
                     onClick={() => onToggleColumn(column)}
                   >
-                    <span className={isHidden ? 'text-zinc-500' : 'text-accent'}>
+                    <span className={isHidden ? 'text-text-dim' : 'text-primary'}>
                       {isHidden ? <EyeOffIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
                     </span>
-                    <span className={`flex-1 truncate ${isHidden ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+                    <span className={`flex-1 truncate ${isHidden ? 'text-text-dim line-through' : 'text-text-light'}`}>
                       {column}
                     </span>
                   </button>
@@ -264,7 +264,7 @@ export default function ColumnVisibilityDropdown({
           </div>
 
           {/* Footer with column count summary */}
-          <div className="flex-shrink-0 px-3 py-1.5 border-t border-zinc-700 text-xs text-zinc-500">
+          <div className="flex-shrink-0 px-3 py-1.5 border-t border-border text-xs text-text-dim">
             {visibleCount} visible / {allColumns.length} total columns
           </div>
         </div>

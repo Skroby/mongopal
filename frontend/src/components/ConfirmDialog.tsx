@@ -63,12 +63,12 @@ export default function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-      <div className="bg-surface-secondary border border-border rounded-lg w-[400px] shadow-xl">
+      <div className="bg-surface-secondary text-text border border-border rounded-lg w-[400px] shadow-xl">
         <div className="px-4 py-3 border-b border-border">
-          <h2 className="text-lg font-medium text-zinc-100">{title}</h2>
+          <h2 className="text-lg font-medium text-text">{title}</h2>
         </div>
 
-        <div className="px-4 py-4 text-sm text-zinc-300">
+        <div className="px-4 py-4 text-sm text-text-secondary">
           {typeof message === 'string' ? (
             <p className="whitespace-pre-line">{message}</p>
           ) : (

@@ -36,8 +36,8 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
       </div>
 
       {/* Connection Pool */}
-      <div className="border-b border-zinc-700 pb-6">
-        <h3 className="text-sm font-semibold text-white mb-4">Connection Pool</h3>
+      <div className="border-b border-border pb-6">
+        <h3 className="text-sm font-semibold text-text mb-4">Connection Pool</h3>
         <FieldWithError
           label="Max Pool Size"
           error={getError('maxPoolSize')}
@@ -46,7 +46,7 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
           <select
             value={data.maxPoolSize}
             onChange={e => onChange({ maxPoolSize: parseInt(e.target.value, 10) })}
-            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value={10}>10</option>
             <option value={25}>25</option>
@@ -58,8 +58,8 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
       </div>
 
       {/* Write Operations */}
-      <div className="border-b border-zinc-700 pb-6">
-        <h3 className="text-sm font-semibold text-white mb-4">Write Operations</h3>
+      <div className="border-b border-border pb-6">
+        <h3 className="text-sm font-semibold text-text mb-4">Write Operations</h3>
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <input
@@ -67,9 +67,9 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
               id="retryWrites"
               checked={data.retryWrites}
               onChange={e => onChange({ retryWrites: e.target.checked })}
-              className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded focus:ring-2 focus:ring-accent"
+              className="w-4 h-4 bg-surface border-border rounded focus:ring-2 focus:ring-primary"
             />
-            <label htmlFor="retryWrites" className="text-sm text-zinc-300">
+            <label htmlFor="retryWrites" className="text-sm text-text-secondary">
               Retry writes on network errors (recommended)
             </label>
           </div>
@@ -84,7 +84,7 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
                   type="text"
                   value={data.writeConcernW || ''}
                   onChange={e => onChange({ writeConcernW: e.target.value || 1 })}
-                  className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="1, majority, or number"
                 />
               </FieldWithError>
@@ -96,7 +96,7 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
                 <select
                   value={data.writeConcernJ ? 'true' : 'false'}
                   onChange={e => onChange({ writeConcernJ: e.target.value === 'true' })}
-                  className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="false">False</option>
                   <option value="true">True</option>
@@ -112,7 +112,7 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
                   type="number"
                   value={data.writeConcernWTimeout || 0}
                   onChange={e => onChange({ writeConcernWTimeout: parseInt(e.target.value, 10) || 0 })}
-                  className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   min={0}
                 />
               </FieldWithError>
@@ -122,8 +122,8 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
       </div>
 
       {/* Read Operations */}
-      <div className="border-b border-zinc-700 pb-6">
-        <h3 className="text-sm font-semibold text-white mb-4">Read Operations</h3>
+      <div className="border-b border-border pb-6">
+        <h3 className="text-sm font-semibold text-text mb-4">Read Operations</h3>
         <FieldWithError
           label="Read Preference"
           helpText="Where to read documents from in a replica set"
@@ -131,7 +131,7 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
           <select
             value={data.readPreference}
             onChange={e => onChange({ readPreference: e.target.value as ConnectionFormData['readPreference'] })}
-            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="primary">Primary (default)</option>
             <option value="primaryPreferred">Primary Preferred</option>
@@ -145,7 +145,7 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
       {/* Other Settings (Advanced) */}
       {showAdvanced && (
       <div>
-        <h3 className="text-sm font-semibold text-white mb-4">Other Settings</h3>
+        <h3 className="text-sm font-semibold text-text mb-4">Other Settings</h3>
         <div className="space-y-4">
           <FieldWithError
             label="Application Name"
@@ -155,7 +155,7 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
               type="text"
               value={data.appName}
               onChange={e => onChange({ appName: e.target.value })}
-              className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="mongopal"
             />
           </FieldWithError>
@@ -174,8 +174,8 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
                     className={`
                       px-4 py-2 rounded-md text-sm font-medium border transition-colors
                       ${isSelected
-                        ? 'bg-accent/20 border-accent text-accent font-semibold'
-                        : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:text-white'
+                        ? 'bg-primary/20 border-primary text-primary font-semibold'
+                        : 'bg-surface border-border text-text-muted hover:border-border-light hover:text-text'
                       }
                     `}
                     aria-pressed={isSelected}
@@ -191,7 +191,7 @@ export function OptionsTab({ data, errors, onChange, showAdvanced }: OptionsTabP
               })}
             </div>
             {data.compressors && data.compressors.length > 0 && (
-              <p className="text-xs text-zinc-500 mt-2">
+              <p className="text-xs text-text-dim mt-2">
                 Selected: {data.compressors.join(', ')}
               </p>
             )}

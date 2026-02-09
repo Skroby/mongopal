@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, ChangeEvent, ReactNode, JSX } from 'react'
 import { useDebug, CATEGORY_COLORS, DEBUG_SOURCE, DebugLogEntry, DebugCategory, DebugSource } from './contexts/DebugContext'
+import { useTheme, UI_FONTS, MONO_FONTS } from './contexts/ThemeContext'
 
 // ============================================================================
 // Icon Props and Components
@@ -43,6 +44,12 @@ const SafetyIcon = (): JSX.Element => (
 const DeveloperIcon = (): JSX.Element => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+  </svg>
+)
+
+const AppearanceIcon = (): JSX.Element => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
   </svg>
 )
 
@@ -128,8 +135,8 @@ function TabButton({ active, onClick, icon, label }: TabButtonProps): JSX.Elemen
     <button
       className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors w-full text-left ${
         active
-          ? 'bg-zinc-700 text-zinc-100'
-          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+          ? 'bg-surface-hover text-text'
+          : 'text-text-muted hover:text-text-light hover:bg-surface'
       }`}
       onClick={onClick}
     >
@@ -155,13 +162,13 @@ function ToggleSetting({ checked, onChange, label, description }: ToggleSettingP
     <label className="flex items-start gap-3 cursor-pointer py-2">
       <input
         type="checkbox"
-        className="w-4 h-4 mt-0.5 rounded bg-zinc-700 border-zinc-600 text-accent focus:ring-accent flex-shrink-0"
+        className="w-4 h-4 mt-0.5 rounded bg-surface-hover border-border-light text-primary focus:ring-primary flex-shrink-0"
         checked={checked}
         onChange={onChange}
       />
       <div>
-        <span className="text-sm text-zinc-200">{label}</span>
-        {description && <p className="text-xs text-zinc-500 mt-0.5">{description}</p>}
+        <span className="text-sm text-text-light">{label}</span>
+        {description && <p className="text-xs text-text-dim mt-0.5">{description}</p>}
       </div>
     </label>
   )
@@ -187,7 +194,7 @@ export interface SelectSettingProps {
 function SelectSetting({ label, description, value, onChange, options }: SelectSettingProps): JSX.Element {
   return (
     <div className="py-2">
-      <label className="block text-sm text-zinc-200 mb-1.5">{label}</label>
+      <label className="block text-sm text-text-light mb-1.5">{label}</label>
       <select
         className="input w-full"
         value={value}
@@ -197,7 +204,7 @@ function SelectSetting({ label, description, value, onChange, options }: SelectS
           <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
-      {description && <p className="text-xs text-zinc-500 mt-1.5">{description}</p>}
+      {description && <p className="text-xs text-text-dim mt-1.5">{description}</p>}
     </div>
   )
 }
@@ -314,7 +321,7 @@ export interface NumberInputSettingProps {
 function NumberInputSetting({ label, description, value, onChange, min = 0, max = 99999, step = 1, suffix }: NumberInputSettingProps): JSX.Element {
   return (
     <div className="py-2">
-      <label className="block text-sm text-zinc-200 mb-1.5">{label}</label>
+      <label className="block text-sm text-text-light mb-1.5">{label}</label>
       <div className="flex items-center gap-2">
         <input
           type="number"
@@ -328,9 +335,9 @@ function NumberInputSetting({ label, description, value, onChange, min = 0, max 
           max={max}
           step={step}
         />
-        {suffix && <span className="text-sm text-zinc-400">{suffix}</span>}
+        {suffix && <span className="text-sm text-text-muted">{suffix}</span>}
       </div>
-      {description && <p className="text-xs text-zinc-500 mt-1.5">{description}</p>}
+      {description && <p className="text-xs text-text-dim mt-1.5">{description}</p>}
     </div>
   )
 }
@@ -339,7 +346,7 @@ function NumberInputSetting({ label, description, value, onChange, min = 0, max 
 function LargeDocumentTab({ settings, onChange }: TabContentProps): JSX.Element {
   return (
     <div className="space-y-4">
-      <p className="text-xs text-zinc-500 mb-2">
+      <p className="text-xs text-text-dim mb-2">
         Configure how MongoPal handles collections with large documents, many fields, or deep nesting.
       </p>
       <NumberInputSetting
@@ -401,6 +408,86 @@ function LargeDocumentTab({ settings, onChange }: TabContentProps): JSX.Element 
 }
 
 // ============================================================================
+// Appearance Tab Component
+// ============================================================================
+
+function AppearanceTab(): JSX.Element {
+  const { themes, currentTheme, setTheme, reloadThemes, openThemesDir, uiFontId, monoFontId, setUIFont, setMonoFont } = useTheme()
+
+  // Color swatches for theme preview
+  const renderSwatches = (colors: { background: string; surface: string; primary: string; text: string; error: string; info: string }): JSX.Element => (
+    <div className="flex gap-0.5 mt-1">
+      {[colors.background, colors.surface, colors.primary, colors.text, colors.error, colors.info].map((c, i) => (
+        <div key={i} className="w-3 h-3 rounded-sm" style={{ backgroundColor: c }} />
+      ))}
+    </div>
+  )
+
+  return (
+    <div className="space-y-6">
+      {/* Theme selector */}
+      <div>
+        <label className="block text-sm text-text-light mb-2">Theme</label>
+        <div className="grid grid-cols-2 gap-2">
+          {themes.map(theme => (
+            <button
+              key={theme.id}
+              className={`p-3 rounded-lg border text-left transition-colors ${
+                currentTheme?.id === theme.id
+                  ? 'border-primary bg-surface-hover/50'
+                  : 'border-border hover:border-border-light hover:bg-surface'
+              }`}
+              onClick={() => setTheme(theme.id)}
+            >
+              <div className="text-sm font-medium text-text">{theme.name}</div>
+              {theme.author && <div className="text-xs text-text-dim mt-0.5">{theme.author}</div>}
+              {renderSwatches(theme.colors)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Font selectors */}
+      <div>
+        <label className="block text-sm text-text-light mb-1.5">UI Font</label>
+        <select
+          className="input w-full"
+          value={uiFontId}
+          onChange={e => setUIFont(e.target.value)}
+        >
+          {UI_FONTS.map(f => (
+            <option key={f.id} value={f.id}>{f.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm text-text-light mb-1.5">Monospace Font</label>
+        <select
+          className="input w-full"
+          value={monoFontId}
+          onChange={e => setMonoFont(e.target.value)}
+        >
+          {MONO_FONTS.map(f => (
+            <option key={f.id} value={f.id}>{f.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* User themes actions */}
+      <div className="flex gap-2 pt-2 border-t border-border">
+        <button className="btn btn-ghost text-sm" onClick={openThemesDir}>
+          Open Themes Folder
+        </button>
+        <button className="btn btn-ghost text-sm" onClick={reloadThemes}>
+          Reload Themes
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
 // Log Entry Component
 // ============================================================================
 
@@ -422,18 +509,18 @@ function LogEntry({ log }: LogEntryProps): JSX.Element {
     })
   }
 
-  const categoryColor = CATEGORY_COLORS[log.category]?.ui || 'text-zinc-400'
+  const categoryColor = CATEGORY_COLORS[log.category]?.ui || 'text-text-muted'
   const source: DebugSource = log.source || DEBUG_SOURCE.FRONTEND
   const isBackend = source === DEBUG_SOURCE.BACKEND
 
   return (
-    <div className="border-b border-zinc-800 last:border-0">
+    <div className="border-b border-surface last:border-0">
       <div
-        className={`flex gap-2 py-1 leading-tight ${hasDetails ? 'cursor-pointer hover:bg-zinc-800/50' : ''}`}
+        className={`flex gap-2 py-1 leading-tight ${hasDetails ? 'cursor-pointer hover:bg-surface/50' : ''}`}
         onClick={() => hasDetails && setIsExpanded(!isExpanded)}
       >
         {/* Expand indicator */}
-        <span className="text-zinc-600 w-3 flex-shrink-0">
+        <span className="text-text-dim w-3 flex-shrink-0">
           {hasDetails && (
             <svg
               className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
@@ -447,20 +534,20 @@ function LogEntry({ log }: LogEntryProps): JSX.Element {
         </span>
         {/* Source indicator */}
         <span className={`flex-shrink-0 w-5 text-center rounded text-[10px] font-medium ${
-          isBackend ? 'bg-cyan-900/50 text-cyan-400' : 'bg-zinc-700/50 text-zinc-400'
+          isBackend ? 'bg-cyan-900/50 text-cyan-400' : 'bg-surface-hover/50 text-text-muted'
         }`}>
           {isBackend ? 'BE' : 'FE'}
         </span>
-        <span className="text-zinc-600 flex-shrink-0">{formatTime(log.timestamp)}</span>
+        <span className="text-text-dim flex-shrink-0">{formatTime(log.timestamp)}</span>
         <span className={`flex-shrink-0 ${categoryColor}`}>
           [{log.category}]
         </span>
-        <span className="text-zinc-300 truncate flex-1">{log.message}</span>
+        <span className="text-text-secondary truncate flex-1">{log.message}</span>
       </div>
       {/* Expandable details */}
       {isExpanded && hasDetails && (
-        <div className="ml-5 pl-3 pb-2 border-l border-zinc-700">
-          <pre className="text-zinc-500 text-[10px] whitespace-pre-wrap break-all">
+        <div className="ml-5 pl-3 pb-2 border-l border-border">
+          <pre className="text-text-dim text-[10px] whitespace-pre-wrap break-all">
             {JSON.stringify(log.details, null, 2)}
           </pre>
         </div>
@@ -561,22 +648,22 @@ function DeveloperTab(): JSX.Element {
       />
 
       {/* Debug log viewer */}
-      <div className="border-t border-zinc-700 pt-4">
+      <div className="border-t border-border pt-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-zinc-300">Debug Logs</span>
+          <span className="text-sm text-text-secondary">Debug Logs</span>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-500">{logs.length} entries</span>
+            <span className="text-xs text-text-dim">{logs.length} entries</span>
             {logs.length > 0 && (
               <>
                 <button
-                  className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1"
+                  className="text-xs text-text-muted hover:text-text-light transition-colors flex items-center gap-1"
                   onClick={handleCopyAll}
                   title="Copy all logs to clipboard"
                 >
                   {copySuccess ? (
                     <>
-                      <CheckIcon className="w-3 h-3 text-accent" />
-                      <span className="text-accent">Copied</span>
+                      <CheckIcon className="w-3 h-3 text-primary" />
+                      <span className="text-primary">Copied</span>
                     </>
                   ) : (
                     <>
@@ -588,7 +675,7 @@ function DeveloperTab(): JSX.Element {
                   )}
                 </button>
                 <button
-                  className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1"
+                  className="text-xs text-text-muted hover:text-text-light transition-colors flex items-center gap-1"
                   onClick={handleSaveToFile}
                   title="Save logs to file"
                 >
@@ -598,7 +685,7 @@ function DeveloperTab(): JSX.Element {
                   <span>Save</span>
                 </button>
                 <button
-                  className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+                  className="text-xs text-text-muted hover:text-text-light transition-colors"
                   onClick={clearLogs}
                 >
                   Clear
@@ -610,10 +697,10 @@ function DeveloperTab(): JSX.Element {
 
         <div
           ref={logContainerRef}
-          className="bg-zinc-900 rounded border border-zinc-700 h-56 overflow-y-auto font-mono text-xs"
+          className="bg-background rounded border border-border h-56 overflow-y-auto font-mono text-xs"
         >
           {logs.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-zinc-500">
+            <div className="flex items-center justify-center h-full text-text-dim">
               {isDebugEnabled ? 'No logs yet. Interact with the app to generate logs.' : 'Enable debug logging to see logs here.'}
             </div>
           ) : (
@@ -626,7 +713,7 @@ function DeveloperTab(): JSX.Element {
         </div>
 
         {isDebugEnabled && (
-          <p className="text-xs text-zinc-500 mt-2">
+          <p className="text-xs text-text-dim mt-2">
             Click entries with details to expand. Also logged to browser console.
           </p>
         )}
@@ -639,7 +726,7 @@ function DeveloperTab(): JSX.Element {
 // Main Settings Component
 // ============================================================================
 
-type TabId = 'general' | 'editor' | 'safety' | 'largedoc' | 'developer'
+type TabId = 'appearance' | 'general' | 'editor' | 'safety' | 'largedoc' | 'developer'
 
 interface Tab {
   id: TabId
@@ -652,7 +739,7 @@ export interface SettingsProps {
 }
 
 export default function Settings({ onClose }: SettingsProps): JSX.Element {
-  const [activeTab, setActiveTab] = useState<TabId>('general')
+  const [activeTab, setActiveTab] = useState<TabId>('appearance')
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
   const [showSaved, setShowSaved] = useState(false)
   const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -708,6 +795,7 @@ export default function Settings({ onClose }: SettingsProps): JSX.Element {
   }
 
   const tabs: Tab[] = [
+    { id: 'appearance', label: 'Appearance', icon: <AppearanceIcon /> },
     { id: 'general', label: 'General', icon: <GeneralIcon /> },
     { id: 'editor', label: 'Editor', icon: <EditorIcon /> },
     { id: 'safety', label: 'Safety', icon: <SafetyIcon /> },
@@ -717,13 +805,13 @@ export default function Settings({ onClose }: SettingsProps): JSX.Element {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-secondary rounded-lg shadow-xl w-full max-w-2xl mx-4 border border-border flex flex-col max-h-[80vh]">
+      <div className="bg-surface-secondary text-text rounded-lg shadow-xl w-full max-w-2xl mx-4 border border-border flex flex-col max-h-[80vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-medium">Settings</h2>
+            <h2 className="text-lg font-medium text-text">Settings</h2>
             <div
-              className={`flex items-center gap-1 text-sm text-accent transition-opacity duration-200 ${
+              className={`flex items-center gap-1 text-sm text-primary transition-opacity duration-200 ${
                 showSaved ? 'opacity-100' : 'opacity-0'
               }`}
             >
@@ -732,7 +820,7 @@ export default function Settings({ onClose }: SettingsProps): JSX.Element {
             </div>
           </div>
           <button
-            className="icon-btn p-1 hover:bg-zinc-700"
+            className="icon-btn p-1 hover:bg-surface-hover"
             onClick={onClose}
           >
             <CloseIcon className="w-5 h-5" />
@@ -758,6 +846,9 @@ export default function Settings({ onClose }: SettingsProps): JSX.Element {
 
           {/* Main content */}
           <div className="flex-1 p-4 overflow-y-auto">
+            {activeTab === 'appearance' && (
+              <AppearanceTab />
+            )}
             {activeTab === 'general' && (
               <GeneralTab settings={settings} onChange={handleChange} />
             )}
@@ -779,7 +870,7 @@ export default function Settings({ onClose }: SettingsProps): JSX.Element {
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-surface flex-shrink-0">
           <button
-            className="btn btn-ghost text-zinc-400"
+            className="btn btn-ghost text-text-muted"
             onClick={handleReset}
           >
             Reset to defaults

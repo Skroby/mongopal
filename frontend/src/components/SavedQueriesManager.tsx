@@ -185,15 +185,15 @@ export default function SavedQueriesManager({
   return (
     <>
       <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-        <div className="bg-surface border border-border rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+        <div className="bg-surface text-text border border-border rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
           {/* Header */}
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-            <h3 className="text-lg font-medium text-zinc-100">
+            <h3 className="text-lg font-medium text-text">
               Saved Queries
             </h3>
             <button
               type="button"
-              className="text-zinc-400 hover:text-zinc-200"
+              className="text-text-muted hover:text-text-light"
               onClick={onClose}
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -226,13 +226,13 @@ export default function SavedQueriesManager({
           {/* Content */}
           <div className="flex-1 overflow-y-auto">
             {loading ? (
-              <div className="py-12 text-center text-zinc-500">
+              <div className="py-12 text-center text-text-dim">
                 Loading...
               </div>
             ) : queries.length === 0 ? (
-              <div className="py-12 text-center text-zinc-500">
+              <div className="py-12 text-center text-text-dim">
                 <svg
-                  className="w-12 h-12 mx-auto mb-3 text-zinc-600"
+                  className="w-12 h-12 mx-auto mb-3 text-text-dim"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -245,12 +245,12 @@ export default function SavedQueriesManager({
                   />
                 </svg>
                 <p>No saved queries yet</p>
-                <p className="text-sm text-zinc-600 mt-1">
+                <p className="text-sm text-text-dim mt-1">
                   Save a query from the collection view to see it here
                 </p>
               </div>
             ) : filteredQueries.length === 0 ? (
-              <div className="py-12 text-center text-zinc-500">
+              <div className="py-12 text-center text-text-dim">
                 No queries match your search
               </div>
             ) : (
@@ -258,7 +258,7 @@ export default function SavedQueriesManager({
                 {Object.entries(groupedQueries).map(([groupName, groupQueries]) => (
                   <div key={groupName}>
                     {groupBy !== 'none' && (
-                      <h4 className="text-sm font-medium text-zinc-400 mb-2 px-1">
+                      <h4 className="text-sm font-medium text-text-muted mb-2 px-1">
                         {groupName}
                       </h4>
                     )}
@@ -266,26 +266,26 @@ export default function SavedQueriesManager({
                       {groupQueries.map((query) => (
                         <div
                           key={query.id}
-                          className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 hover:border-zinc-600 transition-colors"
+                          className="bg-background border border-border rounded-lg p-3 hover:border-border-light transition-colors"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
-                              <h5 className="text-sm font-medium text-zinc-200 truncate">
+                              <h5 className="text-sm font-medium text-text-light truncate">
                                 {query.name}
                               </h5>
                               {query.description && (
-                                <p className="text-xs text-zinc-500 mt-0.5 line-clamp-2">
+                                <p className="text-xs text-text-dim mt-0.5 line-clamp-2">
                                   {query.description}
                                 </p>
                               )}
-                              <pre className="mt-2 text-xs text-zinc-400 font-mono bg-zinc-800 rounded p-2 overflow-auto max-h-20">
+                              <pre className="mt-2 text-xs text-text-muted font-mono bg-surface rounded p-2 overflow-auto max-h-20">
                                 {query.query}
                               </pre>
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
                               <button
                                 type="button"
-                                className="p-1.5 text-zinc-400 hover:text-accent hover:bg-zinc-800 rounded"
+                                className="p-1.5 text-text-muted hover:text-primary hover:bg-surface rounded"
                                 title="Use this query"
                                 onClick={() => handleSelectQuery(query)}
                               >
@@ -296,7 +296,7 @@ export default function SavedQueriesManager({
                               </button>
                               <button
                                 type="button"
-                                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded"
+                                className="p-1.5 text-text-muted hover:text-text-light hover:bg-surface rounded"
                                 title="Copy query"
                                 onClick={() => handleCopyQuery(query)}
                               >
@@ -306,7 +306,7 @@ export default function SavedQueriesManager({
                               </button>
                               <button
                                 type="button"
-                                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded"
+                                className="p-1.5 text-text-muted hover:text-text-light hover:bg-surface rounded"
                                 title="Edit query"
                                 onClick={() => setEditingQuery(query)}
                               >
@@ -316,7 +316,7 @@ export default function SavedQueriesManager({
                               </button>
                               <button
                                 type="button"
-                                className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded"
+                                className="p-1.5 text-text-muted hover:text-error hover:bg-surface rounded"
                                 title="Delete query"
                                 onClick={() => setQueryToDelete(query)}
                               >
@@ -337,7 +337,7 @@ export default function SavedQueriesManager({
 
           {/* Footer */}
           <div className="px-4 py-3 border-t border-border flex items-center justify-between">
-            <span className="text-sm text-zinc-500">
+            <span className="text-sm text-text-dim">
               {queries.length} saved {queries.length === 1 ? 'query' : 'queries'}
             </span>
             <button

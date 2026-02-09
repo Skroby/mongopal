@@ -7,14 +7,14 @@ interface ModeToggleProps {
 
 export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
   return (
-    <div className="flex items-center gap-1 bg-zinc-800 rounded-lg p-1">
+    <div className="flex items-center gap-1 bg-surface rounded-lg p-1">
       <button
         onClick={() => onModeChange('form')}
         className={`
           px-4 py-1.5 rounded-md text-sm font-medium transition-colors
           ${mode === 'form'
-            ? 'bg-accent text-white'
-            : 'text-zinc-400 hover:text-white'
+            ? 'bg-primary text-white'
+            : 'text-text-muted hover:text-text'
           }
         `}
       >
@@ -25,8 +25,8 @@ export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
         className={`
           px-4 py-1.5 rounded-md text-sm font-medium transition-colors
           ${mode === 'uri'
-            ? 'bg-accent text-white'
-            : 'text-zinc-400 hover:text-white'
+            ? 'bg-primary text-white'
+            : 'text-text-muted hover:text-text'
           }
         `}
       >

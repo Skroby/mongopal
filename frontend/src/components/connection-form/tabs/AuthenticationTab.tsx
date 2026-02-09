@@ -57,7 +57,7 @@ export function AuthenticationTab({
         <select
           value={data.authMechanism}
           onChange={e => handleAuthMechanismChange(e.target.value as AuthMechanism)}
-          className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           data-testid="auth-mechanism"
           id="field-authMechanism"
         >
@@ -81,7 +81,7 @@ export function AuthenticationTab({
               type="text"
               value={data.username || ''}
               onChange={e => onChange({ username: e.target.value })}
-              className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="admin"
               data-testid="username"
               id="field-username"
@@ -97,7 +97,7 @@ export function AuthenticationTab({
               <PasswordField
                 value={data.password || ''}
                 onChange={value => onChange({ password: value })}
-                className="w-full px-2 py-1.5 pr-10 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-2 py-1.5 pr-10 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="••••••••"
                 autoComplete="new-password"
                 passwordExists={passwordExists}
@@ -116,7 +116,7 @@ export function AuthenticationTab({
                 type="text"
                 value={data.authDatabase || 'admin'}
                 onChange={e => onChange({ authDatabase: e.target.value })}
-                className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-2 py-1.5 bg-surface border border-border rounded text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="admin"
                 disabled={data.authMechanism === 'mongodb-aws' || data.authMechanism === 'x509'}
                 id="field-authDatabase"

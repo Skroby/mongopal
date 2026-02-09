@@ -165,7 +165,7 @@ function ExportSection({
   if (loading) {
     return (
       <div className="space-y-4 p-5">
-        <div className="flex items-center gap-2 text-zinc-400 text-sm">
+        <div className="flex items-center gap-2 text-text-muted text-sm">
           <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
             <path d="M12 2a10 10 0 019.5 6.8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
@@ -179,11 +179,11 @@ function ExportSection({
   if (error) {
     return (
       <div className="space-y-4 p-5">
-        <p className="text-sm text-red-400">{error}</p>
+        <p className="text-sm text-error">{error}</p>
         <div className="flex justify-end">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 text-white rounded-md transition-colors"
+            className="px-3 py-1.5 text-sm bg-surface-hover hover:bg-surface-active text-text rounded-md transition-colors"
           >
             Close
           </button>
@@ -197,16 +197,16 @@ function ExportSection({
       {/* Connection String */}
       {uri && (
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-zinc-300">Connection String</label>
+          <label className="text-xs font-medium text-text-secondary">Connection String</label>
           <div
             onClick={selectAll}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-300 font-mono text-xs break-all max-h-20 overflow-y-auto cursor-text select-all"
+            className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-secondary font-mono text-xs break-all max-h-20 overflow-y-auto cursor-text select-all"
           >
             {uri}
           </div>
           <button
             onClick={() => copyToClipboard(uri, setUriCopied)}
-            className="px-2.5 py-1 text-xs border border-zinc-600 hover:border-zinc-500 text-zinc-300 hover:text-white rounded transition-colors"
+            className="px-2.5 py-1 text-xs border border-border-light hover:border-border-hover text-text-secondary hover:text-text rounded transition-colors"
           >
             {uriCopied ? 'Copied!' : 'Copy URI'}
           </button>
@@ -214,22 +214,22 @@ function ExportSection({
       )}
 
       {/* Divider */}
-      {uri && <div className="border-t border-dashed border-zinc-700" />}
+      {uri && <div className="border-t border-dashed border-border" />}
 
       {/* Encrypted Bundle */}
       {bundle && (
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-zinc-300">Encrypted Bundle</label>
-          <p className="text-xs text-zinc-500">Full config including SSH, TLS, and proxy credentials.</p>
+          <label className="text-xs font-medium text-text-secondary">Encrypted Bundle</label>
+          <p className="text-xs text-text-dim">Full config including SSH, TLS, and proxy credentials.</p>
           <div
             onClick={selectAll}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-400 font-mono text-xs break-all max-h-24 overflow-y-auto cursor-text select-all"
+            className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-muted font-mono text-xs break-all max-h-24 overflow-y-auto cursor-text select-all"
           >
             {bundle}
           </div>
           <button
             onClick={() => copyToClipboard(bundle, setBundleCopied)}
-            className="px-2.5 py-1 text-xs border border-zinc-600 hover:border-zinc-500 text-zinc-300 hover:text-white rounded transition-colors"
+            className="px-2.5 py-1 text-xs border border-border-light hover:border-border-hover text-text-secondary hover:text-text rounded transition-colors"
           >
             {bundleCopied ? 'Copied!' : 'Copy Bundle'}
           </button>
@@ -239,16 +239,16 @@ function ExportSection({
       {/* Decryption Key */}
       {decryptionKey && (
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-zinc-300">Decryption Key</label>
+          <label className="text-xs font-medium text-text-secondary">Decryption Key</label>
           <div
             onClick={selectAll}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white font-mono text-sm tracking-wide cursor-text select-all"
+            className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text font-mono text-sm tracking-wide cursor-text select-all"
           >
             {decryptionKey}
           </div>
           <button
             onClick={() => copyToClipboard(decryptionKey, setKeyCopied)}
-            className="px-2.5 py-1 text-xs border border-zinc-600 hover:border-zinc-500 text-zinc-300 hover:text-white rounded transition-colors"
+            className="px-2.5 py-1 text-xs border border-border-light hover:border-border-hover text-text-secondary hover:text-text rounded transition-colors"
           >
             {keyCopied ? 'Copied!' : 'Copy Key'}
           </button>
@@ -256,14 +256,14 @@ function ExportSection({
       )}
 
       {/* Warning */}
-      <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded px-3 py-2">
+      <p className="text-xs text-warning/80 bg-warning/10 border border-warning/20 rounded px-3 py-2">
         Anyone with both the bundle and key can access this connection with full credentials. Send them through separate channels.
       </p>
 
       <div className="flex justify-end pt-1">
         <button
           onClick={onClose}
-          className="px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 text-white rounded-md transition-colors"
+          className="px-3 py-1.5 text-sm bg-surface-hover hover:bg-surface-active text-text rounded-md transition-colors"
         >
           Done
         </button>
@@ -445,27 +445,27 @@ function ImportSection({
     <div className="space-y-4 p-5">
       {/* URI Import */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-zinc-300">Connection String</label>
+        <label className="text-xs font-medium text-text-secondary">Connection String</label>
         <textarea
           value={uriText}
           onChange={e => { setUriText(e.target.value); setUriError(null); setImportResult(null); }}
-          className={`w-full h-32 px-3 py-2 bg-zinc-800 border rounded-md text-white font-mono text-xs resize-none focus:outline-none focus:ring-2 ${
-            uriError ? 'border-red-500 focus:ring-red-500' : 'border-zinc-700 focus:ring-accent'
+          className={`w-full h-32 px-3 py-2 bg-surface border rounded-md text-text font-mono text-xs resize-none focus:outline-none focus:ring-2 ${
+            uriError ? 'border-red-500 focus:ring-red-500' : 'border-border focus:ring-primary'
           }`}
           placeholder="mongodb://localhost:27017 or paste multiple URIs..."
           autoFocus
         />
-        {uriError && <p className="text-xs text-red-400">{uriError}</p>}
+        {uriError && <p className="text-xs text-error">{uriError}</p>}
 
         {/* Multi-URI import result summary */}
         {importResult && (
-          <div className="text-xs bg-zinc-800 border border-zinc-700 rounded-md p-3 space-y-1.5">
-            <p className={`font-medium ${importResult.succeeded === importResult.total ? 'text-green-400' : 'text-amber-400'}`}>
+          <div className="text-xs bg-surface border border-border rounded-md p-3 space-y-1.5">
+            <p className={`font-medium ${importResult.succeeded === importResult.total ? 'text-success' : 'text-warning'}`}>
               Imported {importResult.succeeded} of {importResult.total} connections
             </p>
             <ul className="space-y-0.5">
               {importResult.results.map((r, i) => (
-                <li key={i} className={r.ok ? 'text-green-400' : 'text-red-400'}>
+                <li key={i} className={r.ok ? 'text-success' : 'text-error'}>
                   {r.ok ? '\u2713' : '\u2717'} {r.name}{r.error ? `: ${r.error}` : ''}
                 </li>
               ))}
@@ -476,46 +476,46 @@ function ImportSection({
         <button
           onClick={handleURIImport}
           disabled={!uriText.trim() || uriImporting}
-          className="px-3 py-1.5 text-sm bg-accent hover:bg-accent/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 text-sm bg-primary hover:bg-primary/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {uriImporting ? 'Importing...' : 'Import from URI'}
         </button>
       </div>
 
       {/* Divider */}
-      <div className="border-t border-dashed border-zinc-700" />
+      <div className="border-t border-dashed border-border" />
 
       {/* Encrypted Import */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-zinc-300">Encrypted Bundle</label>
+        <label className="text-xs font-medium text-text-secondary">Encrypted Bundle</label>
         <textarea
           value={bundle}
           onChange={e => { setBundle(e.target.value); setEncError(null); setEncImportResult(null); }}
-          className="w-full h-20 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white font-mono text-xs resize-none focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full h-20 px-3 py-2 bg-surface border border-border rounded-md text-text font-mono text-xs resize-none focus:outline-none focus:ring-2 focus:ring-primary"
           placeholder="Paste a single bundle or a bulk export JSON..."
         />
       </div>
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-zinc-300">Decryption Key(s)</label>
+        <label className="text-xs font-medium text-text-secondary">Decryption Key(s)</label>
         <textarea
           value={key}
           onChange={e => { setKey(e.target.value); setEncError(null); setEncImportResult(null); }}
           rows={2}
-          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
           placeholder="Single key, or one per line: Name: key"
         />
       </div>
-      {encError && <p className="text-xs text-red-400">{encError}</p>}
+      {encError && <p className="text-xs text-error">{encError}</p>}
 
       {/* Encrypted import result summary */}
       {encImportResult && (
-        <div className="text-xs bg-zinc-800 border border-zinc-700 rounded-md p-3 space-y-1.5">
-          <p className={`font-medium ${encImportResult.succeeded === encImportResult.total ? 'text-green-400' : 'text-amber-400'}`}>
+        <div className="text-xs bg-surface border border-border rounded-md p-3 space-y-1.5">
+          <p className={`font-medium ${encImportResult.succeeded === encImportResult.total ? 'text-success' : 'text-warning'}`}>
             Imported {encImportResult.succeeded} of {encImportResult.total} connections
           </p>
           <ul className="space-y-0.5">
             {encImportResult.results.map((r, i) => (
-              <li key={i} className={r.ok ? 'text-green-400' : 'text-red-400'}>
+              <li key={i} className={r.ok ? 'text-success' : 'text-error'}>
                 {r.ok ? '\u2713' : '\u2717'} {r.name}{r.error ? `: ${r.error}` : ''}
               </li>
             ))}
@@ -526,7 +526,7 @@ function ImportSection({
       <button
         onClick={handleEncryptedImport}
         disabled={!bundle.trim() || !key.trim() || encImporting}
-        className="px-3 py-1.5 text-sm bg-accent hover:bg-accent/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="px-3 py-1.5 text-sm bg-primary hover:bg-primary/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {encImporting ? 'Decrypting...' : 'Decrypt & Import'}
       </button>
@@ -534,7 +534,7 @@ function ImportSection({
       <div className="flex justify-end pt-1">
         <button
           onClick={onClose}
-          className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+          className="px-3 py-1.5 text-sm text-text-muted hover:text-text transition-colors"
         >
           Cancel
         </button>
@@ -676,24 +676,24 @@ function BulkExportSection({
     const selectedCount = connections.filter(c => selected.has(c.id)).length;
     return (
       <div className="space-y-4 p-5">
-        <p className="text-sm text-zinc-300">
+        <p className="text-sm text-text-secondary">
           Exported {selectedCount} connection{selectedCount !== 1 ? 's' : ''}
         </p>
 
         {/* Bundle or URI list */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-zinc-300">
+          <label className="text-xs font-medium text-text-secondary">
             {format === 'encrypted' ? 'Encrypted Bundle' : 'URI List'}
           </label>
           <div
             onClick={selectAll}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-400 font-mono text-xs break-all max-h-48 overflow-y-auto cursor-text select-all whitespace-pre-wrap"
+            className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text-muted font-mono text-xs break-all max-h-48 overflow-y-auto cursor-text select-all whitespace-pre-wrap"
           >
             {result}
           </div>
           <button
             onClick={() => copyToClipboard(result, setCopied)}
-            className="px-2.5 py-1 text-xs border border-zinc-600 hover:border-zinc-500 text-zinc-300 hover:text-white rounded transition-colors"
+            className="px-2.5 py-1 text-xs border border-border-light hover:border-border-hover text-text-secondary hover:text-text rounded transition-colors"
           >
             {copied ? 'Copied!' : format === 'encrypted' ? 'Copy Bundle' : 'Copy to Clipboard'}
           </button>
@@ -702,23 +702,23 @@ function BulkExportSection({
         {/* Decryption key (encrypted format only) */}
         {decryptionKey && (
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-300">Decryption Key</label>
+            <label className="text-xs font-medium text-text-secondary">Decryption Key</label>
             <div
               onClick={selectAll}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white font-mono text-sm tracking-wide cursor-text select-all"
+              className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text font-mono text-sm tracking-wide cursor-text select-all"
             >
               {decryptionKey}
             </div>
             <button
               onClick={() => copyToClipboard(decryptionKey, setKeyCopied)}
-              className="px-2.5 py-1 text-xs border border-zinc-600 hover:border-zinc-500 text-zinc-300 hover:text-white rounded transition-colors"
+              className="px-2.5 py-1 text-xs border border-border-light hover:border-border-hover text-text-secondary hover:text-text rounded transition-colors"
             >
               {keyCopied ? 'Copied!' : 'Copy Key'}
             </button>
           </div>
         )}
 
-        <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded px-3 py-2">
+        <p className="text-xs text-warning/80 bg-warning/10 border border-warning/20 rounded px-3 py-2">
           {format === 'encrypted'
             ? 'Anyone with both the bundle and key can access these connections. Send them through separate channels.'
             : 'URIs contain credentials in plain text. Share securely.'}
@@ -727,7 +727,7 @@ function BulkExportSection({
         <div className="flex justify-end pt-1">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 text-white rounded-md transition-colors"
+            className="px-3 py-1.5 text-sm bg-surface-hover hover:bg-surface-active text-text rounded-md transition-colors"
           >
             Done
           </button>
@@ -741,25 +741,25 @@ function BulkExportSection({
     <div className="space-y-4 p-5">
       {/* Format picker */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-zinc-300">Format</label>
+        <label className="text-xs font-medium text-text-secondary">Format</label>
         <div className="flex gap-4">
-          <label className="flex items-center gap-1.5 text-sm text-zinc-300 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer">
             <input
               type="radio"
               name="bulk-export-format"
               checked={format === 'encrypted'}
               onChange={() => setFormat('encrypted')}
-              className="accent-accent"
+              className="accent-primary"
             />
             Encrypted Bundle
           </label>
-          <label className="flex items-center gap-1.5 text-sm text-zinc-300 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer">
             <input
               type="radio"
               name="bulk-export-format"
               checked={format === 'uri-list'}
               onChange={() => setFormat('uri-list')}
-              className="accent-accent"
+              className="accent-primary"
             />
             URI List
           </label>
@@ -769,30 +769,30 @@ function BulkExportSection({
       {/* Connection list */}
       <div className="space-y-1.5">
         <label
-          className="flex items-center gap-1.5 text-xs font-medium text-zinc-300 cursor-pointer select-none"
+          className="flex items-center gap-1.5 text-xs font-medium text-text-secondary cursor-pointer select-none"
           onClick={toggleAll}
         >
           <input
             type="checkbox"
             checked={allSelected}
             readOnly
-            className="accent-accent"
+            className="accent-primary"
           />
           Select All ({connections.length} connection{connections.length !== 1 ? 's' : ''})
         </label>
 
-        <div className="border border-zinc-700 rounded-md max-h-48 overflow-y-auto">
+        <div className="border border-border rounded-md max-h-48 overflow-y-auto">
           {/* Root (unfiled) connections */}
           {rootConns.map(conn => (
             <label
               key={conn.id}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 cursor-pointer select-none border-b border-zinc-700/50 last:border-b-0"
+              className="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-surface cursor-pointer select-none border-b border-border/50 last:border-b-0"
             >
               <input
                 type="checkbox"
                 checked={selected.has(conn.id)}
                 onChange={() => toggleOne(conn.id)}
-                className="accent-accent"
+                className="accent-primary"
               />
               {conn.name}
             </label>
@@ -803,20 +803,20 @@ function BulkExportSection({
             const conns = connsByFolder.get(fid) || [];
             return (
               <div key={fid}>
-                <div className="px-3 py-1.5 text-xs font-medium text-zinc-500 bg-zinc-800/50 border-b border-zinc-700/50 flex items-center gap-1.5">
+                <div className="px-3 py-1.5 text-xs font-medium text-text-dim bg-surface/50 border-b border-border/50 flex items-center gap-1.5">
                   <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>
                   {path}
                 </div>
                 {conns.map(conn => (
                   <label
                     key={conn.id}
-                    className="flex items-center gap-2 pl-6 pr-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 cursor-pointer select-none border-b border-zinc-700/50 last:border-b-0"
+                    className="flex items-center gap-2 pl-6 pr-3 py-2 text-sm text-text-secondary hover:bg-surface cursor-pointer select-none border-b border-border/50 last:border-b-0"
                   >
                     <input
                       type="checkbox"
                       checked={selected.has(conn.id)}
                       onChange={() => toggleOne(conn.id)}
-                      className="accent-accent"
+                      className="accent-primary"
                     />
                     {conn.name}
                   </label>
@@ -827,10 +827,10 @@ function BulkExportSection({
         </div>
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-error">{error}</p>}
 
       {exporting && (
-        <div className="flex items-center gap-2 text-zinc-400 text-sm">
+        <div className="flex items-center gap-2 text-text-muted text-sm">
           <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
             <path d="M12 2a10 10 0 019.5 6.8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
@@ -842,14 +842,14 @@ function BulkExportSection({
       <div className="flex justify-end gap-2 pt-1">
         <button
           onClick={onClose}
-          className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+          className="px-3 py-1.5 text-sm text-text-muted hover:text-text transition-colors"
         >
           Cancel
         </button>
         <button
           onClick={handleExport}
           disabled={noneSelected || exporting}
-          className="px-3 py-1.5 text-sm bg-accent hover:bg-accent/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 text-sm bg-primary hover:bg-primary/80 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {exporting ? 'Exporting...' : `Export ${selected.size}`}
         </button>
@@ -927,13 +927,13 @@ export default function ConnectionShareOverlay(
 
   return (
     <div className="absolute inset-0 z-10 bg-black/60 flex items-center justify-center p-6">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+      <div className="bg-background text-text border border-border rounded-lg shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-0">
-          <h3 className="text-sm font-medium text-white">{title}</h3>
+          <h3 className="text-sm font-medium text-text">{title}</h3>
           <button
             onClick={props.onClose}
-            className="text-zinc-400 hover:text-white text-lg leading-none"
+            className="text-text-muted hover:text-text text-lg leading-none"
           >
             ✕
           </button>

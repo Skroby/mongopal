@@ -63,7 +63,7 @@ export default class MonacoErrorBoundary extends Component<MonacoErrorBoundaryPr
             </button>
           </div>
           <textarea
-            className="flex-1 w-full bg-surface text-zinc-200 p-4 font-mono text-sm resize-none focus:outline-none"
+            className="flex-1 w-full bg-surface text-text-light p-4 font-mono text-sm resize-none focus:outline-none"
             value={value}
             onChange={this.handleTextareaChange}
             placeholder={placeholder || 'Enter JSON...'}

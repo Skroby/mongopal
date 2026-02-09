@@ -248,7 +248,7 @@ function NotificationContainer({ notifications, onDismiss, onClearAll }: Notific
         <div className="flex justify-end">
           <button
             onClick={onClearAll}
-            className="text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800/80 hover:bg-zinc-700/80 px-2 py-1 rounded transition-colors"
+            className="text-xs text-text-muted hover:text-text-light bg-surface hover:bg-surface-hover px-2 py-1 rounded transition-colors"
           >
             Clear all ({notifications.length})
           </button>
@@ -267,7 +267,7 @@ function NotificationContainer({ notifications, onDismiss, onClearAll }: Notific
       {hiddenCount > 0 && (
         <button
           onClick={() => setIsExpanded(true)}
-          className="bg-zinc-800/90 border-l-4 border-zinc-500 text-zinc-300 px-4 py-2 rounded-lg shadow-lg text-sm hover:bg-zinc-700/90 transition-colors flex items-center justify-between"
+          className="bg-surface border-l-4 border-text-dim text-text-secondary px-4 py-2 rounded-lg shadow-lg text-sm hover:bg-surface-hover transition-colors flex items-center justify-between"
         >
           <span>+{hiddenCount} more notification{hiddenCount > 1 ? 's' : ''}</span>
           <svg className="w-4 h-4 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -280,7 +280,7 @@ function NotificationContainer({ notifications, onDismiss, onClearAll }: Notific
       {isExpanded && notifications.length > MAX_VISIBLE_NOTIFICATIONS && (
         <button
           onClick={() => setIsExpanded(false)}
-          className="bg-zinc-800/90 border-l-4 border-zinc-500 text-zinc-300 px-4 py-2 rounded-lg shadow-lg text-sm hover:bg-zinc-700/90 transition-colors flex items-center justify-between"
+          className="bg-surface border-l-4 border-text-dim text-text-secondary px-4 py-2 rounded-lg shadow-lg text-sm hover:bg-surface-hover transition-colors flex items-center justify-between"
         >
           <span>Show less</span>
           <svg className="w-4 h-4 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -345,10 +345,10 @@ function NotificationItem({ notification, onDismiss }: NotificationProps): React
 
   const styles: Record<NotificationType, NotificationStyle> = {
     info: {
-      bg: 'bg-blue-950/90',
-      border: 'border-l-4 border-blue-400',
-      text: 'text-zinc-100',
-      iconColor: 'text-blue-400',
+      bg: 'bg-info-dark',
+      border: 'border-l-4 border-info',
+      text: 'text-text',
+      iconColor: 'text-info',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -356,10 +356,10 @@ function NotificationItem({ notification, onDismiss }: NotificationProps): React
       ),
     },
     success: {
-      bg: 'bg-emerald-950/90',
-      border: 'border-l-4 border-emerald-400',
-      text: 'text-zinc-100',
-      iconColor: 'text-emerald-400',
+      bg: 'bg-success-dark',
+      border: 'border-l-4 border-success',
+      text: 'text-text',
+      iconColor: 'text-success',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -367,10 +367,10 @@ function NotificationItem({ notification, onDismiss }: NotificationProps): React
       ),
     },
     warning: {
-      bg: 'bg-amber-950/90',
-      border: 'border-l-4 border-amber-400',
-      text: 'text-zinc-100',
-      iconColor: 'text-amber-400',
+      bg: 'bg-warning-dark',
+      border: 'border-l-4 border-warning',
+      text: 'text-text',
+      iconColor: 'text-warning',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -378,10 +378,10 @@ function NotificationItem({ notification, onDismiss }: NotificationProps): React
       ),
     },
     error: {
-      bg: 'bg-red-950/90',
-      border: 'border-l-4 border-red-400',
-      text: 'text-zinc-100',
-      iconColor: 'text-red-400',
+      bg: 'bg-error-dark',
+      border: 'border-l-4 border-error',
+      text: 'text-text',
+      iconColor: 'text-error',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -504,8 +504,8 @@ export function NotificationHistoryDrawer(): React.ReactElement | null {
 
   const typeStyles: Record<NotificationType, HistoryTypeStyle> = {
     info: {
-      iconColor: 'text-blue-400',
-      bgColor: 'bg-blue-950/30',
+      iconColor: 'text-info',
+      bgColor: 'bg-info-dark/30',
       icon: (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -513,8 +513,8 @@ export function NotificationHistoryDrawer(): React.ReactElement | null {
       ),
     },
     success: {
-      iconColor: 'text-emerald-400',
-      bgColor: 'bg-emerald-950/30',
+      iconColor: 'text-success',
+      bgColor: 'bg-success-dark/30',
       icon: (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -522,8 +522,8 @@ export function NotificationHistoryDrawer(): React.ReactElement | null {
       ),
     },
     warning: {
-      iconColor: 'text-amber-400',
-      bgColor: 'bg-amber-950/30',
+      iconColor: 'text-warning',
+      bgColor: 'bg-warning-dark/30',
       icon: (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -531,8 +531,8 @@ export function NotificationHistoryDrawer(): React.ReactElement | null {
       ),
     },
     error: {
-      iconColor: 'text-red-400',
-      bgColor: 'bg-red-950/30',
+      iconColor: 'text-error',
+      bgColor: 'bg-error-dark/30',
       icon: (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -544,22 +544,22 @@ export function NotificationHistoryDrawer(): React.ReactElement | null {
   return (
     <div
       ref={drawerRef}
-      className="fixed bottom-8 right-4 w-96 max-h-[60vh] bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 flex flex-col animate-slide-up"
+      className="fixed bottom-8 right-4 w-96 max-h-[60vh] bg-background border border-border rounded-lg shadow-xl z-50 flex flex-col animate-slide-up"
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-4 h-4 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
-          <span className="text-sm font-medium text-zinc-200">Notification History</span>
-          <span className="text-xs text-zinc-500">({notificationHistory.length})</span>
+          <span className="text-sm font-medium text-text-light">Notification History</span>
+          <span className="text-xs text-text-dim">({notificationHistory.length})</span>
         </div>
         <div className="flex items-center gap-2">
           {notificationHistory.length > 0 && (
             <button
               onClick={clearHistory}
-              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="text-xs text-text-dim hover:text-text-secondary transition-colors"
               title="Clear history"
             >
               Clear all
@@ -567,7 +567,7 @@ export function NotificationHistoryDrawer(): React.ReactElement | null {
           )}
           <button
             onClick={closeHistory}
-            className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
+            className="p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text-light transition-colors"
             title="Close"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -580,14 +580,14 @@ export function NotificationHistoryDrawer(): React.ReactElement | null {
       {/* Notification list */}
       <div className="flex-1 overflow-y-auto">
         {notificationHistory.length === 0 ? (
-          <div className="p-8 text-center text-zinc-500">
+          <div className="p-8 text-center text-text-dim">
             <svg className="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
             <p className="text-sm">No notifications yet</p>
           </div>
         ) : (
-          <div className="divide-y divide-zinc-800">
+          <div className="divide-y divide-surface">
             {notificationHistory.map((notification) => {
               const style = typeStyles[notification.type] || typeStyles.info
               const handleCopy = async (): Promise<void> => {
@@ -600,19 +600,19 @@ export function NotificationHistoryDrawer(): React.ReactElement | null {
               return (
                 <div
                   key={`${notification.id}-${notification.timestamp}`}
-                  className={`px-4 py-3 hover:bg-zinc-800/50 transition-colors group ${notification.important ? 'border-l-2 border-red-500' : ''}`}
+                  className={`px-4 py-3 hover:bg-surface/50 transition-colors group ${notification.important ? 'border-l-2 border-red-500' : ''}`}
                 >
                   <div className="flex items-start gap-3">
                     <span className={`flex-shrink-0 mt-0.5 ${style.iconColor}`}>
                       {style.icon}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-200 break-words">{notification.message}</p>
-                      <p className="text-xs text-zinc-500 mt-1">{formatTimestamp(notification.timestamp)}</p>
+                      <p className="text-sm text-text-light break-words">{notification.message}</p>
+                      <p className="text-xs text-text-dim mt-1">{formatTimestamp(notification.timestamp)}</p>
                     </div>
                     <button
                       onClick={handleCopy}
-                      className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-all"
+                      className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-surface-hover text-text-muted hover:text-text-light transition-all"
                       title="Copy message"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -637,7 +637,7 @@ export function NotificationHistoryButton(): React.ReactElement {
   return (
     <button
       data-notification-history-toggle
-      className="relative p-1 rounded hover:bg-zinc-700 hover:text-zinc-300 transition-colors"
+      className="relative p-1 rounded hover:bg-surface-hover hover:text-text-secondary transition-colors"
       onClick={toggleHistory}
       title={`Notification history${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
     >

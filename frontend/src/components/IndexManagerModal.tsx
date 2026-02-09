@@ -227,7 +227,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Index Keys */}
       <div>
-        <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wide mb-2">
+        <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
           Index Keys
         </label>
         <div className="space-y-2">
@@ -248,7 +248,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
                 spellCheck={false}
               />
               <select
-                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-300"
+                className="bg-surface border border-border rounded px-2 py-1.5 text-sm text-text-secondary"
                 value={key.direction}
                 onChange={(e: ChangeEvent<HTMLSelectElement>) =>
                   updateKey(index, 'direction', parseInt(e.target.value, 10))
@@ -260,7 +260,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
               {keys.length > 1 && (
                 <button
                   type="button"
-                  className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-red-400"
+                  className="p-1.5 rounded hover:bg-surface-hover text-text-muted hover:text-error"
                   onClick={() => removeKey(index)}
                   title="Remove key"
                 >
@@ -272,7 +272,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
         </div>
         <button
           type="button"
-          className="mt-2 text-xs text-accent hover:text-accent/80 flex items-center gap-1"
+          className="mt-2 text-xs text-primary hover:text-primary/80 flex items-center gap-1"
           onClick={addKey}
         >
           <PlusIcon className="w-3 h-3" />
@@ -282,15 +282,15 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
 
       {/* Options */}
       <div>
-        <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wide mb-2">
+        <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
           Options
         </label>
         <div className="space-y-2">
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-sm text-zinc-300">
+            <label className="flex items-center gap-2 text-sm text-text-secondary">
               <input
                 type="checkbox"
-                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent/50"
+                className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
                 checked={options.unique}
                 onChange={(e: ChangeEvent<HTMLInputElement>) =>
                   setOptions({ ...options, unique: e.target.checked })
@@ -298,10 +298,10 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
               />
               Unique
             </label>
-            <label className="flex items-center gap-2 text-sm text-zinc-300">
+            <label className="flex items-center gap-2 text-sm text-text-secondary">
               <input
                 type="checkbox"
-                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent/50"
+                className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
                 checked={options.sparse}
                 onChange={(e: ChangeEvent<HTMLInputElement>) =>
                   setOptions({ ...options, sparse: e.target.checked })
@@ -309,10 +309,10 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
               />
               Sparse
             </label>
-            <label className="flex items-center gap-2 text-sm text-zinc-300">
+            <label className="flex items-center gap-2 text-sm text-text-secondary">
               <input
                 type="checkbox"
-                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent/50"
+                className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
                 checked={options.background}
                 onChange={(e: ChangeEvent<HTMLInputElement>) =>
                   setOptions({ ...options, background: e.target.checked })
@@ -324,7 +324,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
 
           <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label className="block text-xs text-zinc-400 mb-1">Index Name (optional)</label>
+              <label className="block text-xs text-text-muted mb-1">Index Name (optional)</label>
               <input
                 type="text"
                 className="w-full input py-1.5 px-2 text-sm"
@@ -340,7 +340,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
               />
             </div>
             <div className="w-40">
-              <label className="block text-xs text-zinc-400 mb-1">TTL (seconds)</label>
+              <label className="block text-xs text-text-muted mb-1">TTL (seconds)</label>
               <input
                 type="number"
                 className="w-full input py-1.5 px-2 text-sm"
@@ -462,11 +462,11 @@ export default function IndexManagerModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-secondary border border-border rounded-lg w-[600px] max-h-[80vh] flex flex-col shadow-xl">
+      <div className="bg-surface-secondary text-text border border-border rounded-lg w-[600px] max-h-[80vh] flex flex-col shadow-xl">
         {/* Header */}
         <div className="px-4 py-3 border-b border-border flex-shrink-0">
-          <h2 className="text-lg font-medium text-zinc-100">Index Manager</h2>
-          <p className="text-sm text-zinc-400 mt-0.5 font-mono">
+          <h2 className="text-lg font-medium text-text">Index Manager</h2>
+          <p className="text-sm text-text-muted mt-0.5 font-mono">
             {database}.{collection}
           </p>
         </div>
@@ -475,11 +475,11 @@ export default function IndexManagerModal({
         <div className="flex-1 overflow-hidden flex flex-col p-4">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : error ? (
             <div className="py-4 text-center">
-              <p className="text-red-400 text-sm">{error}</p>
+              <p className="text-error text-sm">{error}</p>
               <button className="mt-3 btn btn-secondary text-sm" onClick={loadIndexes}>
                 Retry
               </button>
@@ -495,7 +495,7 @@ export default function IndexManagerModal({
               {/* Index list */}
               <div className="flex-1 overflow-y-auto">
                 {indexes.length === 0 ? (
-                  <div className="py-8 text-center text-zinc-400">No indexes found</div>
+                  <div className="py-8 text-center text-text-muted">No indexes found</div>
                 ) : (
                   <div className="space-y-2">
                     {indexes.map((index) => {
@@ -503,13 +503,13 @@ export default function IndexManagerModal({
                       return (
                         <div
                           key={index.name}
-                          className="bg-zinc-800 rounded p-3 flex items-start justify-between gap-4"
+                          className="bg-surface rounded p-3 flex items-start justify-between gap-4"
                         >
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-sm text-zinc-100">{index.name}</span>
+                              <span className="font-mono text-sm text-text">{index.name}</span>
                               {index.unique && (
-                                <span className="px-1.5 py-0.5 text-xs bg-blue-900/50 text-blue-400 rounded">
+                                <span className="px-1.5 py-0.5 text-xs bg-info-dark text-info rounded">
                                   unique
                                 </span>
                               )}
@@ -519,15 +519,15 @@ export default function IndexManagerModal({
                                 </span>
                               )}
                               {index.ttl > 0 && (
-                                <span className="px-1.5 py-0.5 text-xs bg-amber-900/50 text-amber-400 rounded">
+                                <span className="px-1.5 py-0.5 text-xs bg-warning-dark text-warning rounded">
                                   TTL: {index.ttl}s
                                 </span>
                               )}
                             </div>
-                            <div className="mt-1 text-xs text-zinc-400 font-mono">
+                            <div className="mt-1 text-xs text-text-muted font-mono">
                               {`{ ${formatKeys(index.keys)} }`}
                             </div>
-                            <div className="mt-1 text-xs text-zinc-500">
+                            <div className="mt-1 text-xs text-text-dim">
                               Size: {formatBytes(index.size)}
                               {index.usageCount > 0 && (
                                 <span className="ml-3">
@@ -538,7 +538,7 @@ export default function IndexManagerModal({
                           </div>
                           {!isDefaultId && (
                             <button
-                              className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-red-400 flex-shrink-0"
+                              className="p-1.5 rounded hover:bg-surface-hover text-text-muted hover:text-error flex-shrink-0"
                               onClick={() => setConfirmDelete(index.name)}
                               title="Drop index"
                             >

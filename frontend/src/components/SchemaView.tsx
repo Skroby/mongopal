@@ -133,25 +133,25 @@ const ChevronDown = ({ className = 'w-4 h-4' }: IconProps): ReactNode => (
 
 // Map color names to Tailwind CSS classes (static for Tailwind purge)
 const typeColorMap: Record<TypeColor, string> = {
-  green: 'text-green-400',
-  blue: 'text-blue-400',
+  green: 'text-success',
+  blue: 'text-info',
   yellow: 'text-yellow-400',
   purple: 'text-purple-400',
   orange: 'text-orange-400',
   cyan: 'text-cyan-400',
   pink: 'text-pink-400',
-  red: 'text-red-400',
-  zinc: 'text-zinc-400',
-  default: 'text-zinc-300',
+  red: 'text-error',
+  zinc: 'text-text-muted',
+  default: 'text-text-secondary',
 }
 
 // Map occurrence color values to Tailwind CSS classes (static for Tailwind purge)
 const occurrenceColorMap: Record<OccurrenceColor, string> = {
   'green-500': 'text-green-500',
-  'green-400': 'text-green-400',
+  'green-400': 'text-success',
   'yellow-400': 'text-yellow-400',
   'orange-400': 'text-orange-400',
-  'red-400': 'text-red-400',
+  'red-400': 'text-error',
 }
 
 // =============================================================================
@@ -175,23 +175,23 @@ function SchemaFieldNode({
   return (
     <div>
       <div
-        className="flex items-center gap-2 py-1 px-2 hover:bg-zinc-800 rounded cursor-pointer"
+        className="flex items-center gap-2 py-1 px-2 hover:bg-surface rounded cursor-pointer"
         style={{ paddingLeft: `${level * 16 + 8}px` }}
         onClick={() => (hasChildren || hasArrayType) && setExpanded(!expanded)}
       >
         {hasChildren || hasArrayType ? (
-          <span className="text-zinc-400">
+          <span className="text-text-muted">
             {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
           </span>
         ) : (
           <span className="w-3" />
         )}
-        <span className="font-mono text-sm text-zinc-200">{name}</span>
+        <span className="font-mono text-sm text-text-light">{name}</span>
         <span className={`font-mono text-xs ${typeColorMap[getTypeColor(field.type)]}`}>
           {field.type}
         </span>
         <span
-          className={`text-xs ml-auto ${occurrenceColorMap[getOccurrenceColor(field.occurrence ?? 0)] || 'text-zinc-400'}`}
+          className={`text-xs ml-auto ${occurrenceColorMap[getOccurrenceColor(field.occurrence ?? 0)] || 'text-text-muted'}`}
         >
           {(field.occurrence ?? 0).toFixed(0)}%
         </span>
@@ -214,7 +214,7 @@ function SchemaFieldNode({
       {expanded && hasArrayType && field.arrayType?.fields && (
         <div>
           <div
-            className="flex items-center gap-2 py-1 px-2 text-zinc-400 text-xs italic"
+            className="flex items-center gap-2 py-1 px-2 text-text-muted text-xs italic"
             style={{ paddingLeft: `${(level + 1) * 16 + 8}px` }}
           >
             Array element structure:
@@ -336,9 +336,9 @@ export default function SchemaView({
   // Connection states
   if (!isConnected && !isConnecting) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+      <div className="h-full flex flex-col items-center justify-center text-text-muted gap-4">
         <svg
-          className="w-12 h-12 text-zinc-500"
+          className="w-12 h-12 text-text-dim"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -353,7 +353,7 @@ export default function SchemaView({
         <span>Not connected to database</span>
         <button
           onClick={() => connect(connectionId)}
-          className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium"
+          className="px-4 py-2 bg-primary hover:bg-primary/90 text-background rounded-lg font-medium"
         >
           Connect
         </button>
@@ -363,8 +363,8 @@ export default function SchemaView({
 
   if (isConnecting) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-3">
-        <div className="animate-spin rounded-full h-5 w-5 border-2 border-zinc-600 border-t-accent"></div>
+      <div className="h-full flex flex-col items-center justify-center text-text-muted gap-3">
+        <div className="animate-spin rounded-full h-5 w-5 border-2 border-border-light border-t-primary"></div>
         <span>Connecting to database...</span>
       </div>
     )
@@ -373,9 +373,9 @@ export default function SchemaView({
   // Restored tab - prompt to analyze
   if (isRestoredTab && !schema && !loading && !error) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+      <div className="h-full flex flex-col items-center justify-center text-text-muted gap-4">
         <svg
-          className="w-12 h-12 text-zinc-500"
+          className="w-12 h-12 text-text-dim"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -388,7 +388,7 @@ export default function SchemaView({
           />
         </svg>
         <span>Session restored</span>
-        <p className="text-sm text-zinc-500">Click to analyze collection schema</p>
+        <p className="text-sm text-text-dim">Click to analyze collection schema</p>
         <button
           onClick={() => {
             if (currentTab?.id) {
@@ -396,7 +396,7 @@ export default function SchemaView({
             }
             loadSchema()
           }}
-          className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium"
+          className="px-4 py-2 bg-primary hover:bg-primary/90 text-background rounded-lg font-medium"
         >
           Analyze Schema
         </button>
@@ -408,22 +408,22 @@ export default function SchemaView({
     const progressPercent =
       progress && progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0
     return (
-      <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
+      <div className="h-full flex flex-col items-center justify-center text-text-muted gap-4">
         <div className="flex items-center gap-3">
-          <div className="animate-spin rounded-full h-5 w-5 border-2 border-zinc-600 border-t-accent"></div>
+          <div className="animate-spin rounded-full h-5 w-5 border-2 border-border-light border-t-primary"></div>
           <span>Analyzing schema...</span>
         </div>
         {progress && progress.total > 0 && (
           <div className="w-48">
-            <div className="flex items-center justify-between text-xs text-zinc-500 mb-1">
+            <div className="flex items-center justify-between text-xs text-text-dim mb-1">
               <span>Sampling documents</span>
               <span>
                 {progress.current} / {progress.total}
               </span>
             </div>
-            <div className="h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+            <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
               <div
-                className="h-full bg-accent transition-all duration-150"
+                className="h-full bg-primary transition-all duration-150"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
@@ -435,8 +435,8 @@ export default function SchemaView({
 
   if (error) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4">
-        <span className="text-red-400">{error}</span>
+      <div className="h-full flex flex-col items-center justify-center text-text-muted gap-4">
+        <span className="text-error">{error}</span>
         <button className="btn btn-primary" onClick={handleRefresh}>
           Retry
         </button>
@@ -446,7 +446,7 @@ export default function SchemaView({
 
   if (!schema || Object.keys(schema.fields).length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-zinc-400">
+      <div className="h-full flex items-center justify-center text-text-muted">
         <span>No schema found (collection may be empty)</span>
       </div>
     )
@@ -458,15 +458,15 @@ export default function SchemaView({
       <div className="flex-shrink-0 p-3 border-b border-border bg-surface-secondary">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h2 className="text-lg font-medium text-zinc-100">Schema: {collection}</h2>
-            <span className="text-sm text-zinc-400">
+            <h2 className="text-lg font-medium text-text">Schema: {collection}</h2>
+            <span className="text-sm text-text-muted">
               Sampled {schema.sampleSize} of {schema.totalDocs.toLocaleString()} documents
             </span>
           </div>
           <div className="flex items-center gap-2">
             {/* Sample size selector */}
             <select
-              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-300"
+              className="bg-surface border border-border rounded px-2 py-1 text-sm text-text-secondary"
               value={sampleSize}
               onChange={(e) => setSampleSize(parseInt(e.target.value, 10))}
             >
@@ -500,8 +500,8 @@ export default function SchemaView({
               key={mode}
               className={`view-mode-btn px-2 py-1 rounded text-xs capitalize ${
                 viewMode === mode
-                  ? 'bg-zinc-700 text-zinc-100'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                  ? 'bg-surface-hover text-text'
+                  : 'text-text-muted hover:text-text-light hover:bg-surface'
               }`}
               onClick={() => setViewMode(mode)}
               role="tab"
@@ -511,7 +511,7 @@ export default function SchemaView({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 ml-auto text-xs text-zinc-400">
+        <div className="flex items-center gap-2 ml-auto text-xs text-text-muted">
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-green-500" /> 100%
           </span>
@@ -533,11 +533,11 @@ export default function SchemaView({
             ))}
           </div>
         ) : viewMode === 'json' ? (
-          <pre className="text-sm text-zinc-300 whitespace-pre-wrap">
+          <pre className="text-sm text-text-secondary whitespace-pre-wrap">
             {JSON.stringify(schema, null, 2)}
           </pre>
         ) : (
-          <pre className="text-sm text-zinc-300 whitespace-pre-wrap">
+          <pre className="text-sm text-text-secondary whitespace-pre-wrap">
             {JSON.stringify(
               toJsonSchema({
                 collection: schema.collection,

@@ -61,6 +61,11 @@ export function generateURIFromForm(data: ConnectionFormData, options?: Generate
     params.append('authSource', data.authDatabase);
   }
 
+  // Direct connection for standalone (skip replica set discovery)
+  if (data.connectionType === 'standalone') {
+    params.append('directConnection', 'true');
+  }
+
   // Replica set name
   if (data.connectionType === 'replicaset' && data.replicaSetName) {
     params.append('replicaSet', data.replicaSetName);
@@ -224,6 +229,7 @@ export function parseURIIntoForm(uri: string): Partial<ConnectionFormData> {
 
     // Parse hosts
     const connectionType: ConnectionType = isSRV ? 'srv' :
+      (params.get('directConnection') === 'true') ? 'standalone' :
       (params.get('replicaSet')) ? 'replicaset' :
       (hostsStr.includes(',')) ? 'sharded' : 'standalone';
 

@@ -253,9 +253,9 @@ describe('Sidebar Search', () => {
     fireEvent.change(searchInput, { target: { value: 'Prod' } })
 
     // Look for highlight span with the matching text using CSS class selector
-    const highlightedSpans = container.querySelectorAll('span.bg-amber-500\\/30')
+    const highlightedSpans = container.querySelectorAll('span.bg-warning\\/30')
     expect(highlightedSpans.length).toBeGreaterThan(0)
     expect(highlightedSpans[0].textContent).toBe('Prod')
-    expect(highlightedSpans[0].classList.contains('text-amber-200')).toBe(true)
+    expect(highlightedSpans[0].classList.contains('text-warning')).toBe(true)
   })
 })

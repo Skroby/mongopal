@@ -17,9 +17,16 @@ export type ExportPhase = 'queued' | 'starting' | 'downloading' | 'complete' | '
 // Export type
 export type ExportType = 'csv' | 'zip'
 
+// Transfer direction discriminator
+export type TransferDirection = 'export' | 'import'
+
+// Import phase types
+export type ImportPhase = 'starting' | 'importing' | 'complete' | 'error'
+
 // Base export entry interface
 export interface ExportEntry {
   id: string
+  direction: TransferDirection
   type: ExportType
   connectionId: string
   database: string
@@ -29,8 +36,10 @@ export interface ExportEntry {
   progress: number
   startedAt: number
   label: string
+  paused: boolean
   backendExportId?: string
   totalDocs?: number
+  modalOpener?: () => void
 }
 
 // CSV-specific export entry
@@ -52,10 +61,34 @@ export interface ZipExportEntry extends ExportEntry {
 // Union type for all export entries
 export type ExportEntryUnion = CSVExportEntry | ZipExportEntry
 
-// Completed export entry
+// Import entry
+export interface ImportEntry {
+  id: string
+  direction: 'import'
+  connectionId: string
+  database: string
+  collections: string[] | null // null = database-level import
+  phase: ImportPhase
+  progress: number
+  startedAt: number
+  label: string
+  paused: boolean
+  modalOpener?: () => void
+  currentItem: string | null
+  itemIndex: number
+  itemTotal: number
+  processedDocs: number
+  totalDocs: number
+}
+
+// Any active transfer (export or import)
+export type TransferEntry = ExportEntryUnion | ImportEntry
+
+// Completed transfer entry
 export interface CompletedExport {
   id: string
-  type: ExportType
+  direction: TransferDirection
+  type: ExportType | 'import'
   database: string
   collection: string
   label: string
@@ -95,14 +128,20 @@ interface ExportCancelledEventData {
 // Context value interface
 export interface ExportQueueContextValue {
   exports: ExportEntryUnion[]
+  imports: ImportEntry[]
+  allTransfers: TransferEntry[]
   completedExports: CompletedExport[]
   queuedCount: number
   activeCount: number
   queueCSVExport: (connectionId: string, database: string, collection: string, options?: CSVExportOptions) => void
-  trackZipExport: (connectionId: string, database: string, collections: string[] | null, label?: string) => string
+  trackZipExport: (connectionId: string, database: string, collections: string[] | null, label?: string, modalOpener?: () => void) => string
   updateTrackedExport: (exportId: string, updates: Partial<ExportEntryUnion>) => void
   completeTrackedExport: (exportId: string, filePath?: string) => void
   removeTrackedExport: (exportId: string) => void
+  trackImport: (connectionId: string, database: string, collections: string[] | null, label: string, modalOpener?: () => void) => string
+  updateTrackedImport: (importId: string, updates: Partial<ImportEntry>) => void
+  completeTrackedImport: (importId: string) => void
+  removeTrackedImport: (importId: string) => void
   getLeadingExport: () => ExportEntryUnion | null
   cancelExport: (exportId: string) => void
   cancelAllExports: () => void
@@ -124,6 +163,11 @@ interface GoApp {
     options: CSVExportOptions
   ) => Promise<void>
   CancelExport?: () => void
+  CancelImport?: () => void
+  PauseExport?: () => void
+  ResumeExport?: () => void
+  PauseImport?: () => void
+  ResumeImport?: () => void
 }
 
 // Access go at call time, not module load time (bindings may not be ready yet)
@@ -137,6 +181,7 @@ const MAX_CONCURRENT_PER_CONNECTION = 3
 export function ExportQueueProvider({ children }: ExportQueueProviderProps): React.JSX.Element {
   const { notify } = useNotification()
   const [exports, setExports] = useState<ExportEntryUnion[]>([])
+  const [imports, setImports] = useState<ImportEntry[]>([])
   const [completedExports, setCompletedExports] = useState<CompletedExport[]>([])
   const processingRef = useRef<boolean>(false)
   const completedIdsRef = useRef<Set<string>>(new Set()) // Track completed IDs to prevent duplicates
@@ -221,6 +266,7 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
   const queueCSVExport = useCallback((connectionId: string, database: string, collection: string, options?: CSVExportOptions): void => {
     const entry: CSVExportEntry = {
       id: generateId(),
+      direction: 'export',
       type: 'csv',
       connectionId,
       database,
@@ -232,16 +278,18 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
       progress: 0,
       startedAt: Date.now(),
       label: collection,
+      paused: false,
     }
 
     setExports(prev => [...prev, entry])
   }, [])
 
   // Track a ZIP export (database or collection export) - these are started immediately, not queued
-  const trackZipExport = useCallback((connectionId: string, database: string, collections: string[] | null, label?: string): string => {
+  const trackZipExport = useCallback((connectionId: string, database: string, collections: string[] | null, label?: string, modalOpener?: () => void): string => {
     const id = generateId()
     const entry: ZipExportEntry = {
       id,
+      direction: 'export',
       type: 'zip',
       connectionId,
       database,
@@ -252,6 +300,8 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
       progress: 0,
       startedAt: Date.now(),
       label: label || database,
+      paused: false,
+      modalOpener,
       // Extra fields for multi-item progress
       itemIndex: 0,
       itemTotal: collections?.length || 0,
@@ -290,6 +340,7 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
       const zipEntry = entry as ZipExportEntry
       setCompletedExports(completed => [{
         id: exportId,
+        direction: 'export' as const,
         type: entry.type,
         database: entry.database,
         collection: zipEntry.collections?.join(', ') || entry.database,
@@ -305,6 +356,68 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
   // Remove a tracked export without adding to history (for cancellation)
   const removeTrackedExport = useCallback((exportId: string): void => {
     setExports(prev => prev.filter(e => e.id !== exportId))
+  }, [])
+
+  // Track an import operation
+  const trackImport = useCallback((connectionId: string, database: string, collections: string[] | null, label: string, modalOpener?: () => void): string => {
+    const id = `import-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const entry: ImportEntry = {
+      id,
+      direction: 'import',
+      connectionId,
+      database,
+      collections,
+      phase: 'starting',
+      progress: 0,
+      startedAt: Date.now(),
+      label,
+      paused: false,
+      modalOpener,
+      currentItem: null,
+      itemIndex: 0,
+      itemTotal: collections?.length || 0,
+      processedDocs: 0,
+      totalDocs: 0,
+    }
+    setImports(prev => [...prev, entry])
+    return id
+  }, [])
+
+  // Update a tracked import
+  const updateTrackedImport = useCallback((importId: string, updates: Partial<ImportEntry>): void => {
+    setImports(prev => {
+      const idx = prev.findIndex(e => e.id === importId)
+      if (idx === -1) return prev
+      const next = [...prev]
+      next[idx] = { ...next[idx], ...updates }
+      return next
+    })
+  }, [])
+
+  // Complete a tracked import (move to completed list)
+  const completeTrackedImport = useCallback((importId: string): void => {
+    setImports(prev => {
+      const entry = prev.find(e => e.id === importId)
+      if (!entry) return prev
+
+      setCompletedExports(completed => [{
+        id: importId,
+        direction: 'import' as const,
+        type: 'import' as const,
+        database: entry.database,
+        collection: entry.collections?.join(', ') || entry.database,
+        label: entry.label,
+        filePath: undefined,
+        completedAt: Date.now(),
+      }, ...completed].slice(0, 20))
+
+      return prev.filter(e => e.id !== importId)
+    })
+  }, [])
+
+  // Remove a tracked import without adding to history (for cancellation)
+  const removeTrackedImport = useCallback((importId: string): void => {
+    setImports(prev => prev.filter(e => e.id !== importId))
   }, [])
 
   // Listen for export events
@@ -440,6 +553,7 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
         // Add to completed history
         setCompletedExports(completed => [{
           id: entry.id,
+          direction: 'export' as const,
           type: entry.type,
           database: entry.database,
           collection: entry.type === 'zip' ? (zipEntry.collections?.join(', ') || entry.database) : csvEntry.collection,
@@ -491,12 +605,80 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
       })
     })
 
+    // Listen for export pause/resume events
+    const unsubExportPaused = EventsOn('export:paused', () => {
+      setExports(prev => {
+        // Mark active exports as paused
+        const activeIdx = prev.findIndex(e => e.phase !== 'queued' && e.phase !== 'complete' && e.phase !== 'error')
+        if (activeIdx === -1) return prev
+        const next = [...prev]
+        next[activeIdx] = { ...next[activeIdx], paused: true } as ExportEntryUnion
+        return next
+      })
+    })
+
+    const unsubExportResumed = EventsOn('export:resumed', () => {
+      setExports(prev => {
+        const pausedIdx = prev.findIndex(e => e.paused)
+        if (pausedIdx === -1) return prev
+        const next = [...prev]
+        next[pausedIdx] = { ...next[pausedIdx], paused: false } as ExportEntryUnion
+        return next
+      })
+    })
+
     return () => {
       if (unsubProgress) unsubProgress()
       if (unsubComplete) unsubComplete()
       if (unsubCancelled) unsubCancelled()
+      if (unsubExportPaused) unsubExportPaused()
+      if (unsubExportResumed) unsubExportResumed()
     }
   }, [notify])
+
+  // Listen for import pause/resume events (tracked imports update their own paused state via modals,
+  // but we also listen here for ExportManager-initiated pause/resume)
+  useEffect(() => {
+    const unsubImportPaused = EventsOn('import:paused', () => {
+      setImports(prev => {
+        const activeIdx = prev.findIndex(e => e.phase === 'importing' || e.phase === 'starting')
+        if (activeIdx === -1) return prev
+        const next = [...prev]
+        next[activeIdx] = { ...next[activeIdx], paused: true }
+        return next
+      })
+    })
+
+    const unsubImportResumed = EventsOn('import:resumed', () => {
+      setImports(prev => {
+        const pausedIdx = prev.findIndex(e => e.paused)
+        if (pausedIdx === -1) return prev
+        const next = [...prev]
+        next[pausedIdx] = { ...next[pausedIdx], paused: false }
+        return next
+      })
+    })
+
+    return () => {
+      if (unsubImportPaused) unsubImportPaused()
+      if (unsubImportResumed) unsubImportResumed()
+    }
+  }, [])
+
+  // Beforeunload protection for active imports (imports are destructive)
+  useEffect(() => {
+    const hasActiveImport = imports.some(e => e.phase === 'importing' || e.phase === 'starting')
+    if (!hasActiveImport) return
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent): string | undefined => {
+      e.preventDefault()
+      e.returnValue = 'An import is in progress. Closing now may leave your data in an inconsistent state.'
+      return e.returnValue
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [imports])
 
   // Get the export closest to finishing
   const getLeadingExport = useCallback((): ExportEntryUnion | null => {
@@ -543,10 +725,17 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
   }, [])
 
   const queuedCount = exports.filter(e => e.phase === 'queued').length
-  const activeCount = exports.filter(e => e.phase !== 'queued' && e.phase !== 'complete').length
+  const activeExportCount = exports.filter(e => e.phase !== 'queued' && e.phase !== 'complete').length
+  const activeImportCount = imports.filter(e => e.phase !== 'complete' && e.phase !== 'error').length
+  const activeCount = activeExportCount + activeImportCount
+
+  // Unified transfers list sorted by startedAt
+  const allTransfers: TransferEntry[] = [...exports, ...imports].sort((a, b) => a.startedAt - b.startedAt)
 
   const value: ExportQueueContextValue = {
     exports,
+    imports,
+    allTransfers,
     completedExports,
     queuedCount,
     activeCount,
@@ -555,6 +744,10 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
     updateTrackedExport,
     completeTrackedExport,
     removeTrackedExport,
+    trackImport,
+    updateTrackedImport,
+    completeTrackedImport,
+    removeTrackedImport,
     getLeadingExport,
     cancelExport,
     cancelAllExports,

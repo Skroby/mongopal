@@ -134,7 +134,7 @@ export default function TabBar(): React.JSX.Element {
   if (tabs.length === 0) {
     return (
       <div className="h-9 bg-surface-secondary border-b border-border flex items-center px-2 titlebar-drag">
-        <span className="text-xs text-zinc-400">No open tabs</span>
+        <span className="text-xs text-text-muted">No open tabs</span>
       </div>
     )
   }
@@ -227,7 +227,7 @@ export default function TabBar(): React.JSX.Element {
           key={tab.id}
           ref={el => { tabRefs.current[tab.id] = el }}
           className={`tab titlebar-no-drag ${activeTab === tab.id ? 'active' : ''} group ${
-            dragOverTab === tab.id ? 'ring-2 ring-accent ring-inset' : ''
+            dragOverTab === tab.id ? 'ring-2 ring-primary ring-inset' : ''
           } ${draggedTab?.id === tab.id ? 'opacity-50' : ''}`}
           onClick={() => setActiveTab(tab.id)}
           onContextMenu={(e) => handleContextMenu(e, tab)}
@@ -253,20 +253,20 @@ export default function TabBar(): React.JSX.Element {
 
           {/* Pin indicator */}
           {tab.pinned && (
-            <PinIcon className="w-3 h-3 text-accent flex-shrink-0" filled />
+            <PinIcon className="w-3 h-3 text-primary flex-shrink-0" filled />
           )}
 
           {/* Tab type icon */}
           {tab.type === 'document' ? (
-            <DocumentIcon className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+            <DocumentIcon className="w-3.5 h-3.5 text-warning flex-shrink-0" />
           ) : tab.type === 'insert' ? (
-            <PlusIcon className="w-3.5 h-3.5 text-accent flex-shrink-0" />
+            <PlusIcon className="w-3.5 h-3.5 text-primary flex-shrink-0" />
           ) : tab.type === 'schema' ? (
             <SchemaIcon className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
           ) : tab.type === 'indexes' ? (
             <IndexIcon className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
           ) : (
-            <PlayIcon className="w-3 h-3 text-accent flex-shrink-0" />
+            <PlayIcon className="w-3 h-3 text-primary flex-shrink-0" />
           )}
 
           {/* Tab label - editable or static */}
@@ -274,7 +274,7 @@ export default function TabBar(): React.JSX.Element {
             <input
               ref={editInputRef}
               type="text"
-              className="bg-zinc-700 text-zinc-200 text-xs px-2 py-0.5 rounded w-48 outline-none"
+              className="bg-surface-hover text-text-light text-xs px-2 py-0.5 rounded w-48 outline-none"
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               onKeyDown={(e) => handleEditKeyDown(e, tab.id)}
@@ -300,7 +300,7 @@ export default function TabBar(): React.JSX.Element {
           {/* Close button - always visible on active tab, hover on others, hidden for pinned */}
           {!tab.pinned && editingTabId !== tab.id && (
             <button
-              className={`icon-btn p-0.5 hover:bg-zinc-600 rounded transition-opacity ${
+              className={`icon-btn p-0.5 hover:bg-surface-active rounded transition-opacity ${
                 activeTab === tab.id
                   ? 'opacity-60 hover:opacity-100'
                   : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
@@ -320,7 +320,7 @@ export default function TabBar(): React.JSX.Element {
 
       {/* Add tab button */}
       <button
-        className="icon-btn p-1.5 mx-1 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 titlebar-no-drag"
+        className="icon-btn p-1.5 mx-1 hover:bg-surface-hover text-text-muted hover:text-text-light titlebar-no-drag"
         onClick={openNewQueryTab}
         title="New Query Tab"
       >
@@ -330,11 +330,11 @@ export default function TabBar(): React.JSX.Element {
       {/* Context menu */}
       {contextMenu && (
         <div
-          className="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50 min-w-[120px]"
+          className="fixed bg-surface border border-border rounded-lg shadow-xl py-1 z-50 min-w-[120px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
-            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-700"
+            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-text-light hover:bg-surface-hover"
             onClick={() => {
               const tab = tabs.find(t => t.id === contextMenu.tabId)
               if (tab) handleDoubleClick(tab)
@@ -344,7 +344,7 @@ export default function TabBar(): React.JSX.Element {
             Rename
           </button>
           <button
-            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-700"
+            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-text-light hover:bg-surface-hover"
             onClick={() => {
               if (pinTab) pinTab(contextMenu.tabId)
               setContextMenu(null)
@@ -352,9 +352,9 @@ export default function TabBar(): React.JSX.Element {
           >
             {contextMenu.pinned ? 'Unpin' : 'Pin'}
           </button>
-          <div className="border-t border-zinc-700 my-1" />
+          <div className="border-t border-border my-1" />
           <button
-            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-700"
+            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-text-light hover:bg-surface-hover"
             onClick={() => {
               // Close all unpinned tabs except the right-clicked one
               tabs.filter(t => !t.pinned && t.id !== contextMenu.tabId).forEach(t => closeTab(t.id))
@@ -364,7 +364,7 @@ export default function TabBar(): React.JSX.Element {
             Close Others
           </button>
           <button
-            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-700"
+            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-text-light hover:bg-surface-hover"
             onClick={() => {
               // Close all unpinned tabs
               tabs.filter(t => !t.pinned).forEach(t => closeTab(t.id))
@@ -373,9 +373,9 @@ export default function TabBar(): React.JSX.Element {
           >
             Close All
           </button>
-          <div className="border-t border-zinc-700 my-1" />
+          <div className="border-t border-border my-1" />
           <button
-            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-zinc-700"
+            className="context-menu-item w-full px-3 py-1.5 text-left text-sm text-error hover:bg-surface-hover"
             onClick={() => {
               closeTab(contextMenu.tabId)
               setContextMenu(null)

@@ -120,18 +120,18 @@ function ContextMenu({ x, y, items, onClose }: ContextMenuState & { onClose: () 
   return (
     <div
       ref={menuRef}
-      className="bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 min-w-[180px]"
+      className="bg-surface border border-border rounded-lg shadow-xl py-1 min-w-[180px]"
       style={{ position: 'fixed', left: x, top: y, zIndex: 1000 }}
     >
       {items.map((item, idx) => {
         if (item.type === 'separator') {
-          return <div key={idx} className="border-t border-zinc-700 my-1" />
+          return <div key={idx} className="border-t border-border my-1" />
         }
         return (
           <button
             key={idx}
             className={`w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
-              ${item.danger ? 'text-red-400 hover:bg-red-900/30' : 'text-zinc-200 hover:bg-zinc-700'}`}
+              ${item.danger ? 'text-error hover:bg-error-dark/30' : 'text-text-light hover:bg-surface-hover'}`}
             onClick={() => { item.onClick?.(); onClose() }}
           >
             {item.label}
@@ -490,7 +490,7 @@ export default function ConnectionManager({
       return (
         <div key={folder.id} className="px-2 py-1" style={{ paddingLeft: `${level * 16 + 8}px` }}>
           <div className="flex items-center gap-1">
-            <span className="text-zinc-400"><FolderIcon className="w-4 h-4" /></span>
+            <span className="text-text-muted"><FolderIcon className="w-4 h-4" /></span>
             <input
               type="text"
               className="input py-0.5 px-2 text-sm flex-1"
@@ -544,8 +544,8 @@ export default function ConnectionManager({
     return (
       <div key={folder.id}>
         <div
-          className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-zinc-800 rounded-md mx-1 transition-colors ${
-            dragOverFolderId === folder.id ? 'bg-accent/10 ring-1 ring-accent/30' : ''
+          className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-surface rounded-md mx-1 transition-colors ${
+            dragOverFolderId === folder.id ? 'bg-primary/10 ring-1 ring-primary/30' : ''
           }`}
           style={{ paddingLeft: `${level * 16 + 12}px` }}
           onClick={() => toggleFolder(folder.id)}
@@ -562,11 +562,11 @@ export default function ConnectionManager({
           onDrop={(e) => handleDrop(e, folder.id)}
         >
           <span className={`transition-transform ${expanded ? 'rotate-90' : ''} ${!hasChildren ? 'invisible' : ''}`}>
-            <ChevronIcon className="w-3 h-3 text-zinc-500" />
+            <ChevronIcon className="w-3 h-3 text-text-dim" />
           </span>
-          <FolderIcon className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-          <span className="text-sm text-zinc-200 truncate flex-1">{folder.name}</span>
-          <span className="text-xs text-zinc-500">{totalConns}</span>
+          <FolderIcon className="w-4 h-4 text-text-muted flex-shrink-0" />
+          <span className="text-sm text-text-light truncate flex-1">{folder.name}</span>
+          <span className="text-xs text-text-dim">{totalConns}</span>
         </div>
         {expanded && (
           <div>
@@ -597,7 +597,7 @@ export default function ConnectionManager({
     return (
       <div
         key={conn.id}
-        className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-zinc-800 rounded-md mx-1 group transition-colors`}
+        className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-surface rounded-md mx-1 group transition-colors`}
         style={{ paddingLeft: `${level * 16 + 12}px` }}
         onDoubleClick={() => onEditConnection(conn)}
         onContextMenu={handleContextMenu}
@@ -618,16 +618,16 @@ export default function ConnectionManager({
             style={{ backgroundColor: conn.color }}
           />
         ) : (
-          <ServerIcon className="w-4 h-4 text-zinc-500 flex-shrink-0" />
+          <ServerIcon className="w-4 h-4 text-text-dim flex-shrink-0" />
         )}
-        <span className="text-sm text-zinc-200 truncate flex-1">{conn.name}</span>
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-700/50 text-zinc-400 font-mono flex-shrink-0">
+        <span className="text-sm text-text-light truncate flex-1">{conn.name}</span>
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-hover/50 text-text-muted font-mono flex-shrink-0">
           {typeBadge}
         </span>
         {/* Action buttons on hover */}
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button
-            className="p-0.5 rounded hover:bg-zinc-600 text-zinc-400 hover:text-zinc-200"
+            className="p-0.5 rounded hover:bg-surface-active text-text-muted hover:text-text-light"
             onClick={(e) => { e.stopPropagation(); onEditConnection(conn) }}
             title="Edit"
           >
@@ -636,14 +636,14 @@ export default function ConnectionManager({
             </svg>
           </button>
           <button
-            className="p-0.5 rounded hover:bg-zinc-600 text-zinc-400 hover:text-zinc-200"
+            className="p-0.5 rounded hover:bg-surface-active text-text-muted hover:text-text-light"
             onClick={(e) => { e.stopPropagation(); handleExportConnection(conn.id) }}
             title="Export"
           >
             <ExportIcon className="w-3.5 h-3.5" />
           </button>
           <button
-            className="p-0.5 rounded hover:bg-red-900/50 text-zinc-400 hover:text-red-400"
+            className="p-0.5 rounded hover:bg-error-dark/50 text-text-muted hover:text-error"
             onClick={(e) => { e.stopPropagation(); handleDeleteConnection(conn.id) }}
             title="Delete"
           >
@@ -658,11 +658,11 @@ export default function ConnectionManager({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-secondary rounded-lg shadow-xl w-full max-w-2xl mx-4 border border-border flex flex-col max-h-[80vh]">
+      <div className="bg-surface-secondary text-text rounded-lg shadow-xl w-full max-w-2xl mx-4 border border-border flex flex-col max-h-[80vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
-          <h2 className="text-lg font-medium">Manage Connections</h2>
-          <button className="icon-btn p-1 hover:bg-zinc-700" onClick={onClose}>
+          <h2 className="text-lg font-medium text-text">Manage Connections</h2>
+          <button className="icon-btn p-1 hover:bg-surface-hover" onClick={onClose}>
             <CloseIcon className="w-5 h-5" />
           </button>
         </div>
@@ -705,7 +705,7 @@ export default function ConnectionManager({
         {showNewFolderInput && (
           <div className="px-4 py-2 border-b border-border">
             {newSubfolderParentId && (
-              <div className="text-xs text-zinc-400 mb-1">
+              <div className="text-xs text-text-muted mb-1">
                 New subfolder in: {folders.find(f => f.id === newSubfolderParentId)?.name}
               </div>
             )}
@@ -734,12 +734,12 @@ export default function ConnectionManager({
           {connections.length === 0 && folders.length === 0 ? (
             <div className="flex items-center justify-center h-full px-6 py-8">
               <div className="space-y-4 text-center max-w-[240px]">
-                <div className="w-14 h-14 mx-auto rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-                  <ServerIcon className="w-7 h-7 text-accent" />
+                <div className="w-14 h-14 mx-auto rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                  <ServerIcon className="w-7 h-7 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-zinc-100 font-semibold text-base mb-2">No Connections</h3>
-                  <p className="text-zinc-400 text-sm leading-relaxed">
+                  <h3 className="text-text font-semibold text-base mb-2">No Connections</h3>
+                  <p className="text-text-muted text-sm leading-relaxed">
                     Add your first connection or import one from a colleague.
                   </p>
                 </div>
@@ -757,7 +757,7 @@ export default function ConnectionManager({
             </div>
           ) : (
             <div
-              className={`root-drop-zone ${dragOverFolderId === 'root' ? 'bg-accent/5' : ''}`}
+              className={`root-drop-zone ${dragOverFolderId === 'root' ? 'bg-primary/5' : ''}`}
               onDragOver={(e) => handleDragOver(e, null)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, null)}
@@ -772,10 +772,10 @@ export default function ConnectionManager({
               {((draggingConnectionId && connections.find(c => c.id === draggingConnectionId)?.folderId) ||
                 (draggingFolderId && folders.find(f => f.id === draggingFolderId)?.parentId)) && (
                 <div
-                  className={`px-4 py-2 text-xs text-zinc-400 italic border border-dashed rounded mx-3 my-1 transition-colors ${
+                  className={`px-4 py-2 text-xs text-text-muted italic border border-dashed rounded mx-3 my-1 transition-colors ${
                     dragOverFolderId === 'root'
-                      ? 'border-accent bg-accent/10 text-accent'
-                      : 'border-zinc-600'
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border-light'
                   }`}
                   onDragOver={(e) => handleDragOver(e, null)}
                   onDragLeave={handleDragLeave}
@@ -789,7 +789,7 @@ export default function ConnectionManager({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-border flex-shrink-0 text-xs text-zinc-500">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-border flex-shrink-0 text-xs text-text-dim">
           <span>{connections.length} connection{connections.length !== 1 ? 's' : ''}, {folders.length} folder{folders.length !== 1 ? 's' : ''}</span>
           <span>Right-click for options</span>
         </div>

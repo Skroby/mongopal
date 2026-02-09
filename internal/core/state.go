@@ -169,6 +169,8 @@ func (s *AppState) CancelExport(exportID string) {
 		}
 		delete(s.ExportCancels, exportID)
 	}
+	// Wake any goroutines blocked in WaitIfExportPaused so they see the cancelled context
+	s.PauseCond.Broadcast()
 }
 
 // SetImportCancel safely sets the import cancel function.
@@ -186,6 +188,8 @@ func (s *AppState) ClearImportCancel() {
 		s.ImportCancel()
 		s.ImportCancel = nil
 	}
+	// Wake any goroutines blocked in WaitIfImportPaused so they see the cancelled context
+	s.PauseCond.Broadcast()
 }
 
 // GetImportCancel safely gets the import cancel function.

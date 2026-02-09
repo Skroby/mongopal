@@ -88,7 +88,7 @@ mongopal/
 │   ├── types/              # Shared type definitions
 │   ├── credential/         # Password/keyring management
 │   ├── storage/            # Config file I/O, connections
-│   ├── connection/         # Connect, Disconnect, TestConnection
+│   ├── connection/         # Connect, Disconnect, TestConnection, GetServerInfo
 │   ├── database/           # List databases/collections, drop ops
 │   ├── document/           # Document CRUD operations
 │   ├── schema/             # Schema inference and export

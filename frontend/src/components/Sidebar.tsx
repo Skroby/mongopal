@@ -276,7 +276,7 @@ function HighlightedText({ text, searchQuery }: HighlightedTextProps): React.Rea
   return (
     <>
       {before}
-      <span className="bg-amber-500/30 text-amber-200 rounded px-0.5">{match}</span>
+      <span className="bg-warning/30 text-warning rounded px-0.5">{match}</span>
       {after}
     </>
   )
@@ -434,21 +434,21 @@ function ContextMenu({ x, y, items, onClose }: ContextMenuProps): React.ReactEle
   return (
     <div
       ref={menuRef}
-      className="bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 min-w-[180px]"
+      className="bg-surface border border-border rounded-lg shadow-xl py-1 min-w-[180px]"
       style={adjustedStyle}
     >
       {items.map((item, idx) => {
         if (item.type === 'separator') {
-          return <div key={idx} className="border-t border-zinc-700 my-1" />
+          return <div key={idx} className="border-t border-border my-1" />
         }
         return (
           <button
             key={idx}
             className={`context-menu-item w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
-              ${item.danger ? 'text-red-400 hover:bg-red-900/30' : ''}
+              ${item.danger ? 'text-error hover:bg-error-dark/30' : ''}
               ${item.disabled
-                ? 'text-zinc-600 cursor-not-allowed'
-                : item.danger ? '' : 'text-zinc-200 hover:bg-zinc-700'}`}
+                ? 'text-text-dim cursor-not-allowed'
+                : item.danger ? '' : 'text-text-light hover:bg-surface-hover'}`}
             onClick={() => {
               if (!item.disabled) {
                 item.onClick?.()
@@ -459,7 +459,7 @@ function ContextMenu({ x, y, items, onClose }: ContextMenuProps): React.ReactEle
           >
             {item.label}
             {item.shortcut && (
-              <span className="ml-auto text-xs text-zinc-500">{item.shortcut}</span>
+              <span className="ml-auto text-xs text-text-dim">{item.shortcut}</span>
             )}
           </button>
         )
@@ -567,7 +567,7 @@ function TreeNode({
     } else {
       return (
         <span
-          className="w-2 h-2 rounded-full flex-shrink-0 border border-zinc-500"
+          className="w-2 h-2 rounded-full flex-shrink-0 border border-text-dim"
           title={statusTooltip || "Disconnected - Click to connect"}
         />
       )
@@ -614,7 +614,7 @@ function TreeNode({
       >
         {showChevron ? (
           <button
-            className="icon-btn p-0.5 hover:bg-zinc-600 rounded flex-shrink-0"
+            className="icon-btn p-0.5 hover:bg-surface-active rounded flex-shrink-0 text-text"
             tabIndex={-1}
             aria-hidden="true"
             draggable="false"
@@ -631,12 +631,12 @@ function TreeNode({
         {getStatusDot()}
         <span
           className="flex-shrink-0"
-          style={{ color: color || '#a1a1aa' }}
+          style={{ color: color || 'var(--color-text-muted)' }}
           aria-hidden="true"
         >
           {icon}
         </span>
-        <span className="flex-1 truncate text-sm">
+        <span className="flex-1 truncate text-sm text-text">
           {highlightLabel && searchQuery ? (
             <HighlightedText text={typeof label === 'string' ? label : ''} searchQuery={searchQuery} />
           ) : (
@@ -646,7 +646,7 @@ function TreeNode({
         {onToggleFavorite !== undefined && (
           <button
             className={`icon-btn p-0.5 rounded flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${
-              isFavorite ? 'opacity-100 text-yellow-500' : 'hover:bg-zinc-600 text-zinc-500 hover:text-zinc-300'
+              isFavorite ? 'opacity-100 text-yellow-500' : 'hover:bg-surface-active text-text-dim hover:text-text-secondary'
             }`}
             tabIndex={-1}
             aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
@@ -660,7 +660,7 @@ function TreeNode({
           </button>
         )}
         {count !== undefined && (
-          <span className="text-xs text-zinc-400 flex-shrink-0" aria-label={`${count} documents`}>({count})</span>
+          <span className="text-xs text-text-muted flex-shrink-0" aria-label={`${count} documents`}>({count})</span>
         )}
       </div>
       {expanded && hasChildren && (
@@ -704,6 +704,7 @@ interface ConnectionNodeProps {
   onViewSchema: (connId: string, dbName: string, collName: string) => void
   onShowStats?: (connId: string, dbName: string, collName: string) => void
   onManageIndexes?: (connId: string, dbName: string, collName: string) => void
+  onShowServerInfo?: () => void
   onExportDatabases?: () => void
   onImportDatabases?: () => void
   onExportCollections?: (dbName: string) => void
@@ -758,6 +759,7 @@ function ConnectionNode({
   onViewSchema,
   onShowStats,
   onManageIndexes,
+  onShowServerInfo,
   onExportDatabases,
   onImportDatabases,
   onExportCollections,
@@ -891,6 +893,7 @@ function ConnectionNode({
     const items: ContextMenuItem[] = isConnected
       ? [
           { label: 'Refresh', onClick: onRefresh },
+          { label: 'Server Info...', onClick: onShowServerInfo },
           { type: 'separator' },
           { label: 'Export Databases...', onClick: onExportDatabases },
           { label: 'Import Databases...', onClick: onImportDatabases },
@@ -979,7 +982,7 @@ function ConnectionNode({
 
   const getLabel = (): ReactNode => {
     const ReadOnlyBadge = connection.readOnly ? (
-      <span className="inline-flex items-center gap-0.5 ml-1.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-900/40 text-amber-400 border border-amber-800/50" title="Read-only connection - write operations disabled">
+      <span className="inline-flex items-center gap-0.5 ml-1.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-warning-dark text-warning border border-warning-dark" title="Read-only connection - write operations disabled">
         <LockIcon className="w-2.5 h-2.5" />
         <span>Read-Only</span>
       </span>
@@ -987,7 +990,7 @@ function ConnectionNode({
     const nameWithHighlight = searchQuery ? (
       <HighlightedText text={connection.name} searchQuery={searchQuery} />
     ) : connection.name
-    if (isConnecting) return <>{nameWithHighlight}{ReadOnlyBadge} <span className="text-zinc-500">[connecting...]</span></>
+    if (isConnecting) return <>{nameWithHighlight}{ReadOnlyBadge} <span className="text-text-dim">[connecting...]</span></>
     if (isConnected) return <>{nameWithHighlight}{ReadOnlyBadge}</>
     return <>{nameWithHighlight}{ReadOnlyBadge}</>
   }
@@ -1260,6 +1263,7 @@ export interface SidebarProps {
   onImportCollections?: (connId: string, connName: string, dbName: string) => void
   onShowStats?: (connId: string, dbName: string, collName: string) => void
   onManageIndexes?: (connId: string, dbName: string, collName: string) => void
+  onShowServerInfo?: (connId: string, connName: string) => void
 }
 
 export default function Sidebar({
@@ -1272,6 +1276,7 @@ export default function Sidebar({
   onImportCollections,
   onShowStats,
   onManageIndexes,
+  onShowServerInfo,
 }: SidebarProps): React.ReactElement {
   const { notify } = useNotification()
   const {
@@ -2018,7 +2023,7 @@ export default function Sidebar({
       return (
         <div key={folder.id} className="px-2 py-1" style={{ paddingLeft: `${level * 12 + 8}px` }}>
           <div className="flex items-center gap-1">
-            <span className="text-zinc-400"><FolderIcon /></span>
+            <span className="text-text-muted"><FolderIcon /></span>
             <input
               type="text"
               className="input py-0.5 px-2 text-sm flex-1"
@@ -2137,6 +2142,7 @@ export default function Sidebar({
         onViewSchema={openSchemaTab}
         onShowStats={onShowStats}
         onManageIndexes={onManageIndexes}
+        onShowServerInfo={() => onShowServerInfo?.(conn.id, conn.name)}
         onExportDatabases={() => onExportDatabases?.(conn.id, conn.name)}
         onImportDatabases={() => onImportDatabases?.(conn.id, conn.name)}
         onExportCollections={(dbName) => onExportCollections?.(conn.id, conn.name, dbName)}
@@ -2183,7 +2189,7 @@ export default function Sidebar({
       {/* Search bar - draggable header area */}
       <div className="p-2 border-b border-border titlebar-drag">
         <div className="relative">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-dim pointer-events-none" />
           <input
             type="text"
             placeholder="Search connections, databases, collections..."
@@ -2198,7 +2204,7 @@ export default function Sidebar({
           />
           {searchQuery && (
             <button
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-300 rounded hover:bg-zinc-700 titlebar-no-drag"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-dim hover:text-text-secondary rounded hover:bg-surface-hover titlebar-no-drag"
               onClick={() => setSearchQuery('')}
               title="Clear search"
             >
@@ -2211,21 +2217,21 @@ export default function Sidebar({
       {/* Action buttons - draggable with no-drag on buttons */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border titlebar-drag">
         <button
-          className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 titlebar-no-drag"
+          className="icon-btn p-1.5 hover:bg-surface-hover text-text-muted hover:text-text-light titlebar-no-drag"
           onClick={onManageConnections}
           title="Manage Connections"
         >
           <ServerIcon className="w-4 h-4" />
         </button>
         <button
-          className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 titlebar-no-drag"
+          className="icon-btn p-1.5 hover:bg-surface-hover text-text-muted hover:text-text-light titlebar-no-drag"
           onClick={() => setShowNewFolderInput(true)}
           title="New Folder"
         >
           <FolderIcon className="w-4 h-4" />
         </button>
         <button
-          className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ml-auto titlebar-no-drag"
+          className="icon-btn p-1.5 hover:bg-surface-hover text-text-muted hover:text-text-light ml-auto titlebar-no-drag"
           onClick={toggleDbSortMode}
           title={dbSortMode === 'alpha' ? 'Sort by Name (click for Recent)' : 'Sort by Recent (click for Name)'}
         >
@@ -2233,7 +2239,7 @@ export default function Sidebar({
         </button>
         {activeConnections.length > 0 && (
           <button
-            className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 titlebar-no-drag"
+            className="icon-btn p-1.5 hover:bg-surface-hover text-text-muted hover:text-text-light titlebar-no-drag"
             onClick={handleDisconnectAll}
             title={`Disconnect All (${activeConnections.length})`}
           >
@@ -2246,7 +2252,7 @@ export default function Sidebar({
       {showNewFolderInput && (
         <div className="px-2 py-1.5 border-b border-border">
           {newSubfolderParentId && (
-            <div className="text-xs text-zinc-400 mb-1">
+            <div className="text-xs text-text-muted mb-1">
               New subfolder in: {folders.find(f => f.id === newSubfolderParentId)?.name}
             </div>
           )}
@@ -2296,12 +2302,12 @@ export default function Sidebar({
           <div className="flex-1 flex items-center justify-center px-6 py-8">
             {connections.length === 0 ? (
               <div className="space-y-5 text-center max-w-[220px]">
-                <div className="w-14 h-14 mx-auto rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-                  <ServerIcon className="w-7 h-7 text-accent" />
+                <div className="w-14 h-14 mx-auto rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                  <ServerIcon className="w-7 h-7 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-zinc-100 font-semibold text-base mb-2">Welcome to MongoPal</h3>
-                  <p className="text-zinc-400 text-sm leading-relaxed">
+                  <h3 className="text-text font-semibold text-base mb-2">Welcome to MongoPal</h3>
+                  <p className="text-text-muted text-sm leading-relaxed">
                     Get started by adding your first MongoDB connection to explore databases and collections.
                   </p>
                 </div>
@@ -2312,12 +2318,12 @@ export default function Sidebar({
                   <ServerIcon className="w-4 h-4 mr-2" />
                   Manage Connections
                 </button>
-                <p className="text-zinc-500 text-xs">
+                <p className="text-text-dim text-xs">
                   Tip: You can also press Ctrl+N to add a connection
                 </p>
               </div>
             ) : (
-              <p className="text-zinc-400 text-sm">No matching connections</p>
+              <p className="text-text-muted text-sm">No matching connections</p>
             )}
           </div>
         ) : (
@@ -2341,10 +2347,10 @@ export default function Sidebar({
               {((draggingConnectionId && connections.find(c => c.id === draggingConnectionId)?.folderId) ||
                 (draggingFolderId && folders.find(f => f.id === draggingFolderId)?.parentId)) && (
                 <div
-                  className={`px-4 py-2 text-xs text-zinc-400 italic border border-dashed rounded mx-2 my-1 transition-colors ${
+                  className={`px-4 py-2 text-xs text-text-muted italic border border-dashed rounded mx-2 my-1 transition-colors ${
                     dragOverFolderId === 'root'
-                      ? 'border-accent bg-accent/10 text-accent'
-                      : 'border-zinc-600'
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border-light'
                   }`}
                 >
                   Drop here to move to root

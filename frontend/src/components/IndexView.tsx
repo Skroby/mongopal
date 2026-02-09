@@ -270,7 +270,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Index Keys */}
       <div>
-        <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wide mb-2">
+        <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
           Index Keys
         </label>
         <div className="space-y-2">
@@ -291,7 +291,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
                 spellCheck={false}
               />
               <select
-                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-300"
+                className="bg-surface border border-border rounded px-2 py-1.5 text-sm text-text-secondary"
                 value={key.direction}
                 onChange={(e: ChangeEvent<HTMLSelectElement>) =>
                   updateKey(index, 'direction', parseInt(e.target.value, 10))
@@ -303,7 +303,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
               {keys.length > 1 && (
                 <button
                   type="button"
-                  className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-red-400"
+                  className="p-1.5 rounded hover:bg-surface-hover text-text-muted hover:text-error"
                   onClick={() => removeKey(index)}
                   title="Remove key"
                 >
@@ -315,7 +315,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
         </div>
         <button
           type="button"
-          className="mt-2 text-xs text-accent hover:text-accent/80 flex items-center gap-1"
+          className="mt-2 text-xs text-primary hover:text-primary/80 flex items-center gap-1"
           onClick={addKey}
         >
           <PlusIcon className="w-3 h-3" />
@@ -325,15 +325,15 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
 
       {/* Options */}
       <div>
-        <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wide mb-2">
+        <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
           Options
         </label>
         <div className="space-y-2">
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-sm text-zinc-300">
+            <label className="flex items-center gap-2 text-sm text-text-secondary">
               <input
                 type="checkbox"
-                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent/50"
+                className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
                 checked={options.unique}
                 onChange={(e: ChangeEvent<HTMLInputElement>) =>
                   setOptions({ ...options, unique: e.target.checked })
@@ -341,10 +341,10 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
               />
               Unique
             </label>
-            <label className="flex items-center gap-2 text-sm text-zinc-300">
+            <label className="flex items-center gap-2 text-sm text-text-secondary">
               <input
                 type="checkbox"
-                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent/50"
+                className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
                 checked={options.sparse}
                 onChange={(e: ChangeEvent<HTMLInputElement>) =>
                   setOptions({ ...options, sparse: e.target.checked })
@@ -352,10 +352,10 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
               />
               Sparse
             </label>
-            <label className="flex items-center gap-2 text-sm text-zinc-300">
+            <label className="flex items-center gap-2 text-sm text-text-secondary">
               <input
                 type="checkbox"
-                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent/50"
+                className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
                 checked={options.background}
                 onChange={(e: ChangeEvent<HTMLInputElement>) =>
                   setOptions({ ...options, background: e.target.checked })
@@ -367,7 +367,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
 
           <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label className="block text-xs text-zinc-400 mb-1">Index Name (optional)</label>
+              <label className="block text-xs text-text-muted mb-1">Index Name (optional)</label>
               <input
                 type="text"
                 className="w-full input py-1.5 px-2 text-sm"
@@ -383,7 +383,7 @@ function CreateIndexForm({ onSubmit, onCancel, creating }: CreateIndexFormProps)
               />
             </div>
             <div className="w-40">
-              <label className="block text-xs text-zinc-400 mb-1">TTL (seconds)</label>
+              <label className="block text-xs text-text-muted mb-1">TTL (seconds)</label>
               <input
                 type="number"
                 className="w-full input py-1.5 px-2 text-sm"
@@ -549,16 +549,16 @@ Statistics:
         {/* Header */}
         <div className="flex-shrink-0 p-3 border-b border-border bg-surface-secondary">
           <div>
-            <h2 className="text-lg font-medium text-zinc-100">Index Manager</h2>
-            <p className="text-sm text-zinc-400 font-mono">
+            <h2 className="text-lg font-medium text-text">Index Manager</h2>
+            <p className="text-sm text-text-muted font-mono">
               {database}.{collection}
             </p>
           </div>
         </div>
         {/* Not connected message */}
-        <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 gap-4">
+        <div className="flex-1 flex flex-col items-center justify-center text-text-muted gap-4">
           <svg
-            className="w-12 h-12 text-zinc-500"
+            className="w-12 h-12 text-text-dim"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -573,7 +573,7 @@ Statistics:
           <span>Not connected to database</span>
           <button
             onClick={() => connect(connectionId)}
-            className="px-4 py-2 bg-accent hover:bg-accent/90 text-zinc-900 rounded-lg font-medium"
+            className="px-4 py-2 bg-primary hover:bg-primary/90 text-background rounded-lg font-medium"
           >
             Connect
           </button>
@@ -589,15 +589,15 @@ Statistics:
         {/* Header */}
         <div className="flex-shrink-0 p-3 border-b border-border bg-surface-secondary">
           <div>
-            <h2 className="text-lg font-medium text-zinc-100">Index Manager</h2>
-            <p className="text-sm text-zinc-400 font-mono">
+            <h2 className="text-lg font-medium text-text">Index Manager</h2>
+            <p className="text-sm text-text-muted font-mono">
               {database}.{collection}
             </p>
           </div>
         </div>
         {/* Connecting message */}
-        <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+        <div className="flex-1 flex flex-col items-center justify-center text-text-muted gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           <span>Connecting to database...</span>
         </div>
       </div>
@@ -610,14 +610,14 @@ Statistics:
       <div className="flex-shrink-0 p-3 border-b border-border bg-surface-secondary">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-medium text-zinc-100">Index Manager</h2>
-            <p className="text-sm text-zinc-400 font-mono">
+            <h2 className="text-lg font-medium text-text">Index Manager</h2>
+            <p className="text-sm text-text-muted font-mono">
               {database}.{collection}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <button
-              className="icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
+              className="icon-btn p-1.5 hover:bg-surface-hover text-text-muted hover:text-text-light"
               onClick={loadIndexes}
               disabled={loading}
               title="Refresh indexes"
@@ -646,7 +646,7 @@ Statistics:
 
       {/* Create form - collapsible panel */}
       {showCreateForm && (
-        <div className="flex-shrink-0 border-b border-border p-4 bg-zinc-800/50">
+        <div className="flex-shrink-0 border-b border-border p-4 bg-surface/50">
           <CreateIndexForm
             onSubmit={handleCreateIndex}
             onCancel={() => setShowCreateForm(false)}
@@ -659,19 +659,19 @@ Statistics:
       <div className="flex-1 overflow-auto p-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         ) : error ? (
           <div className="py-8 text-center">
-            <p className="text-red-400 text-sm mb-3">{error}</p>
+            <p className="text-error text-sm mb-3">{error}</p>
             <button className="btn btn-secondary text-sm" onClick={loadIndexes}>
               Retry
             </button>
           </div>
         ) : indexes.length === 0 ? (
-          <div className="py-12 text-center text-zinc-400">
+          <div className="py-12 text-center text-text-muted">
             <p className="mb-2">No indexes found</p>
-            <p className="text-sm text-zinc-500">Click "Create Index" to add one</p>
+            <p className="text-sm text-text-dim">Click "Create Index" to add one</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -679,24 +679,24 @@ Statistics:
               const isDefaultId = index.name === '_id_'
               const isExpanded = expandedIndexes.has(index.name)
               return (
-                <div key={index.name} className="bg-zinc-800 rounded-lg overflow-hidden">
+                <div key={index.name} className="bg-surface rounded-lg overflow-hidden">
                   {/* Index header - always visible */}
                   <div
-                    className="p-4 flex items-start justify-between gap-4 cursor-pointer hover:bg-zinc-700/50 transition-colors"
+                    className="p-4 flex items-start justify-between gap-4 cursor-pointer hover:bg-surface-hover/50 transition-colors"
                     onClick={() => toggleIndexExpanded(index.name)}
                   >
                     <div className="flex items-center gap-2">
                       <span
-                        className="text-zinc-400 transition-transform duration-200"
+                        className="text-text-muted transition-transform duration-200"
                         style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
                       >
                         <ChevronRightIcon className="w-4 h-4" />
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-sm text-zinc-100">{index.name}</span>
+                          <span className="font-mono text-sm text-text">{index.name}</span>
                           {index.unique && (
-                            <span className="px-1.5 py-0.5 text-xs bg-blue-900/50 text-blue-400 rounded">
+                            <span className="px-1.5 py-0.5 text-xs bg-info-dark/50 text-info rounded">
                               unique
                             </span>
                           )}
@@ -706,24 +706,24 @@ Statistics:
                             </span>
                           )}
                           {index.ttl > 0 && (
-                            <span className="px-1.5 py-0.5 text-xs bg-amber-900/50 text-amber-400 rounded">
+                            <span className="px-1.5 py-0.5 text-xs bg-warning-dark/50 text-warning rounded">
                               TTL: {index.ttl}s
                             </span>
                           )}
                           {isDefaultId && (
-                            <span className="px-1.5 py-0.5 text-xs bg-zinc-700 text-zinc-400 rounded">
+                            <span className="px-1.5 py-0.5 text-xs bg-surface-hover text-text-muted rounded">
                               default
                             </span>
                           )}
                         </div>
-                        <div className="mt-1 text-sm text-zinc-400 font-mono">
+                        <div className="mt-1 text-sm text-text-muted font-mono">
                           {`{ ${formatKeys(index.keys)} }`}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
-                        className={`p-2 rounded hover:bg-zinc-600 ${copiedIndex === index.name ? 'text-accent' : 'text-zinc-400 hover:text-zinc-200'}`}
+                        className={`p-2 rounded hover:bg-surface-active ${copiedIndex === index.name ? 'text-primary' : 'text-text-muted hover:text-text-light'}`}
                         onClick={(e) => {
                           e.stopPropagation()
                           copyIndexDetails(index)
@@ -738,7 +738,7 @@ Statistics:
                       </button>
                       {!isDefaultId && (
                         <button
-                          className="p-2 rounded hover:bg-zinc-600 text-zinc-400 hover:text-red-400"
+                          className="p-2 rounded hover:bg-surface-active text-text-muted hover:text-error"
                           onClick={(e) => {
                             e.stopPropagation()
                             setConfirmDelete(index.name)
@@ -753,18 +753,18 @@ Statistics:
 
                   {/* Expanded configuration details */}
                   {isExpanded && (
-                    <div className="px-4 pb-4 pt-0 border-t border-zinc-700/50">
+                    <div className="px-4 pb-4 pt-0 border-t border-border/50">
                       <div className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
                         {/* Keys section */}
                         <div className="col-span-2 mb-2">
-                          <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1">
+                          <div className="text-xs text-text-dim uppercase tracking-wide mb-1">
                             Index Keys
                           </div>
-                          <div className="bg-zinc-900 rounded p-2 font-mono text-xs">
+                          <div className="bg-background rounded p-2 font-mono text-xs">
                             {Object.entries(index.keys).map(([field, direction]) => (
                               <div key={field} className="flex justify-between py-0.5">
-                                <span className="text-zinc-300">{field}</span>
-                                <span className={direction === 1 ? 'text-green-400' : 'text-amber-400'}>
+                                <span className="text-text-secondary">{field}</span>
+                                <span className={direction === 1 ? 'text-success' : 'text-warning'}>
                                   {direction === 1 ? 'ASC (1)' : 'DESC (-1)'}
                                 </span>
                               </div>
@@ -774,31 +774,31 @@ Statistics:
 
                         {/* Configuration options */}
                         <div>
-                          <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1">
+                          <div className="text-xs text-text-dim uppercase tracking-wide mb-1">
                             Configuration
                           </div>
                           <div className="space-y-1">
                             <div className="flex justify-between">
-                              <span className="text-zinc-400">Unique</span>
-                              <span className={index.unique ? 'text-green-400' : 'text-zinc-500'}>
+                              <span className="text-text-muted">Unique</span>
+                              <span className={index.unique ? 'text-success' : 'text-text-dim'}>
                                 {index.unique ? 'Yes' : 'No'}
                               </span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-zinc-400">Sparse</span>
-                              <span className={index.sparse ? 'text-green-400' : 'text-zinc-500'}>
+                              <span className="text-text-muted">Sparse</span>
+                              <span className={index.sparse ? 'text-success' : 'text-text-dim'}>
                                 {index.sparse ? 'Yes' : 'No'}
                               </span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-zinc-400">TTL</span>
-                              <span className={index.ttl > 0 ? 'text-amber-400' : 'text-zinc-500'}>
+                              <span className="text-text-muted">TTL</span>
+                              <span className={index.ttl > 0 ? 'text-warning' : 'text-text-dim'}>
                                 {index.ttl > 0 ? `${index.ttl} seconds` : 'None'}
                               </span>
                             </div>
                             {index.partialFilterExpression && (
                               <div className="flex justify-between">
-                                <span className="text-zinc-400">Partial Filter</span>
+                                <span className="text-text-muted">Partial Filter</span>
                                 <span className="text-purple-400">Yes</span>
                               </div>
                             )}
@@ -807,17 +807,17 @@ Statistics:
 
                         {/* Statistics */}
                         <div>
-                          <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1">
+                          <div className="text-xs text-text-dim uppercase tracking-wide mb-1">
                             Statistics
                           </div>
                           <div className="space-y-1">
                             <div className="flex justify-between">
-                              <span className="text-zinc-400">Size</span>
-                              <span className="text-zinc-200">{formatBytes(index.size)}</span>
+                              <span className="text-text-muted">Size</span>
+                              <span className="text-text-light">{formatBytes(index.size)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-zinc-400">Usage</span>
-                              <span className="text-zinc-200">
+                              <span className="text-text-muted">Usage</span>
+                              <span className="text-text-light">
                                 {index.usageCount > 0
                                   ? `${index.usageCount.toLocaleString()} ops`
                                   : 'No usage data'}
@@ -825,8 +825,8 @@ Statistics:
                             </div>
                             {index.version && (
                               <div className="flex justify-between">
-                                <span className="text-zinc-400">Version</span>
-                                <span className="text-zinc-200">{index.version}</span>
+                                <span className="text-text-muted">Version</span>
+                                <span className="text-text-light">{index.version}</span>
                               </div>
                             )}
                           </div>
@@ -835,10 +835,10 @@ Statistics:
                         {/* Partial filter expression if present */}
                         {index.partialFilterExpression && (
                           <div className="col-span-2 mt-2">
-                            <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1">
+                            <div className="text-xs text-text-dim uppercase tracking-wide mb-1">
                               Partial Filter Expression
                             </div>
-                            <pre className="bg-zinc-900 rounded p-2 font-mono text-xs text-zinc-300 overflow-auto">
+                            <pre className="bg-background rounded p-2 font-mono text-xs text-text-secondary overflow-auto">
                               {JSON.stringify(index.partialFilterExpression, null, 2)}
                             </pre>
                           </div>

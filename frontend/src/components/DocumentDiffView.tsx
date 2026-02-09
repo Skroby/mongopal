@@ -132,29 +132,29 @@ export default function DocumentDiffView({
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-6xl h-[80vh] bg-surface border border-border rounded-lg shadow-2xl flex flex-col">
+      <div className="w-full max-w-6xl h-[80vh] bg-surface text-text border border-border rounded-lg shadow-2xl flex flex-col">
         {/* Header */}
         <div className="flex-shrink-0 px-4 py-3 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h2 className="text-lg font-medium">Document Comparison</h2>
-            <div className="flex items-center gap-2 text-sm text-zinc-400">
-              <span className="px-2 py-0.5 bg-red-900/30 text-red-400 rounded font-mono">{sourceId}</span>
+            <div className="flex items-center gap-2 text-sm text-text-muted">
+              <span className="px-2 py-0.5 bg-error-dark text-error rounded font-mono">{sourceId}</span>
               <span>vs</span>
-              <span className="px-2 py-0.5 bg-green-900/30 text-green-400 rounded font-mono">{targetId}</span>
+              <span className="px-2 py-0.5 bg-success-dark text-success rounded font-mono">{targetId}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {/* View mode toggle */}
-            <div className="flex items-center bg-zinc-800 rounded-md p-0.5">
+            <div className="flex items-center bg-surface rounded-md p-0.5">
               <button
-                className={`p-1.5 rounded ${sideBySide ? 'bg-zinc-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                className={`p-1.5 rounded ${sideBySide ? 'bg-surface-active text-text' : 'text-text-muted hover:text-text'}`}
                 onClick={() => setSideBySide(true)}
                 title="Side by side view"
               >
                 <SideBySideIcon className="w-4 h-4" />
               </button>
               <button
-                className={`p-1.5 rounded ${!sideBySide ? 'bg-zinc-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                className={`p-1.5 rounded ${!sideBySide ? 'bg-surface-active text-text' : 'text-text-muted hover:text-text'}`}
                 onClick={() => setSideBySide(false)}
                 title="Stacked view"
               >
@@ -170,7 +170,7 @@ export default function DocumentDiffView({
               Swap
             </button>
             <button
-              className="icon-btn p-1.5 hover:bg-zinc-700"
+              className="icon-btn p-1.5 hover:bg-surface-hover"
               onClick={onClose}
               title="Close (Escape)"
             >
@@ -181,13 +181,13 @@ export default function DocumentDiffView({
 
         {/* Diff labels - only show in side-by-side mode */}
         {sideBySide && (
-          <div className="flex-shrink-0 flex border-b border-border text-xs text-zinc-400">
-            <div className="flex-1 px-4 py-1.5 border-r border-border bg-red-900/10">
-              <span className="text-red-400">Original</span>
+          <div className="flex-shrink-0 flex border-b border-border text-xs text-text-muted">
+            <div className="flex-1 px-4 py-1.5 border-r border-border bg-error-dark/10">
+              <span className="text-error">Original</span>
               <span className="ml-2 font-mono">{sourceId}</span>
             </div>
-            <div className="flex-1 px-4 py-1.5 bg-green-900/10">
-              <span className="text-green-400">Modified</span>
+            <div className="flex-1 px-4 py-1.5 bg-success-dark/10">
+              <span className="text-success">Modified</span>
               <span className="ml-2 font-mono">{targetId}</span>
             </div>
           </div>
@@ -205,7 +205,7 @@ export default function DocumentDiffView({
         </div>
 
         {/* Footer */}
-        <div className="flex-shrink-0 px-4 py-2 border-t border-border text-xs text-zinc-500 flex items-center justify-between">
+        <div className="flex-shrink-0 px-4 py-2 border-t border-border text-xs text-text-dim flex items-center justify-between">
           <span>
             {sideBySide
               ? 'Red = removed from original, Green = added in modified'

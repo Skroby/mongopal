@@ -177,7 +177,7 @@ describe('TableView Field Masking', () => {
 
       // The span inside should have amber text color class
       const span = within(emailHeader!).getByText('email')
-      expect(span.className).toContain('text-amber-400')
+      expect(span.className).toContain('text-warning')
     })
   })
 
@@ -351,7 +351,7 @@ describe('TableView Field Masking', () => {
 
       const maskedValues = screen.getAllByTitle('Value is masked')
       maskedValues.forEach(value => {
-        expect(value.className).toContain('text-zinc-500')
+        expect(value.className).toContain('text-text-dim')
       })
     })
   })

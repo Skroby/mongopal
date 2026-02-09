@@ -385,7 +385,7 @@ describe('ConnectionFormV2', () => {
       // Should be back on Connection tab
       waitFor(() => {
         const connectionTab = screen.getByText('Connection').closest('button')
-        expect(connectionTab).toHaveClass('border-accent') // Active tab class
+        expect(connectionTab).toHaveClass('border-primary') // Active tab class
       })
     })
 
@@ -400,7 +400,7 @@ describe('ConnectionFormV2', () => {
       // Should be on Authentication tab
       waitFor(() => {
         const authTab = screen.getByText('Authentication').closest('button')
-        expect(authTab).toHaveClass('border-accent') // Active tab class
+        expect(authTab).toHaveClass('border-primary') // Active tab class
       })
     })
   })

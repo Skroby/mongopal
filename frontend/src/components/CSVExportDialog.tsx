@@ -133,22 +133,22 @@ export default function CSVExportDialog({
   // Use portal to escape any parent transforms that break fixed positioning
   return createPortal(
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-      <div className="bg-surface-secondary border border-border rounded-lg w-[400px] shadow-xl">
+      <div className="bg-surface-secondary text-text border border-border rounded-lg w-[400px] shadow-xl">
         <div className="px-4 py-3 border-b border-border">
-          <h2 className="text-lg font-medium text-zinc-100">Export as CSV</h2>
-          <p className="text-xs text-zinc-500 mt-0.5 truncate">{database}.{collection}</p>
+          <h2 className="text-lg font-medium text-text">Export as CSV</h2>
+          <p className="text-xs text-text-dim mt-0.5 truncate">{database}.{collection}</p>
         </div>
 
         <div className="px-4 py-4 space-y-3">
           {/* Save location */}
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Save to</label>
+            <label className="block text-xs text-text-muted mb-1">Save to</label>
             <div className="flex gap-2">
-              <div className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-sm text-zinc-300 truncate min-w-0">
+              <div className="flex-1 bg-background border border-border rounded px-2.5 py-1.5 text-sm text-text-secondary truncate min-w-0">
                 {filePath ? (
                   <span title={filePath}>{fileName}</span>
                 ) : (
-                  <span className="text-zinc-500 italic">Choose location...</span>
+                  <span className="text-text-dim italic">Choose location...</span>
                 )}
               </div>
               <button
@@ -160,7 +160,7 @@ export default function CSVExportDialog({
               </button>
             </div>
             {filePath && (
-              <p className="text-xs text-zinc-500 mt-1 truncate" title={filePath}>
+              <p className="text-xs text-text-dim mt-1 truncate" title={filePath}>
                 {filePath}
               </p>
             )}
@@ -168,9 +168,9 @@ export default function CSVExportDialog({
 
           {/* Delimiter */}
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Delimiter</label>
+            <label className="block text-xs text-text-muted mb-1">Delimiter</label>
             <select
-              className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-sm text-zinc-300 focus:border-accent focus:outline-none"
+              className="w-full bg-background border border-border rounded px-2.5 py-1.5 text-sm text-text-secondary focus:border-primary focus:outline-none"
               value={options.delimiter}
               onChange={handleDelimiterChange}
             >
@@ -183,20 +183,20 @@ export default function CSVExportDialog({
 
           {/* Checkboxes */}
           <div className="space-y-2">
-            <label className="flex items-center gap-2.5 text-sm text-zinc-300 cursor-pointer">
+            <label className="flex items-center gap-2.5 text-sm text-text-secondary cursor-pointer">
               <input
                 type="checkbox"
-                className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-accent focus:ring-accent/50"
+                className="w-4 h-4 rounded border-border-light bg-background text-primary focus:ring-primary/50"
                 checked={options.includeHeaders}
                 onChange={handleIncludeHeadersChange}
               />
               Include headers
             </label>
 
-            <label className="flex items-center gap-2.5 text-sm text-zinc-300 cursor-pointer">
+            <label className="flex items-center gap-2.5 text-sm text-text-secondary cursor-pointer">
               <input
                 type="checkbox"
-                className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-accent focus:ring-accent/50"
+                className="w-4 h-4 rounded border-border-light bg-background text-primary focus:ring-primary/50"
                 checked={options.flattenArrays}
                 onChange={handleFlattenArraysChange}
               />
@@ -204,10 +204,10 @@ export default function CSVExportDialog({
             </label>
 
             {hasFilter && (
-              <label className="flex items-center gap-2.5 text-sm text-zinc-300 cursor-pointer">
+              <label className="flex items-center gap-2.5 text-sm text-text-secondary cursor-pointer">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-accent focus:ring-accent/50"
+                  className="w-4 h-4 rounded border-border-light bg-background text-primary focus:ring-primary/50"
                   checked={options.useCurrentFilter}
                   onChange={handleUseCurrentFilterChange}
                 />

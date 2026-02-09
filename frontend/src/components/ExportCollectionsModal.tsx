@@ -10,6 +10,8 @@ interface GoApp {
   GetCollectionsForExport?: (connectionId: string, databaseName: string) => Promise<CollectionInfo[]>
   ExportCollections?: (connectionId: string, databaseName: string, collections: string[]) => Promise<void>
   CancelExport?: () => void
+  PauseExport?: () => void
+  ResumeExport?: () => void
 }
 
 // Collection info from Go backend
@@ -54,6 +56,8 @@ export interface ExportCollectionsModalProps {
   connectionName: string
   databaseName: string
   onClose: () => void
+  onHide?: () => void
+  onShow?: () => void
 }
 
 // Access go at call time, not module load time (bindings may not be ready yet)
@@ -82,6 +86,8 @@ export default function ExportCollectionsModal({
   connectionName,
   databaseName,
   onClose,
+  onHide,
+  onShow,
 }: ExportCollectionsModalProps): React.ReactElement {
   const { notify } = useNotification()
   const { trackZipExport, updateTrackedExport, completeTrackedExport, removeTrackedExport } = useExportQueue()
@@ -90,6 +96,7 @@ export default function ExportCollectionsModal({
   const [loading, setLoading] = useState<boolean>(true)
   const [selectedColls, setSelectedColls] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState<boolean>(false)
+  const [paused, setPaused] = useState<boolean>(false)
   const [progress, setProgress] = useState<ProgressState | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState<boolean>(false)
   const lastClickedIndex = useRef<number | null>(null)
@@ -120,12 +127,14 @@ export default function ExportCollectionsModal({
         filePathRef.current = data.filePath
       }
 
-      // Update export manager
+      // Update export manager with overall progress
       if (exportId.current) {
+        const pDocs = data.processedDocs ?? processedDocsRef.current ?? 0
+        const tDocs = data.totalDocs ?? totalDocsRef.current ?? 0
         let progressPercent = 0
 
-        if (data.total && data.total > 0 && data.current && data.current > 0) {
-          progressPercent = Math.min(100, Math.round((data.current / data.total) * 100))
+        if (tDocs > 0) {
+          progressPercent = Math.min(100, Math.round((pDocs / tDocs) * 100))
         } else if (data.collectionTotal && data.collectionTotal > 0) {
           progressPercent = Math.round((((data.collectionIndex || 1) - 1) / data.collectionTotal) * 100)
         }
@@ -133,8 +142,8 @@ export default function ExportCollectionsModal({
         updateTrackedExport(exportId.current, {
           phase: 'downloading',
           progress: progressPercent,
-          current: data.current || 0,
-          total: data.total || 0,
+          current: pDocs,
+          total: tDocs,
           currentItem: data.collection || null,
           itemIndex: data.collectionIndex || 0,
           itemTotal: data.collectionTotal || 0,
@@ -150,23 +159,34 @@ export default function ExportCollectionsModal({
       completeTrackedExport(exportId.current, data?.filePath || filePathRef.current || undefined)
       exportId.current = null
       filePathRef.current = null
+      // Auto-show modal so user sees the completion, then close
+      onShow?.()
       onClose()
     })
     const unsubCancelled = EventsOn('export:cancelled', () => {
       // Only handle if this modal initiated the export
       if (!exportId.current) return
       setExporting(false)
+      setPaused(false)
       setProgress(null)
       notify.info('Export cancelled')
       removeTrackedExport(exportId.current)
       exportId.current = null
       filePathRef.current = null
     })
+    const unsubPaused = EventsOn('export:paused', () => {
+      setPaused(true)
+    })
+    const unsubResumed = EventsOn('export:resumed', () => {
+      setPaused(false)
+    })
 
     return () => {
       if (unsubProgress) unsubProgress()
       if (unsubComplete) unsubComplete()
       if (unsubCancelled) unsubCancelled()
+      if (unsubPaused) unsubPaused()
+      if (unsubResumed) unsubResumed()
     }
   }, [databaseName, updateTrackedExport, completeTrackedExport, removeTrackedExport])
 
@@ -201,12 +221,21 @@ export default function ExportCollectionsModal({
   const confirmCancelExport = (): void => {
     setShowCancelConfirm(false)
     setExporting(false)
+    setPaused(false)
     setProgress(null)
     getGo()?.CancelExport?.()
     if (exportId.current) {
       removeTrackedExport(exportId.current)
       exportId.current = null
       filePathRef.current = null
+    }
+  }
+
+  const togglePause = (): void => {
+    if (paused) {
+      getGo()?.ResumeExport?.()
+    } else {
+      getGo()?.PauseExport?.()
     }
   }
 
@@ -290,7 +319,8 @@ export default function ExportCollectionsModal({
       connectionId,
       databaseName,
       Array.from(selectedColls),
-      `${databaseName} (${selectedColls.size} collections)`
+      `${databaseName} (${selectedColls.size} collections)`,
+      onShow
     )
 
     try {
@@ -346,11 +376,11 @@ export default function ExportCollectionsModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-secondary border border-border rounded-lg w-[500px] max-h-[80vh] flex flex-col">
+      <div className="bg-surface-secondary text-text border border-border rounded-lg w-[500px] max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="px-4 py-3 border-b border-border">
-          <h2 className="text-lg font-medium text-zinc-100">Export Collections</h2>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h2 className="text-lg font-medium text-text">Export Collections</h2>
+          <p className="text-sm text-text-muted mt-1">
             {connectionName} / {databaseName}
           </p>
         </div>
@@ -359,13 +389,22 @@ export default function ExportCollectionsModal({
         <div className="flex-1 overflow-hidden flex flex-col">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : exporting ? (
             <div className="p-4">
               <div className="mb-4">
+                {/* Paused indicator */}
+                {paused && (
+                  <div className="mb-3 p-2 bg-yellow-900/30 border border-yellow-700/50 rounded text-sm text-yellow-400 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Export paused
+                  </div>
+                )}
                 {/* Collection progress */}
-                <div className="flex items-center justify-between text-sm text-zinc-300 mb-2 h-5">
+                <div className="flex items-center justify-between text-sm text-text-secondary mb-2 h-5">
                   {isPreparing() ? (
                     <span>Preparing export...</span>
                   ) : (
@@ -376,9 +415,9 @@ export default function ExportCollectionsModal({
                       <div className="flex items-center gap-3">
                         {(() => {
                           const eta = getETA(processedDocsRef.current, totalDocsRef.current)
-                          return eta ? <span className="text-accent text-xs font-mono">{eta} left</span> : null
+                          return eta ? <span className="text-primary text-xs font-mono">{eta} left</span> : null
                         })()}
-                        <span className="text-zinc-400">
+                        <span className="text-text-muted">
                           {progress?.collection}
                         </span>
                       </div>
@@ -387,28 +426,28 @@ export default function ExportCollectionsModal({
                 </div>
 
                 {/* Progress bar */}
-                <div className="h-2 bg-zinc-700 rounded-full overflow-hidden">
+                <div className="h-2 bg-surface-hover rounded-full overflow-hidden">
                   {isPreparing() ? (
                     <div className="h-full w-full relative">
-                      <div className="absolute inset-0 bg-accent/30" />
+                      <div className="absolute inset-0 bg-primary/30" />
                       <div className="absolute inset-0 w-1/2 bg-gradient-to-r from-transparent via-accent to-transparent progress-indeterminate" />
                     </div>
                   ) : (
                     <div
-                      className="h-full bg-accent transition-all duration-300"
+                      className="h-full bg-primary transition-all duration-300"
                       style={{ width: `${getProgressPercent()}%` }}
                     />
                   )}
                 </div>
 
                 {/* Document count */}
-                <div className="text-xs text-zinc-400 mt-1 h-4">
+                <div className="text-xs text-text-muted mt-1 h-4">
                   {!isPreparing() && progress?.total && progress.total > 0 && (
                     <>{(progress.current || 0).toLocaleString()} / {progress.total.toLocaleString()} documents</>
                   )}
                 </div>
               </div>
-              <p className="text-sm text-zinc-400 text-center">
+              <p className="text-sm text-text-muted text-center">
                 Please wait while your collections are being exported...
               </p>
             </div>
@@ -417,19 +456,19 @@ export default function ExportCollectionsModal({
               {/* Selection controls */}
               <div className="px-4 py-2 border-b border-border flex items-center gap-2">
                 <button
-                  className="text-sm text-accent hover:text-accent/80"
+                  className="text-sm text-primary hover:text-primary/80"
                   onClick={selectAll}
                 >
                   Select All
                 </button>
-                <span className="text-zinc-600">|</span>
+                <span className="text-text-dim">|</span>
                 <button
-                  className="text-sm text-accent hover:text-accent/80"
+                  className="text-sm text-primary hover:text-primary/80"
                   onClick={deselectAll}
                 >
                   Deselect All
                 </button>
-                <span className="ml-auto text-sm text-zinc-400">
+                <span className="ml-auto text-sm text-text-muted">
                   {selectedColls.size} selected
                 </span>
               </div>
@@ -437,30 +476,30 @@ export default function ExportCollectionsModal({
               {/* Collection list */}
               <div className="flex-1 overflow-y-auto p-2">
                 {collections.length === 0 ? (
-                  <div className="text-center text-zinc-400 py-4">
+                  <div className="text-center text-text-muted py-4">
                     No collections found in this database
                   </div>
                 ) : (
                   collections.map((coll, index) => (
                     <label
                       key={coll.name}
-                      className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer hover:bg-zinc-700/50 ${
-                        selectedColls.has(coll.name) ? 'bg-zinc-700/30' : ''
+                      className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer hover:bg-surface-hover/50 ${
+                        selectedColls.has(coll.name) ? 'bg-surface-hover/30' : ''
                       }`}
                     >
                       <input
                         type="checkbox"
-                        className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent/50"
+                        className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
                         checked={selectedColls.has(coll.name)}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => toggleCollection(coll.name, index, e.nativeEvent)}
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-zinc-200 truncate">{coll.name}</div>
-                        <div className="text-xs text-zinc-400">
+                        <div className="text-sm text-text-light truncate">{coll.name}</div>
+                        <div className="text-xs text-text-muted">
                           {formatCount(coll.count)} docs
                         </div>
                       </div>
-                      <div className="text-xs text-zinc-400">
+                      <div className="text-xs text-text-muted">
                         {formatBytes(coll.sizeOnDisk)}
                       </div>
                     </label>
@@ -474,13 +513,39 @@ export default function ExportCollectionsModal({
         {/* Footer */}
         <div className="px-4 py-3 border-t border-border flex justify-end gap-2">
           {exporting && (
-            <button
-              className="btn btn-ghost mr-auto"
-              onClick={onClose}
-              title="Hide this dialog and continue in background"
-            >
-              Hide
-            </button>
+            <>
+              {!paused && (
+                <button
+                  className="btn btn-ghost mr-auto"
+                  onClick={onHide ?? onClose}
+                  title="Hide this dialog and continue in background"
+                >
+                  Hide
+                </button>
+              )}
+              <button
+                className="btn btn-ghost inline-flex items-center"
+                onClick={togglePause}
+                title={paused ? 'Resume export' : 'Pause export'}
+              >
+                {paused ? (
+                  <>
+                    <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Resume
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Pause
+                  </>
+                )}
+              </button>
+            </>
           )}
           <button
             className="btn btn-ghost"

@@ -122,13 +122,13 @@ const Sparkline: FC<SparklineProps> = ({ data, width = 100, height = 20, color =
 // Metric row component
 const MetricRow: FC<MetricRowProps> = ({ label, value, subValue, sparklineData, sparklineColor }) => {
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-zinc-800 last:border-0">
-      <span className="text-zinc-400 text-sm">{label}</span>
+    <div className="flex items-center justify-between py-1.5 border-b border-surface last:border-0">
+      <span className="text-text-muted text-sm">{label}</span>
       <div className="flex items-center">
         <div className="text-right">
-          <span className="text-zinc-200 font-mono text-sm">{value}</span>
+          <span className="text-text-light font-mono text-sm">{value}</span>
           {subValue && (
-            <span className="text-zinc-500 text-xs ml-1">({subValue})</span>
+            <span className="text-text-dim text-xs ml-1">({subValue})</span>
           )}
         </div>
         {sparklineData && <Sparkline data={sparklineData} color={sparklineColor} />}
@@ -143,8 +143,8 @@ const Section: FC<SectionProps> = ({ title, children, icon }) => {
     <div className="mb-4">
       <div className="flex items-center gap-2 mb-2">
         {icon}
-        <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide">{title}</h3>
-        <div className="flex-1 h-px bg-zinc-700" />
+        <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">{title}</h3>
+        <div className="flex-1 h-px bg-surface-hover" />
       </div>
       <div className="pl-1">
         {children}
@@ -239,19 +239,19 @@ const PerformancePanel: FC<PerformancePanelProps> = ({ onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-secondary rounded-lg shadow-xl w-full max-w-lg mx-4 border border-border max-h-[85vh] flex flex-col">
+      <div className="bg-surface-secondary text-text rounded-lg shadow-xl w-full max-w-lg mx-4 border border-border max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-3">
-            <svg className="w-5 h-5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
-            <h2 className="text-lg font-medium">Performance</h2>
+            <h2 className="text-lg font-medium text-text">Performance</h2>
           </div>
           <div className="flex items-center gap-2">
             {/* Pause/Resume button */}
             <button
-              className={`p-1.5 rounded transition-colors ${isPaused ? 'bg-accent/20 text-accent' : 'hover:bg-zinc-700 text-zinc-400'}`}
+              className={`p-1.5 rounded transition-colors ${isPaused ? 'bg-primary/20 text-primary' : 'hover:bg-surface-hover text-text-muted'}`}
               onClick={() => setIsPaused(!isPaused)}
               title={isPaused ? 'Resume polling' : 'Pause polling'}
             >
@@ -267,7 +267,7 @@ const PerformancePanel: FC<PerformancePanelProps> = ({ onClose }) => {
             </button>
             {/* Poll interval selector */}
             <select
-              className="bg-zinc-800 text-zinc-300 text-xs rounded px-2 py-1 border border-zinc-700"
+              className="bg-surface text-text-secondary text-xs rounded px-2 py-1 border border-border"
               value={pollInterval}
               onChange={handlePollIntervalChange}
             >
@@ -279,7 +279,7 @@ const PerformancePanel: FC<PerformancePanelProps> = ({ onClose }) => {
             </select>
             {/* Close button */}
             <button
-              className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400"
+              className="p-1.5 rounded hover:bg-surface-hover text-text-muted"
               onClick={onClose}
               title="Close"
             >
@@ -293,14 +293,14 @@ const PerformancePanel: FC<PerformancePanelProps> = ({ onClose }) => {
         {/* Content */}
         <div className="p-4 overflow-y-auto flex-1">
           {error ? (
-            <div className="text-center py-8 text-red-400">
+            <div className="text-center py-8 text-error">
               <svg className="w-8 h-8 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <p>{error}</p>
             </div>
           ) : !metrics ? (
-            <div className="text-center py-8 text-zinc-400">
+            <div className="text-center py-8 text-text-muted">
               <svg className="w-8 h-8 mx-auto mb-2 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -313,7 +313,7 @@ const PerformancePanel: FC<PerformancePanelProps> = ({ onClose }) => {
               <Section
                 title="Memory"
                 icon={
-                  <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 text-info" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                   </svg>
                 }
@@ -406,12 +406,12 @@ const PerformancePanel: FC<PerformancePanelProps> = ({ onClose }) => {
 
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-surface flex-shrink-0">
-          <div className="text-xs text-zinc-500">
+          <div className="text-xs text-text-dim">
             {isPaused ? 'Paused' : `Polling every ${pollInterval / 1000}s`}
           </div>
           <div className="flex items-center gap-2">
             <button
-              className="btn btn-ghost text-zinc-400 text-sm"
+              className="btn btn-ghost text-text-muted text-sm"
               onClick={handleForceGC}
               title="Trigger garbage collection"
             >

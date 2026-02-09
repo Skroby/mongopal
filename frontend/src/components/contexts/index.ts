@@ -18,3 +18,6 @@ export type { DebugContextValue, DebugLogEntry } from './DebugContext'
 
 export { SchemaProvider, useSchema } from './SchemaContext'
 export type { SchemaContextValue, SchemaResult, SchemaField } from './SchemaContext'
+
+export { ThemeProvider, useTheme, applyThemeColors, applyFonts, UI_FONTS, MONO_FONTS } from './ThemeContext'
+export type { FontOption } from './ThemeContext'

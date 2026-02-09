@@ -82,7 +82,7 @@ export function PasswordField({
         type="button"
         onClick={handleRevealClick}
         disabled={isAuthenticating || (!value && !passwordExists)}
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         title={isRevealed ? 'Hide password' : 'Reveal password (requires authentication)'}
       >
         {isAuthenticating ? (

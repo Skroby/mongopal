@@ -46,7 +46,7 @@ export default function CSVExportButton({
   return (
     <>
       <button
-        className={`icon-btn p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className={`icon-btn p-1.5 hover:bg-surface-hover text-text-muted hover:text-text-light ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         onClick={handleClick}
         disabled={disabled}
         title={disabled ? 'Connect to database first' : 'Export as CSV'}

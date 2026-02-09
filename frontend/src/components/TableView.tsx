@@ -200,27 +200,27 @@ function formatValue(value: unknown): React.JSX.Element | string {
   switch (formatted.type) {
     case 'null':
     case 'undefined':
-      return <span className="text-zinc-400 italic">{formatted.display}</span>
+      return <span className="text-text-muted italic">{formatted.display}</span>
     case 'boolean':
-      return <span className={formatted.boolValue ? 'text-green-400' : 'text-red-400'}>{formatted.display}</span>
+      return <span className={formatted.boolValue ? 'text-success' : 'text-error'}>{formatted.display}</span>
     case 'number':
     case 'numberLong':
     case 'numberInt':
     case 'numberDouble':
-      return <span className="text-blue-400">{formatted.display}</span>
+      return <span className="text-info">{formatted.display}</span>
     case 'string':
       return formatted.display
     case 'array':
-      return <span className="text-zinc-400">{formatted.display}</span>
+      return <span className="text-text-muted">{formatted.display}</span>
     case 'date':
       return <span className="text-purple-400">{formatted.display}</span>
     case 'objectId':
-      return <span className="text-amber-400">{formatted.display}</span>
+      return <span className="text-warning">{formatted.display}</span>
     case 'binary':
     case 'uuid':
       return <span className="text-cyan-400">{formatted.display}</span>
     case 'object':
-      return <span className="text-zinc-400">{formatted.display}</span>
+      return <span className="text-text-muted">{formatted.display}</span>
     default:
       return formatted.display
   }
@@ -742,7 +742,7 @@ export default function TableView({
   if (documents.length === 0) {
     return (
       <div className="h-full flex flex-col">
-        <div className="flex-1 flex items-center justify-center text-zinc-400">
+        <div className="flex-1 flex items-center justify-center text-text-muted">
           No documents to display
         </div>
       </div>
@@ -801,7 +801,7 @@ export default function TableView({
                 <th
                   key={col}
                   scope="col"
-                  className={`px-3 py-2 text-left font-medium text-zinc-400 border-b border-border whitespace-nowrap relative group bg-surface-secondary ${isSub ? 'bg-zinc-800/30' : ''} ${isFrozen ? 'sticky z-30' : ''} ${isFrozen ? 'border-r-2 border-r-zinc-600' : ''}`}
+                  className={`px-3 py-2 text-left font-medium text-text-secondary border-b border-border whitespace-nowrap relative group bg-surface-secondary ${isSub ? 'bg-surface/30' : ''} ${isFrozen ? 'sticky z-30' : ''} ${isFrozen ? 'border-r-2 border-r-border-light' : ''}`}
                   style={{
                     width: columnWidths[col] || getDefaultColumnWidth(col, documents),
                     minWidth: 60,
@@ -814,7 +814,7 @@ export default function TableView({
                     {isSub && parentCol && (
                       <button
                         onClick={() => toggleColumnExpansion(parentCol)}
-                        className="icon-btn p-0.5 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-300"
+                        className="icon-btn p-0.5 hover:bg-surface-hover rounded text-text-muted hover:text-text-secondary"
                         title={`Collapse ${parentCol}`}
                       >
                         <CollapseIcon className="w-3 h-3" />
@@ -823,16 +823,16 @@ export default function TableView({
                     {/* Masked column indicator */}
                     {isMasked && (
                       <span title="Column is masked">
-                        <MaskIcon className="w-3 h-3 text-amber-400" />
+                        <MaskIcon className="w-3 h-3 text-warning" />
                       </span>
                     )}
                     {/* Column name */}
-                    <span className={`${isSub ? 'text-zinc-400' : ''} ${isMasked ? 'text-amber-400/80' : ''}`}>{isSub ? `\u21B3 ${displayName}` : displayName}</span>
+                    <span className={`${isSub ? 'text-text-muted' : ''} ${isMasked ? 'text-warning/80' : ''}`}>{isSub ? `\u21B3 ${displayName}` : displayName}</span>
                     {/* Expand button for expandable columns */}
                     {canExpand && !isExpanded && (
                       <button
                         onClick={() => toggleColumnExpansion(col)}
-                        className="icon-btn p-0.5 hover:bg-zinc-700 rounded text-zinc-400 hover:text-accent"
+                        className="icon-btn p-0.5 hover:bg-surface-hover rounded text-text-muted hover:text-primary"
                         title={`Expand ${col}`}
                       >
                         <ExpandIcon className="w-3 h-3" />
@@ -841,7 +841,7 @@ export default function TableView({
                   </div>
                   {/* Column resizer - 6px hit target with visible inner line */}
                   <div
-                    className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize flex justify-center hover:bg-accent/30 group-hover:after:opacity-100 after:content-[''] after:w-0.5 after:h-full after:bg-zinc-500 after:opacity-0 after:transition-opacity hover:after:bg-accent hover:after:opacity-100"
+                    className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize flex justify-center hover:bg-primary/30 group-hover:after:opacity-100 after:content-[''] after:w-0.5 after:h-full after:bg-text-dim after:opacity-0 after:transition-opacity hover:after:bg-primary hover:after:opacity-100"
                     onMouseDown={(e) => handleResizeStart(e, col)}
                   />
                 </th>
@@ -871,12 +871,12 @@ export default function TableView({
                   return (
                     <tr
                       key={docId || actualIndex}
-                      className={`table-row border-b border-zinc-800 ${
+                      className={`table-row border-b border-surface ${
                         isSelected
-                          ? 'bg-accent/10 hover:bg-accent/20'
+                          ? 'bg-primary/10 hover:bg-primary/20'
                           : isCompareSource
-                          ? 'bg-blue-900/20 hover:bg-blue-900/30'
-                          : 'hover:bg-zinc-800/50'
+                          ? 'bg-info-dark/20 hover:bg-info-dark/30'
+                          : 'hover:bg-surface/50'
                       }`}
                       style={{ height: ROW_HEIGHT }}
                       onContextMenu={(e) => handleContextMenu(e, doc)}
@@ -913,7 +913,7 @@ export default function TableView({
                         return (
                         <td
                           key={col}
-                          className={`px-3 py-2 whitespace-nowrap truncate cursor-context-menu ${isSub ? 'bg-zinc-800/20' : ''} ${isFrozen ? 'sticky z-10 bg-surface' : ''} ${isSelected && isFrozen ? '!bg-accent/10' : ''} ${isFrozen ? 'border-r-2 border-r-zinc-600' : ''}`}
+                          className={`px-3 py-2 whitespace-nowrap truncate cursor-context-menu text-text ${isSub ? 'bg-surface/20' : ''} ${isFrozen ? 'sticky z-10 bg-surface' : ''} ${isSelected && isFrozen ? '!bg-primary/10' : ''} ${isFrozen ? 'border-r-2 border-r-border-light' : ''}`}
                           style={{
                             width: columnWidths[col] || getDefaultColumnWidth(col, documents),
                             maxWidth: columnWidths[col] || getDefaultColumnWidth(col, documents),
@@ -922,7 +922,7 @@ export default function TableView({
                           onContextMenu={(e) => handleContextMenu(e, doc, col, cellValue)}
                         >
                           {isMasked ? (
-                            <span className="text-zinc-500 select-none" title="Value is masked">{MASKED_VALUE_DISPLAY}</span>
+                            <span className="text-text-dim select-none" title="Value is masked">{MASKED_VALUE_DISPLAY}</span>
                           ) : (
                             formatValue(cellValue)
                           )}
@@ -944,7 +944,7 @@ export default function TableView({
           ref={menuRef}
           role="menu"
           aria-label="Document actions"
-          className="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50 min-w-[180px]"
+          className="fixed bg-surface border border-border rounded-lg shadow-xl py-1 z-50 min-w-[180px]"
           style={{
             left: contextMenu.x,
             top: contextMenu.y,
@@ -955,19 +955,19 @@ export default function TableView({
             <button
               role="menuitem"
               className={`context-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${
-                copiedField === 'value' ? 'text-accent bg-accent/10' : 'text-zinc-200 hover:bg-zinc-700'
+                copiedField === 'value' ? 'text-primary bg-primary/10' : 'text-text-light hover:bg-surface-hover'
               }`}
               onClick={handleCopyValue}
               disabled={copiedField !== null}
             >
               {copiedField === 'value' ? (
                 <>
-                  <CheckIcon className="w-4 h-4 text-accent" />
+                  <CheckIcon className="w-4 h-4 text-primary" />
                   Copied!
                 </>
               ) : (
                 <>
-                  <CopyIcon className="w-4 h-4 text-zinc-400" />
+                  <CopyIcon className="w-4 h-4 text-text-muted" />
                   Copy "{contextMenu.cellKey}" value
                 </>
               )}
@@ -977,56 +977,56 @@ export default function TableView({
           <button
             role="menuitem"
             className={`context-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${
-              copiedField === 'json' ? 'text-accent bg-accent/10' : 'text-zinc-200 hover:bg-zinc-700'
+              copiedField === 'json' ? 'text-primary bg-primary/10' : 'text-text-light hover:bg-surface-hover'
             }`}
             onClick={handleCopyDocumentJson}
             disabled={copiedField !== null}
           >
             {copiedField === 'json' ? (
               <>
-                <CheckIcon className="w-4 h-4 text-accent" />
+                <CheckIcon className="w-4 h-4 text-primary" />
                 Copied!
               </>
             ) : (
               <>
-                <CopyIcon className="w-4 h-4 text-zinc-400" />
+                <CopyIcon className="w-4 h-4 text-text-muted" />
                 Copy Document JSON
               </>
             )}
           </button>
           {/* Separator */}
-          <div className="border-t border-zinc-700 my-1" />
+          <div className="border-t border-border my-1" />
           {/* Document comparison */}
           {onCompareSource && !compareSourceDoc && (
             <button
               role="menuitem"
-              className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
+              className="context-menu-item w-full px-3 py-2 text-left text-sm text-text-light hover:bg-surface-hover flex items-center gap-2"
               onClick={() => {
                 onCompareSource(contextMenu.doc)
                 setContextMenu(null)
               }}
             >
-              <CompareIcon className="w-4 h-4 text-zinc-400" />
+              <CompareIcon className="w-4 h-4 text-text-muted" />
               Compare with...
             </button>
           )}
           {onCompareTo && compareSourceDoc && getDocId(compareSourceDoc) !== getDocId(contextMenu.doc) && (
             <button
               role="menuitem"
-              className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
+              className="context-menu-item w-full px-3 py-2 text-left text-sm text-text-light hover:bg-surface-hover flex items-center gap-2"
               onClick={() => {
                 onCompareTo(contextMenu.doc)
                 setContextMenu(null)
               }}
             >
-              <CompareIcon className="w-4 h-4 text-zinc-400" />
+              <CompareIcon className="w-4 h-4 text-text-muted" />
               Compare to source
             </button>
           )}
           {compareSourceDoc && (
             <button
               role="menuitem"
-              className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-400 hover:bg-zinc-700 flex items-center gap-2"
+              className="context-menu-item w-full px-3 py-2 text-left text-sm text-text-muted hover:bg-surface-hover flex items-center gap-2"
               onClick={() => {
                 onCompareSource?.(null)
                 setContextMenu(null)
@@ -1036,20 +1036,20 @@ export default function TableView({
               Clear comparison source
             </button>
           )}
-          {(onCompareSource || onCompareTo) && <div className="border-t border-zinc-700 my-1" />}
+          {(onCompareSource || onCompareTo) && <div className="border-t border-border my-1" />}
           {/* Document actions */}
           <button
             role="menuitem"
-            className={`context-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${readOnly ? 'text-zinc-500 cursor-not-allowed' : 'text-zinc-200 hover:bg-zinc-700'}`}
+            className={`context-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${readOnly ? 'text-text-dim cursor-not-allowed' : 'text-text-light hover:bg-surface-hover'}`}
             onClick={handleEdit}
             disabled={readOnly}
           >
-            <EditIcon className="w-4 h-4 text-zinc-400" />
+            <EditIcon className="w-4 h-4 text-text-muted" />
             {readOnly ? 'View Document' : 'Edit Document'}
           </button>
           <button
             role="menuitem"
-            className={`context-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${readOnly ? 'text-zinc-500 cursor-not-allowed' : 'text-red-400 hover:bg-zinc-700'}`}
+            className={`context-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${readOnly ? 'text-text-dim cursor-not-allowed' : 'text-error hover:bg-surface-hover'}`}
             onClick={handleDelete}
             disabled={readOnly}
           >
@@ -1065,7 +1065,7 @@ export default function TableView({
           ref={headerMenuRef}
           role="menu"
           aria-label="Column actions"
-          className="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50 min-w-[180px]"
+          className="fixed bg-surface border border-border rounded-lg shadow-xl py-1 z-50 min-w-[180px]"
           style={{
             left: headerContextMenu.x,
             top: headerContextMenu.y,
@@ -1074,7 +1074,7 @@ export default function TableView({
           {/* Mask/Unmask Column */}
           <button
             role="menuitem"
-            className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
+            className="context-menu-item w-full px-3 py-2 text-left text-sm text-text-light hover:bg-surface-hover flex items-center gap-2"
             onClick={() => {
               toggleMaskColumn(headerContextMenu.column)
               setHeaderContextMenu(null)
@@ -1082,12 +1082,12 @@ export default function TableView({
           >
             {maskedColumns.has(headerContextMenu.column) ? (
               <>
-                <UnmaskIcon className="w-4 h-4 text-zinc-400" />
+                <UnmaskIcon className="w-4 h-4 text-text-muted" />
                 Unmask Column
               </>
             ) : (
               <>
-                <MaskIcon className="w-4 h-4 text-zinc-400" />
+                <MaskIcon className="w-4 h-4 text-text-muted" />
                 Mask Column
               </>
             )}
@@ -1095,20 +1095,20 @@ export default function TableView({
           {/* Hide Column option */}
           <button
             role="menuitem"
-            className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
+            className="context-menu-item w-full px-3 py-2 text-left text-sm text-text-light hover:bg-surface-hover flex items-center gap-2"
             onClick={() => {
               hideColumn(headerContextMenu.column)
               setHeaderContextMenu(null)
             }}
           >
-            <EyeOffIcon className="w-4 h-4 text-zinc-400" />
+            <EyeOffIcon className="w-4 h-4 text-text-muted" />
             Hide Column
           </button>
-          <div className="border-t border-zinc-700 my-1" />
+          <div className="border-t border-border my-1" />
           {/* Freeze/Unfreeze Column option */}
           <button
             role="menuitem"
-            className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 flex items-center gap-2"
+            className="context-menu-item w-full px-3 py-2 text-left text-sm text-text-light hover:bg-surface-hover flex items-center gap-2"
             onClick={() => {
               toggleFreezeColumn(headerContextMenu.column)
               setHeaderContextMenu(null)
@@ -1116,23 +1116,23 @@ export default function TableView({
           >
             {frozenColumns.has(headerContextMenu.column) ? (
               <>
-                <UnfreezeIcon className="w-4 h-4 text-zinc-400" />
+                <UnfreezeIcon className="w-4 h-4 text-text-muted" />
                 Unfreeze Column
               </>
             ) : (
               <>
-                <FreezeIcon className="w-4 h-4 text-zinc-400" />
+                <FreezeIcon className="w-4 h-4 text-text-muted" />
                 Freeze Column
               </>
             )}
           </button>
           {(frozenColumnsList.length > 1 || maskedColumns.size > 1) && (
             <>
-              <div className="border-t border-zinc-700 my-1" />
+              <div className="border-t border-border my-1" />
               {frozenColumnsList.length > 1 && (
                 <button
                   role="menuitem"
-                  className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-400 hover:bg-zinc-700 flex items-center gap-2"
+                  className="context-menu-item w-full px-3 py-2 text-left text-sm text-text-muted hover:bg-surface-hover flex items-center gap-2"
                   onClick={() => {
                     setFrozenColumns(new Set())
                     saveFrozenColumns(connectionId, database, collection, new Set())
@@ -1146,7 +1146,7 @@ export default function TableView({
               {maskedColumns.size > 1 && (
                 <button
                   role="menuitem"
-                  className="context-menu-item w-full px-3 py-2 text-left text-sm text-zinc-400 hover:bg-zinc-700 flex items-center gap-2"
+                  className="context-menu-item w-full px-3 py-2 text-left text-sm text-text-muted hover:bg-surface-hover flex items-center gap-2"
                   onClick={() => {
                     setMaskedColumns(new Set())
                     saveMaskedColumns(connectionId, database, collection, new Set())

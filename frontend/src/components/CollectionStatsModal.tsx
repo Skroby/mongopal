@@ -117,11 +117,11 @@ Total Index Size: ${formatBytes(stats.totalIndexSize)}${stats.capped ? '\nCapped
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-secondary border border-border rounded-lg w-[450px] shadow-xl">
+      <div className="bg-surface-secondary text-text border border-border rounded-lg w-[450px] shadow-xl">
         {/* Header */}
         <div className="px-4 py-3 border-b border-border">
-          <h2 className="text-lg font-medium text-zinc-100">Collection Statistics</h2>
-          <p className="text-sm text-zinc-400 mt-0.5 font-mono">
+          <h2 className="text-lg font-medium text-text">Collection Statistics</h2>
+          <p className="text-sm text-text-muted mt-0.5 font-mono">
             {database}.{collection}
           </p>
         </div>
@@ -130,11 +130,11 @@ Total Index Size: ${formatBytes(stats.totalIndexSize)}${stats.capped ? '\nCapped
         <div className="p-4">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : error ? (
             <div className="py-4 text-center">
-              <p className="text-red-400 text-sm">{error}</p>
+              <p className="text-error text-sm">{error}</p>
               <button className="mt-3 btn btn-secondary text-sm" onClick={loadStats}>
                 Retry
               </button>
@@ -143,52 +143,52 @@ Total Index Size: ${formatBytes(stats.totalIndexSize)}${stats.capped ? '\nCapped
             <div className="space-y-4">
               {/* Document stats */}
               <div>
-                <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-2">Documents</h3>
+                <h3 className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">Documents</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-zinc-800 rounded px-3 py-2">
-                    <div className="text-xs text-zinc-400">Count</div>
-                    <div className="text-lg font-medium text-zinc-100">{formatNumber(stats.count)}</div>
+                  <div className="bg-surface rounded px-3 py-2">
+                    <div className="text-xs text-text-muted">Count</div>
+                    <div className="text-lg font-medium text-text">{formatNumber(stats.count)}</div>
                   </div>
-                  <div className="bg-zinc-800 rounded px-3 py-2">
-                    <div className="text-xs text-zinc-400">Avg Size</div>
-                    <div className="text-lg font-medium text-zinc-100">{formatBytes(stats.avgObjSize)}</div>
+                  <div className="bg-surface rounded px-3 py-2">
+                    <div className="text-xs text-text-muted">Avg Size</div>
+                    <div className="text-lg font-medium text-text">{formatBytes(stats.avgObjSize)}</div>
                   </div>
                 </div>
               </div>
 
               {/* Storage stats */}
               <div>
-                <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-2">Storage</h3>
+                <h3 className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">Storage</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-zinc-800 rounded px-3 py-2">
-                    <div className="text-xs text-zinc-400">Data Size</div>
-                    <div className="text-lg font-medium text-zinc-100">{formatBytes(stats.size)}</div>
+                  <div className="bg-surface rounded px-3 py-2">
+                    <div className="text-xs text-text-muted">Data Size</div>
+                    <div className="text-lg font-medium text-text">{formatBytes(stats.size)}</div>
                   </div>
-                  <div className="bg-zinc-800 rounded px-3 py-2">
-                    <div className="text-xs text-zinc-400">Storage Size</div>
-                    <div className="text-lg font-medium text-zinc-100">{formatBytes(stats.storageSize)}</div>
+                  <div className="bg-surface rounded px-3 py-2">
+                    <div className="text-xs text-text-muted">Storage Size</div>
+                    <div className="text-lg font-medium text-text">{formatBytes(stats.storageSize)}</div>
                   </div>
                 </div>
               </div>
 
               {/* Index stats */}
               <div>
-                <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-2">Indexes</h3>
+                <h3 className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">Indexes</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-zinc-800 rounded px-3 py-2">
-                    <div className="text-xs text-zinc-400">Index Count</div>
-                    <div className="text-lg font-medium text-zinc-100">{stats.indexCount}</div>
+                  <div className="bg-surface rounded px-3 py-2">
+                    <div className="text-xs text-text-muted">Index Count</div>
+                    <div className="text-lg font-medium text-text">{stats.indexCount}</div>
                   </div>
-                  <div className="bg-zinc-800 rounded px-3 py-2">
-                    <div className="text-xs text-zinc-400">Total Index Size</div>
-                    <div className="text-lg font-medium text-zinc-100">{formatBytes(stats.totalIndexSize)}</div>
+                  <div className="bg-surface rounded px-3 py-2">
+                    <div className="text-xs text-text-muted">Total Index Size</div>
+                    <div className="text-lg font-medium text-text">{formatBytes(stats.totalIndexSize)}</div>
                   </div>
                 </div>
               </div>
 
               {/* Flags */}
               {stats.capped && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-blue-900/20 border border-blue-800 rounded text-blue-400 text-sm">
+                <div className="flex items-center gap-2 px-3 py-2 bg-info-dark border border-blue-800 rounded text-info text-sm">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
@@ -203,7 +203,7 @@ Total Index Size: ${formatBytes(stats.totalIndexSize)}${stats.capped ? '\nCapped
         <div className="px-4 py-3 border-t border-border flex justify-between">
           {stats && (
             <button
-              className={`btn btn-ghost flex items-center gap-1.5 ${copied ? 'text-accent' : ''}`}
+              className={`btn btn-ghost flex items-center gap-1.5 ${copied ? 'text-primary' : ''}`}
               onClick={handleCopy}
             >
               {copied ? <CheckIcon className="w-4 h-4" /> : <CopyIcon className="w-4 h-4" />}

@@ -56,6 +56,8 @@ export interface ExportDatabasesModalProps {
   connectionId: string
   connectionName: string
   onClose: () => void
+  onHide?: () => void
+  onShow?: () => void
 }
 
 // Access go at call time, not module load time (bindings may not be ready yet)
@@ -88,6 +90,8 @@ export default function ExportDatabasesModal({
   connectionId,
   connectionName,
   onClose,
+  onHide,
+  onShow,
 }: ExportDatabasesModalProps): React.ReactElement {
   const { notify } = useNotification()
   const { trackZipExport, updateTrackedExport, completeTrackedExport, removeTrackedExport } = useExportQueue()
@@ -131,17 +135,19 @@ export default function ExportDatabasesModal({
         filePathRef.current = data.filePath
       }
 
-      // Update export manager
+      // Update export manager with overall progress
       if (exportId.current) {
+        const pDocs = data.processedDocs ?? processedDocsRef.current ?? 0
+        const tDocs = data.totalDocs ?? totalDocsRef.current ?? 0
         let progressPercent = 0
-        let currentItem: string | null = null
 
-        if (data.total && data.total > 0 && data.current && data.current > 0) {
-          progressPercent = Math.min(100, Math.round((data.current / data.total) * 100))
+        if (tDocs > 0) {
+          progressPercent = Math.min(100, Math.round((pDocs / tDocs) * 100))
         } else if (data.databaseTotal && data.databaseTotal > 0) {
           progressPercent = Math.round((((data.databaseIndex || 1) - 1) / data.databaseTotal) * 100)
         }
 
+        let currentItem: string | null = null
         if (data.collection) {
           currentItem = data.collection
         } else if (data.database) {
@@ -151,13 +157,14 @@ export default function ExportDatabasesModal({
         updateTrackedExport(exportId.current, {
           phase: 'downloading',
           progress: progressPercent,
-          current: data.current || 0,
-          total: data.total || 0,
+          current: pDocs,
+          total: tDocs,
           currentItem,
           itemIndex: data.databaseIndex || 0,
           itemTotal: data.databaseTotal || 0,
         })
       }
+
     })
     const unsubComplete = EventsOn('export:complete', (data: ExportCompleteEventData) => {
       // Only handle if this modal initiated the export
@@ -168,6 +175,8 @@ export default function ExportDatabasesModal({
       completeTrackedExport(exportId.current, data?.filePath || filePathRef.current || undefined)
       exportId.current = null
       filePathRef.current = null
+      // Auto-show modal so user sees the completion, then close
+      onShow?.()
       onClose()
     })
     const unsubCancelled = EventsOn('export:cancelled', () => {
@@ -350,7 +359,8 @@ export default function ExportDatabasesModal({
       connectionId,
       connectionName, // Use connection name as database identifier for multi-db export
       Array.from(selectedDbs),
-      `${connectionName} (${selectedDbs.size} databases)`
+      `${connectionName} (${selectedDbs.size} databases)`,
+      onShow
     )
 
     try {
@@ -406,11 +416,11 @@ export default function ExportDatabasesModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-secondary border border-border rounded-lg w-[500px] max-h-[80vh] flex flex-col">
+      <div className="bg-surface-secondary text-text border border-border rounded-lg w-[500px] max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="px-4 py-3 border-b border-border">
-          <h2 className="text-lg font-medium text-zinc-100">Export Databases</h2>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h2 className="text-lg font-medium text-text">Export Databases</h2>
+          <p className="text-sm text-text-muted mt-1">
             {connectionName} - Select databases to export
           </p>
         </div>
@@ -419,7 +429,7 @@ export default function ExportDatabasesModal({
         <div className="flex-1 overflow-hidden flex flex-col">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : exporting ? (
             <div className="p-4">
@@ -435,13 +445,13 @@ export default function ExportDatabasesModal({
                 )}
                 {/* Header with elapsed time and ETA */}
                 <div className="flex items-center justify-between text-sm mb-3">
-                  <span className="text-zinc-300">
+                  <span className="text-text-secondary">
                     {isPreparing() ? 'Preparing export...' : `Database ${progress?.databaseIndex || 0} of ${progress?.databaseTotal || selectedDbs.size}`}
                   </span>
-                  <div className="flex items-center gap-3 text-zinc-500 font-mono text-xs">
+                  <div className="flex items-center gap-3 text-text-dim font-mono text-xs">
                     {(() => {
                       const eta = getETA(processedDocsRef.current, totalDocsRef.current)
-                      return eta ? <span className="text-accent">{eta} left</span> : null
+                      return eta ? <span className="text-primary">{eta} left</span> : null
                     })()}
                     <span>{formatElapsedTime(elapsedSeconds)}</span>
                   </div>
@@ -449,9 +459,9 @@ export default function ExportDatabasesModal({
 
                 {/* Current collection with full context */}
                 {!isPreparing() && progress?.collection && (
-                  <div className="bg-zinc-800/50 rounded-lg p-3 mb-3">
+                  <div className="bg-surface/50 rounded-lg p-3 mb-3">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-accent font-medium">
+                      <span className="text-primary font-medium">
                         {progress.database}.{progress.collection}
                       </span>
                     </div>
@@ -459,7 +469,7 @@ export default function ExportDatabasesModal({
                     {/* Document progress */}
                     {progress?.total && progress.total > 0 && (
                       <>
-                        <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
+                        <div className="flex items-center justify-between text-xs text-text-muted mb-1">
                           <span>
                             {(progress.current || 0).toLocaleString()} / {progress.total.toLocaleString()} docs
                           </span>
@@ -468,9 +478,9 @@ export default function ExportDatabasesModal({
                           </span>
                         </div>
                         {/* Mini progress bar for collection */}
-                        <div className="h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-accent transition-all duration-200"
+                            className="h-full bg-primary transition-all duration-200"
                             style={{ width: `${Math.min(100, ((progress.current || 0) / progress.total) * 100)}%` }}
                           />
                         </div>
@@ -481,23 +491,23 @@ export default function ExportDatabasesModal({
 
                 {/* Overall progress bar */}
                 <div className="mb-1">
-                  <div className="text-xs text-zinc-500 mb-1">Overall Progress</div>
-                  <div className="h-2 bg-zinc-700 rounded-full overflow-hidden">
+                  <div className="text-xs text-text-dim mb-1">Overall Progress</div>
+                  <div className="h-2 bg-surface-hover rounded-full overflow-hidden">
                     {isPreparing() ? (
                       <div className="h-full w-full relative">
-                        <div className="absolute inset-0 bg-accent/30" />
-                        <div className="absolute inset-0 w-1/2 bg-gradient-to-r from-transparent via-accent to-transparent progress-indeterminate" />
+                        <div className="absolute inset-0 bg-primary/30" />
+                        <div className="absolute inset-0 w-1/2 bg-gradient-to-r from-transparent via-primary to-transparent progress-indeterminate" />
                       </div>
                     ) : (
                       <div
-                        className="h-full bg-accent transition-all duration-300"
+                        className="h-full bg-primary transition-all duration-300"
                         style={{ width: `${getProgressPercent()}%` }}
                       />
                     )}
                   </div>
                 </div>
               </div>
-              <p className="text-sm text-zinc-400 text-center">
+              <p className="text-sm text-text-muted text-center">
                 Please wait while your databases are being exported...
               </p>
             </div>
@@ -506,19 +516,19 @@ export default function ExportDatabasesModal({
               {/* Selection controls */}
               <div className="px-4 py-2 border-b border-border flex items-center gap-2">
                 <button
-                  className="text-sm text-accent hover:text-accent/80 rounded px-1 focus-visible:ring-2 focus-visible:ring-accent/50"
+                  className="text-sm text-primary hover:text-primary/80 rounded px-1 focus-visible:ring-2 focus-visible:ring-primary/50"
                   onClick={selectAll}
                 >
                   Select All
                 </button>
-                <span className="text-zinc-600">|</span>
+                <span className="text-text-dim">|</span>
                 <button
-                  className="text-sm text-accent hover:text-accent/80 rounded px-1 focus-visible:ring-2 focus-visible:ring-accent/50"
+                  className="text-sm text-primary hover:text-primary/80 rounded px-1 focus-visible:ring-2 focus-visible:ring-primary/50"
                   onClick={deselectAll}
                 >
                   Deselect All
                 </button>
-                <span className="ml-auto text-sm text-zinc-400">
+                <span className="ml-auto text-sm text-text-muted">
                   {selectedDbs.size} selected
                 </span>
               </div>
@@ -528,23 +538,23 @@ export default function ExportDatabasesModal({
                 {databases.map((db, index) => (
                   <label
                     key={db.name}
-                    className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer hover:bg-zinc-700/50 ${
-                      selectedDbs.has(db.name) ? 'bg-zinc-700/30' : ''
+                    className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer hover:bg-surface-hover/50 ${
+                      selectedDbs.has(db.name) ? 'bg-surface-hover/30' : ''
                     }`}
                   >
                     <input
                       type="checkbox"
-                      className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent/50"
+                      className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
                       checked={selectedDbs.has(db.name)}
                       onChange={(e: ChangeEvent<HTMLInputElement>) => toggleDatabase(db.name, index, e.nativeEvent)}
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-zinc-200 truncate">{db.name}</div>
+                      <div className="text-sm text-text-light truncate">{db.name}</div>
                       {['admin', 'local', 'config'].includes(db.name) && (
-                        <div className="text-xs text-zinc-400">System database</div>
+                        <div className="text-xs text-text-muted">System database</div>
                       )}
                     </div>
-                    <div className="text-xs text-zinc-400">
+                    <div className="text-xs text-text-muted">
                       {formatBytes(db.sizeOnDisk)}
                     </div>
                   </label>
@@ -561,7 +571,7 @@ export default function ExportDatabasesModal({
               {!paused && (
                 <button
                   className="btn btn-ghost mr-auto"
-                  onClick={onClose}
+                  onClick={onHide ?? onClose}
                   title="Hide this dialog and continue in background"
                 >
                   Hide
