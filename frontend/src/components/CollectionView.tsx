@@ -45,6 +45,7 @@ import { parseMongoshOutput, MongoshParseResult } from '../utils/mongoshParser'
 import { getErrorSummary } from '../utils/errorParser'
 import { validateQuery, toMonacoMarkers, QueryDiagnostic, MonacoInstance } from '../utils/queryValidator'
 import { validateFilter, fieldWarningsToMonacoDiagnostics, FieldWarning, MonacoDiagnostic } from '../utils/fieldValidator'
+import { createQueryCompletionProvider } from '../utils/queryCompletionProvider'
 import type { WailsAppBindings, ExportEntry } from '../types/wails.d'
 
 // =============================================================================
@@ -408,6 +409,9 @@ export default function CollectionView({
   const monacoRef = useRef<MonacoInstance | null>(null)
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const validationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fullMonacoRef = useRef<any>(null)
+  const completionDisposableRef = useRef<{ dispose(): void } | null>(null)
 
   // Resizable editor height
   const [editorHeight, setEditorHeight] = useState<number>(() => {
@@ -750,6 +754,21 @@ export default function CollectionView({
     }
   }, [query, fieldWarnings])
 
+  // Register query completion provider (re-registers when collection changes)
+  useEffect(() => {
+    if (!fullMonacoRef.current) return
+    completionDisposableRef.current?.dispose()
+    const provider = createQueryCompletionProvider({
+      getSchema: () => getCachedSchema(connectionId, database, collection),
+      getFieldNames: () => getFieldNames(connectionId, database, collection),
+    })
+    completionDisposableRef.current = fullMonacoRef.current.languages.registerCompletionItemProvider(
+      'mongoquery',
+      provider
+    )
+    return () => { completionDisposableRef.current?.dispose() }
+  }, [connectionId, database, collection, getCachedSchema, getFieldNames])
+
   // Update status bar with document count
   useEffect(() => {
     updateDocumentStatus(total, queryTime)
@@ -1056,7 +1075,7 @@ export default function CollectionView({
       }
     } catch (err) {
       if (currentQueryId !== queryIdRef.current) return
-      const errorMsg = err instanceof Error ? err.message : 'Failed to execute query'
+      const errorMsg = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Failed to execute query'
       const duration = Math.round(performance.now() - startTime)
       logQuery(`Query failed (${duration}ms): ${getErrorSummary(errorMsg)}`, {
         database,
@@ -1112,7 +1131,7 @@ export default function CollectionView({
         setExplainResult(result as unknown as ExplainResult)
       }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to explain query'
+      const errorMsg = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Failed to explain query'
       notify.error(getErrorSummary(errorMsg))
     } finally {
       setExplaining(false)
@@ -1394,6 +1413,7 @@ export default function CollectionView({
     (editor, monaco) => {
       editorRef.current = editor
       monacoRef.current = monaco as unknown as MonacoInstance
+      fullMonacoRef.current = monaco
 
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => executeQuery())
 
@@ -1537,9 +1557,8 @@ export default function CollectionView({
                 overviewRulerBorder: false,
                 fixedOverflowWidgets: true,
                 hover: { enabled: true, delay: 300 },
-                quickSuggestions: false,
-                parameterHints: { enabled: false },
-                suggestOnTriggerCharacters: false,
+                quickSuggestions: { other: true, comments: false, strings: true },
+                suggestOnTriggerCharacters: true,
                 codeLens: false,
                 lightbulb: { enabled: 'off' as unknown as editor.ShowLightbulbIconMode },
                 inlayHints: { enabled: 'off' as 'off' | 'on' | 'offUnlessPressed' | 'onUnlessPressed' },

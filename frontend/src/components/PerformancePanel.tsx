@@ -185,7 +185,7 @@ const PerformancePanel: FC<PerformancePanelProps> = ({ onClose }) => {
         gcPause: [...prev.gcPause, data.lastGCPauseNs].slice(-maxHistoryPoints),
       }))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch metrics')
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Failed to fetch metrics')
     }
   }, [])
 

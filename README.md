@@ -112,7 +112,7 @@ mongopal/
 │   │   │   ├── contexts/             # React contexts for state
 │   │   │   └── ...
 │   │   ├── hooks/          # Custom React hooks (useProgressETA)
-│   │   └── utils/          # Query parsing, schema utils, error parsing
+│   │   └── utils/          # Query parsing, schema utils, error parsing, autocomplete
 │   └── ...
 │
 ├── .claude/                # Claude Code configuration

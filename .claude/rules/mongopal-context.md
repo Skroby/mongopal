@@ -93,6 +93,7 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | Schema analysis helpers | `frontend/src/utils/schemaUtils.ts` |
 | Table formatting utils | `frontend/src/utils/tableViewUtils.ts` |
 | Error parsing for actionable hints | `frontend/src/utils/errorParser.ts` |
+| Query editor autocomplete provider | `frontend/src/utils/queryCompletionProvider.ts` |
 
 ## Key Patterns
 
