@@ -17,7 +17,7 @@ import BulkActionBar from './BulkActionBar'
 import ActionableError from './ActionableError'
 import DocumentDiffView from './DocumentDiffView'
 import ExplainPanel, { ExplainResult } from './ExplainPanel'
-import CSVExportButton from './CSVExportButton'
+import CollectionExportButton from './CollectionExportButton'
 import MonacoErrorBoundary from './MonacoErrorBoundary'
 import SavedQueriesDropdown from './SavedQueriesDropdown'
 import SaveQueryModal from './SaveQueryModal'
@@ -1522,7 +1522,7 @@ export default function CollectionView({
               >
                 <ExplainIcon className="w-4 h-4" />
               </button>
-              <CSVExportButton
+              <CollectionExportButton
                 connectionId={connectionId}
                 database={database}
                 collection={collection}

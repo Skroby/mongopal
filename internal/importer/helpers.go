@@ -2,9 +2,13 @@
 package importer
 
 import (
+	"fmt"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/peternagy/mongopal/internal/core"
 	"github.com/peternagy/mongopal/internal/storage"
@@ -22,6 +26,25 @@ func NewService(state *core.AppState, connStore *storage.ConnectionService) *Ser
 		state:     state,
 		connStore: connStore,
 	}
+}
+
+// GetImportFilePath opens a file dialog for selecting import files and returns the chosen path.
+func (s *Service) GetImportFilePath() (string, error) {
+	filePath, err := runtime.OpenFileDialog(s.state.Ctx, runtime.OpenDialogOptions{
+		Title: "Select file to import",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Supported Files (*.json, *.ndjson, *.csv, *.tsv, *.zip, *.archive)", Pattern: "*.json;*.ndjson;*.csv;*.tsv;*.zip;*.archive"},
+			{DisplayName: "JSON Files (*.json, *.ndjson)", Pattern: "*.json;*.ndjson"},
+			{DisplayName: "CSV Files (*.csv, *.tsv)", Pattern: "*.csv;*.tsv"},
+			{DisplayName: "ZIP Archives (*.zip)", Pattern: "*.zip"},
+			{DisplayName: "MongoDB Archive (*.archive)", Pattern: "*.archive"},
+			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to open file dialog: %w", err)
+	}
+	return filePath, nil
 }
 
 // countExistingIds counts how many of the given IDs exist in the collection.

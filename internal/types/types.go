@@ -359,6 +359,7 @@ type ImportResult struct {
 	Databases           []DatabaseImportResult `json:"databases"`
 	DocumentsInserted   int64                  `json:"documentsInserted"`
 	DocumentsSkipped    int64                  `json:"documentsSkipped"`
+	DocumentsFailed     int64                  `json:"documentsFailed,omitempty"`     // Docs that failed to restore
 	DocumentsParseError int64                  `json:"documentsParseError,omitempty"` // Docs that failed to parse
 	DocumentsDropped    int64                  `json:"documentsDropped,omitempty"`    // For dry-run override: docs that will be dropped
 	Errors              []string               `json:"errors"`
@@ -413,6 +414,33 @@ type CollectionsImportPreviewItem struct {
 }
 
 // =============================================================================
+// JSON Export/Import Types
+// =============================================================================
+
+// JSONExportOptions specifies options for JSON export.
+type JSONExportOptions struct {
+	Filter   string `json:"filter"`   // Optional query filter in Extended JSON format
+	FilePath string `json:"filePath"` // Pre-selected file path; if provided, skip save dialog
+	Pretty   bool   `json:"pretty"`   // Pretty-print output
+	Array    bool   `json:"array"`    // If true, output as JSON array; if false, NDJSON (one doc per line)
+}
+
+// JSONImportOptions specifies options for JSON import.
+type JSONImportOptions struct {
+	FilePath string `json:"filePath"` // Path to the JSON/NDJSON file
+	Mode     string `json:"mode"`     // "skip" | "override"
+}
+
+// JSONImportPreview contains info about a JSON file for user preview.
+type JSONImportPreview struct {
+	FilePath      string `json:"filePath"`
+	Format        string `json:"format"` // "ndjson" | "jsonarray"
+	DocumentCount int64  `json:"documentCount"`
+	FileSize      int64  `json:"fileSize"`
+	SampleDoc     string `json:"sampleDoc"`
+}
+
+// =============================================================================
 // CSV Export Types
 // =============================================================================
 
@@ -423,6 +451,93 @@ type CSVExportOptions struct {
 	FlattenArrays  bool   `json:"flattenArrays"`  // If true, join arrays with semicolon; if false, create JSON representation
 	Filter         string `json:"filter"`         // Optional query filter in Extended JSON format
 	FilePath       string `json:"filePath"`       // Pre-selected file path; if provided, skip save dialog
+}
+
+// =============================================================================
+// CSV Import Types
+// =============================================================================
+
+// CSVImportPreviewOptions specifies options for previewing a CSV file.
+type CSVImportPreviewOptions struct {
+	FilePath  string `json:"filePath"`
+	Delimiter string `json:"delimiter"` // Auto-detected if empty
+	MaxRows   int    `json:"maxRows"`   // Preview row count (default 10)
+}
+
+// CSVImportOptions specifies options for CSV import.
+type CSVImportOptions struct {
+	FilePath      string   `json:"filePath"`
+	Delimiter     string   `json:"delimiter"`     // Auto-detected if empty
+	HasHeaders    bool     `json:"hasHeaders"`    // If true, first row is headers
+	FieldNames    []string `json:"fieldNames"`    // Override headers (used if HasHeaders is false or user renames)
+	TypeInference bool     `json:"typeInference"` // Infer types from values
+	Mode          string   `json:"mode"`          // "skip" | "override"
+}
+
+// CSVImportPreview contains info about a CSV file for user preview.
+type CSVImportPreview struct {
+	FilePath   string     `json:"filePath"`
+	Headers    []string   `json:"headers"`
+	SampleRows [][]string `json:"sampleRows"`
+	TotalRows  int64      `json:"totalRows"`
+	FileSize   int64      `json:"fileSize"`
+	Delimiter  string     `json:"delimiter"` // Detected or specified
+}
+
+// =============================================================================
+// BSON Export/Import Types (mongodump/mongorestore)
+// =============================================================================
+
+// ToolAvailability reports which external CLI tools are available.
+type ToolAvailability struct {
+	Mongodump           bool   `json:"mongodump"`
+	MongodumpVersion    string `json:"mongodumpVersion,omitempty"`
+	Mongorestore        bool   `json:"mongorestore"`
+	MongorestoreVersion string `json:"mongorestoreVersion,omitempty"`
+}
+
+// MongodumpOptions specifies options for mongodump export.
+type MongodumpOptions struct {
+	Databases           []string            `json:"databases"`                     // Export specific databases (empty = all except system)
+	Database            string              `json:"database,omitempty"`            // Single database export
+	Collections         []string            `json:"collections,omitempty"`         // Specific collections within Database
+	ExcludeCollections  []string            `json:"excludeCollections,omitempty"`  // Collections to exclude (used instead of Collections for single-archive export)
+	DatabaseCollections map[string][]string `json:"databaseCollections,omitempty"` // db → excluded collections (for multi-DB partial selection)
+	OutputPath          string              `json:"outputPath"`                    // .tar.gz archive path
+}
+
+// MongorestoreOptions specifies options for mongorestore import.
+type MongorestoreOptions struct {
+	InputPath  string   `json:"inputPath"`            // Input directory or archive path
+	Database   string   `json:"database,omitempty"`   // Target database (overrides source)
+	Collection string   `json:"collection,omitempty"` // Target collection (for single-collection restore)
+	Drop       bool     `json:"drop"`                 // Drop each collection before import
+	DryRun     bool     `json:"dryRun"`               // Preview without importing
+	Files      []string `json:"files,omitempty"`      // Specific archive files to import (empty = all)
+	NsInclude  []string `json:"nsInclude,omitempty"`  // --nsInclude namespace filter patterns (e.g. "db.coll")
+}
+
+// ImportDirEntry represents a single file entry in a directory scan.
+type ImportDirEntry struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+// ArchivePreview contains the contents of a .archive file as discovered by mongorestore --dryRun.
+type ArchivePreview struct {
+	Databases []ArchivePreviewDatabase `json:"databases"`
+}
+
+// ArchivePreviewDatabase describes a database found inside an archive.
+type ArchivePreviewDatabase struct {
+	Name        string                     `json:"name"`
+	Collections []ArchivePreviewCollection `json:"collections"`
+}
+
+// ArchivePreviewCollection describes a collection found inside an archive.
+type ArchivePreviewCollection struct {
+	Name      string `json:"name"`
+	Documents int64  `json:"documents"`
 }
 
 // =============================================================================

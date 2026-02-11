@@ -33,6 +33,11 @@ func (s *Service) PreviewCollectionsImportFile() (*types.CollectionsImportPrevie
 		return nil, nil // User cancelled
 	}
 
+	return s.PreviewCollectionsImportFilePath(filePath)
+}
+
+// PreviewCollectionsImportFilePath reads the export manifest from a zip file at the given path.
+func (s *Service) PreviewCollectionsImportFilePath(filePath string) (*types.CollectionsImportPreview, error) {
 	// Open zip file
 	zipReader, err := zip.OpenReader(filePath)
 	if err != nil {

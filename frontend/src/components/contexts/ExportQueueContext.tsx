@@ -11,11 +11,19 @@ export interface CSVExportOptions {
   filePath?: string
 }
 
+// Type definitions for JSON export options
+export interface JSONExportOptions {
+  filter?: string
+  filePath?: string
+  pretty?: boolean
+  array?: boolean
+}
+
 // Export phase types
 export type ExportPhase = 'queued' | 'starting' | 'downloading' | 'complete' | 'error'
 
 // Export type
-export type ExportType = 'csv' | 'zip'
+export type ExportType = 'csv' | 'json' | 'zip' | 'bson'
 
 // Transfer direction discriminator
 export type TransferDirection = 'export' | 'import'
@@ -37,6 +45,7 @@ export interface ExportEntry {
   startedAt: number
   label: string
   paused: boolean
+  supportsPause: boolean
   backendExportId?: string
   totalDocs?: number
   modalOpener?: () => void
@@ -49,6 +58,13 @@ export interface CSVExportEntry extends ExportEntry {
   options?: CSVExportOptions
 }
 
+// JSON-specific export entry
+export interface JSONExportEntry extends ExportEntry {
+  type: 'json'
+  collection: string
+  options?: JSONExportOptions
+}
+
 // ZIP-specific export entry
 export interface ZipExportEntry extends ExportEntry {
   type: 'zip'
@@ -59,7 +75,7 @@ export interface ZipExportEntry extends ExportEntry {
 }
 
 // Union type for all export entries
-export type ExportEntryUnion = CSVExportEntry | ZipExportEntry
+export type ExportEntryUnion = CSVExportEntry | JSONExportEntry | ZipExportEntry
 
 // Import entry
 export interface ImportEntry {
@@ -134,7 +150,8 @@ export interface ExportQueueContextValue {
   queuedCount: number
   activeCount: number
   queueCSVExport: (connectionId: string, database: string, collection: string, options?: CSVExportOptions) => void
-  trackZipExport: (connectionId: string, database: string, collections: string[] | null, label?: string, modalOpener?: () => void) => string
+  queueJSONExport: (connectionId: string, database: string, collection: string, options?: JSONExportOptions) => void
+  trackZipExport: (connectionId: string, database: string, collections: string[] | null, label?: string, modalOpener?: () => void, supportsPause?: boolean) => string
   updateTrackedExport: (exportId: string, updates: Partial<ExportEntryUnion>) => void
   completeTrackedExport: (exportId: string, filePath?: string) => void
   removeTrackedExport: (exportId: string) => void
@@ -161,6 +178,13 @@ interface GoApp {
     collection: string,
     query: string,
     options: CSVExportOptions
+  ) => Promise<void>
+  ExportCollectionAsJSON?: (
+    connectionId: string,
+    database: string,
+    collection: string,
+    defaultFilename: string,
+    options: JSONExportOptions
   ) => Promise<void>
   CancelExport?: () => void
   CancelImport?: () => void
@@ -233,6 +257,21 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
                     '',
                     csvOptions
                   )
+                } else if (entry.type === 'json') {
+                  const jsonEntry = entry as JSONExportEntry
+                  const jsonOptions: JSONExportOptions = {
+                    filter: jsonEntry.options?.filter || '',
+                    filePath: jsonEntry.options?.filePath,
+                    pretty: jsonEntry.options?.pretty || false,
+                    array: jsonEntry.options?.array || false,
+                  }
+                  await getGo()?.ExportCollectionAsJSON?.(
+                    jsonEntry.connectionId,
+                    jsonEntry.database,
+                    jsonEntry.collection,
+                    '',
+                    jsonOptions
+                  )
                 }
               } catch (err) {
                 const errorMsg = (err as Error)?.message || String(err)
@@ -279,13 +318,37 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
       startedAt: Date.now(),
       label: collection,
       paused: false,
+      supportsPause: true,
+    }
+
+    setExports(prev => [...prev, entry])
+  }, [])
+
+  // Queue a JSON export
+  const queueJSONExport = useCallback((connectionId: string, database: string, collection: string, options?: JSONExportOptions): void => {
+    const entry: JSONExportEntry = {
+      id: generateId(),
+      direction: 'export',
+      type: 'json',
+      connectionId,
+      database,
+      collection,
+      options,
+      phase: 'queued',
+      current: 0,
+      total: 0,
+      progress: 0,
+      startedAt: Date.now(),
+      label: collection,
+      paused: false,
+      supportsPause: true,
     }
 
     setExports(prev => [...prev, entry])
   }, [])
 
   // Track a ZIP export (database or collection export) - these are started immediately, not queued
-  const trackZipExport = useCallback((connectionId: string, database: string, collections: string[] | null, label?: string, modalOpener?: () => void): string => {
+  const trackZipExport = useCallback((connectionId: string, database: string, collections: string[] | null, label?: string, modalOpener?: () => void, supportsPause = true): string => {
     const id = generateId()
     const entry: ZipExportEntry = {
       id,
@@ -301,6 +364,7 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
       startedAt: Date.now(),
       label: label || database,
       paused: false,
+      supportsPause,
       modalOpener,
       // Extra fields for multi-item progress
       itemIndex: 0,
@@ -435,8 +499,8 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
           idx = prev.findIndex(entry => {
             // Skip queued, complete, and error entries - only match active exports
             if (entry.phase === 'queued' || entry.phase === 'complete' || entry.phase === 'error') return false
-            if (entry.type === 'csv') {
-              const csvEntry = entry as CSVExportEntry
+            if (entry.type === 'csv' || entry.type === 'json') {
+              const csvEntry = entry as CSVExportEntry | JSONExportEntry
               return csvEntry.database === data.database && csvEntry.collection === data.collection
             }
             if (entry.type === 'zip') {
@@ -556,7 +620,7 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
           direction: 'export' as const,
           type: entry.type,
           database: entry.database,
-          collection: entry.type === 'zip' ? (zipEntry.collections?.join(', ') || entry.database) : csvEntry.collection,
+          collection: entry.type === 'zip' ? (zipEntry.collections?.join(', ') || entry.database) : (entry as CSVExportEntry | JSONExportEntry).collection,
           label: entry.label,
           filePath: filePath,
           completedAt: Date.now(),
@@ -740,6 +804,7 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
     queuedCount,
     activeCount,
     queueCSVExport,
+    queueJSONExport,
     trackZipExport,
     updateTrackedExport,
     completeTrackedExport,

@@ -178,6 +178,65 @@ export interface WailsAppBindings {
   ): Promise<ScriptExecutionResult>
   CheckMongoshAvailable?(): Promise<[boolean, string]>
 
+  // JSON export methods
+  ExportCollectionAsJSON?(
+    connectionId: string,
+    database: string,
+    collection: string,
+    defaultFilename: string,
+    options: JSONExportOptions
+  ): Promise<void>
+  GetJSONSavePath?(defaultFilename: string): Promise<string | null>
+  GetZipSavePath?(defaultFilename: string): Promise<string | null>
+  GetBSONSavePath?(defaultFilename: string): Promise<string | null>
+
+  // JSON import methods
+  GetImportFilePath?(): Promise<string>
+  DetectFileFormat?(filePath: string): Promise<string>
+  PreviewJSONFile?(filePath: string): Promise<JSONImportPreview>
+  ImportJSON?(
+    connectionId: string,
+    database: string,
+    collection: string,
+    options: JSONImportOptions
+  ): Promise<ImportResult>
+  DryRunImportJSON?(
+    connectionId: string,
+    database: string,
+    collection: string,
+    options: JSONImportOptions
+  ): Promise<ImportResult>
+
+  // CSV import methods
+  PreviewCSVFile?(options: CSVImportPreviewOptions): Promise<CSVImportPreview>
+  ImportCSV?(
+    connectionId: string,
+    database: string,
+    collection: string,
+    options: CSVImportOptions
+  ): Promise<ImportResult>
+  DryRunImportCSV?(
+    connectionId: string,
+    database: string,
+    collection: string,
+    options: CSVImportOptions
+  ): Promise<ImportResult>
+
+  // Selective database export (partial collection selection)
+  ExportSelectiveDatabases?(connectionId: string, dbCollections: Record<string, string[]>, savePath: string): Promise<void>
+
+  // Selective database import (partial collection selection)
+  ImportSelectiveDatabases?(connectionId: string, dbCollections: Record<string, string[]>, mode: string, filePath: string): Promise<void>
+  DryRunSelectiveImport?(connectionId: string, dbCollections: Record<string, string[]>, mode: string, filePath: string): Promise<void>
+
+  // BSON (mongodump/mongorestore) methods
+  CheckToolAvailability?(): Promise<ToolAvailability>
+  ExportWithMongodump?(connectionId: string, options: MongodumpOptions): Promise<void>
+  ImportWithMongorestore?(connectionId: string, options: MongorestoreOptions): Promise<ImportResult>
+  GetBSONImportDirPath?(): Promise<string>
+  ScanImportDir?(dirPath: string): Promise<ImportDirEntry[]>
+  PreviewArchive?(connectionId: string, archivePath: string): Promise<ArchivePreview>
+
   // Document export methods
   ExportDocumentsAsZip?(
     entries: ExportEntry[],
@@ -456,6 +515,157 @@ export interface ReplicaSetMember {
   optimeDate: string
   syncSource?: string
   self: boolean
+}
+
+/**
+ * JSON export options
+ */
+export interface JSONExportOptions {
+  filter?: string
+  filePath?: string
+  pretty?: boolean
+  array?: boolean
+}
+
+/**
+ * JSON import options
+ */
+export interface JSONImportOptions {
+  filePath: string
+  mode: 'skip' | 'override'
+}
+
+/**
+ * JSON import preview
+ */
+export interface JSONImportPreview {
+  filePath: string
+  format: 'ndjson' | 'jsonarray'
+  documentCount: number
+  fileSize: number
+  sampleDoc: string
+}
+
+/**
+ * Import result (shared across import types)
+ */
+export interface ImportResult {
+  databases: DatabaseImportResult[]
+  documentsInserted: number
+  documentsSkipped: number
+  documentsFailed?: number
+  documentsParseError?: number
+  documentsDropped?: number
+  errors: string[]
+  cancelled?: boolean
+}
+
+export interface DatabaseImportResult {
+  name: string
+  collections: CollectionImportResult[]
+  currentCount?: number
+}
+
+export interface CollectionImportResult {
+  name: string
+  documentsInserted: number
+  documentsSkipped: number
+  documentsParseError?: number
+  currentCount?: number
+  indexErrors?: string[]
+}
+
+/**
+ * CSV import preview options
+ */
+export interface CSVImportPreviewOptions {
+  filePath: string
+  delimiter?: string
+  maxRows?: number
+}
+
+/**
+ * CSV import options
+ */
+export interface CSVImportOptions {
+  filePath: string
+  delimiter?: string
+  hasHeaders: boolean
+  fieldNames?: string[]
+  typeInference: boolean
+  mode: 'skip' | 'override'
+}
+
+/**
+ * CSV import preview result
+ */
+export interface CSVImportPreview {
+  filePath: string
+  headers: string[]
+  sampleRows: string[][]
+  totalRows: number
+  fileSize: number
+  delimiter: string
+}
+
+/**
+ * BSON tool availability
+ */
+export interface ToolAvailability {
+  mongodump: boolean
+  mongodumpVersion?: string
+  mongorestore: boolean
+  mongorestoreVersion?: string
+}
+
+/**
+ * Mongodump export options
+ */
+export interface MongodumpOptions {
+  databases?: string[]
+  database?: string
+  collections?: string[]
+  excludeCollections?: string[]
+  databaseCollections?: Record<string, string[]>
+  outputPath: string
+}
+
+/**
+ * Mongorestore import options
+ */
+export interface MongorestoreOptions {
+  inputPath: string
+  database?: string
+  collection?: string
+  drop?: boolean
+  dryRun?: boolean
+  files?: string[]
+  nsInclude?: string[]
+}
+
+/**
+ * A file entry returned by ScanImportDir
+ */
+export interface ImportDirEntry {
+  name: string
+  size: number
+}
+
+/**
+ * Archive preview from mongorestore --dryRun
+ */
+export interface ArchivePreview {
+  databases: ArchivePreviewDatabase[]
+}
+
+export interface ArchivePreviewDatabase {
+  name: string
+  collections: ArchivePreviewCollection[]
+}
+
+export interface ArchivePreviewCollection {
+  name: string
+  documents: number
 }
 
 /**

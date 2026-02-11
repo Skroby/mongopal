@@ -11,10 +11,9 @@ import Settings from './components/Settings'
 import KeyboardShortcuts from './components/KeyboardShortcuts'
 import PerformancePanel from './components/PerformancePanel'
 import ConnectionManager from './components/ConnectionManager'
-import ExportDatabasesModal from './components/ExportDatabasesModal'
-import ImportDatabasesModal from './components/ImportDatabasesModal'
-import ExportCollectionsModal from './components/ExportCollectionsModal'
-import ImportCollectionsModal from './components/ImportCollectionsModal'
+import UnifiedExportModal from './components/UnifiedExportModal'
+import UnifiedImportModal from './components/UnifiedImportModal'
+import ImportDialog from './components/ImportDialog'
 import CollectionStatsModal from './components/CollectionStatsModal'
 import ServerInfoModal from './components/ServerInfoModal'
 import ConfirmDialog from './components/ConfirmDialog'
@@ -42,26 +41,23 @@ const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
 interface ExportModalState {
   connectionId: string
   connectionName: string
+  databaseName?: string
+  collectionName?: string
   visible: boolean
 }
 
-interface ImportModalState {
+interface ZipImportModalState {
   connectionId: string
   connectionName: string
+  databaseName?: string
   visible: boolean
+  filePath?: string
 }
 
-interface ExportCollectionsModalState {
+interface UnifiedImportModalState {
   connectionId: string
   connectionName: string
-  databaseName: string
-  visible: boolean
-}
-
-interface ImportCollectionsModalState {
-  connectionId: string
-  connectionName: string
-  databaseName: string
+  databaseName?: string
   visible: boolean
 }
 
@@ -130,9 +126,8 @@ function App(): JSX.Element {
   const [showPerformance, setShowPerformance] = useState<boolean>(false)
   const [sidebarWidth, setSidebarWidth] = useState<number>(DEFAULT_SIDEBAR_WIDTH)
   const [exportModal, setExportModal] = useState<ExportModalState | null>(null)
-  const [importModal, setImportModal] = useState<ImportModalState | null>(null)
-  const [exportCollectionsModal, setExportCollectionsModal] = useState<ExportCollectionsModalState | null>(null)
-  const [importCollectionsModal, setImportCollectionsModal] = useState<ImportCollectionsModalState | null>(null)
+  const [zipImportModal, setZipImportModal] = useState<ZipImportModalState | null>(null)
+  const [unifiedImportModal, setUnifiedImportModal] = useState<UnifiedImportModalState | null>(null)
   const [statsModal, setStatsModal] = useState<StatsModalState | null>(null)
   const [serverInfoModal, setServerInfoModal] = useState<ServerInfoModalState | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
@@ -361,9 +356,10 @@ function App(): JSX.Element {
             onEditConnection={handleEditConnection}
             onDeleteConnection={handleDeleteConnection}
             onExportDatabases={(connId: string, connName: string) => setExportModal({ connectionId: connId, connectionName: connName, visible: true })}
-            onImportDatabases={(connId: string, connName: string) => setImportModal({ connectionId: connId, connectionName: connName, visible: true })}
-            onExportCollections={(connId: string, connName: string, dbName: string) => setExportCollectionsModal({ connectionId: connId, connectionName: connName, databaseName: dbName, visible: true })}
-            onImportCollections={(connId: string, connName: string, dbName: string) => setImportCollectionsModal({ connectionId: connId, connectionName: connName, databaseName: dbName, visible: true })}
+            onImportDatabases={(connId: string, connName: string) => setUnifiedImportModal({ connectionId: connId, connectionName: connName, visible: true })}
+            onExportCollections={(connId: string, connName: string, dbName: string) => setExportModal({ connectionId: connId, connectionName: connName, databaseName: dbName, visible: true })}
+            onExportCollection={(connId: string, connName: string, dbName: string, collName: string) => setExportModal({ connectionId: connId, connectionName: connName, databaseName: dbName, collectionName: collName, visible: true })}
+            onImportCollections={(connId: string, connName: string, dbName: string) => setUnifiedImportModal({ connectionId: connId, connectionName: connName, databaseName: dbName, visible: true })}
             onShowStats={(connId: string, dbName: string, collName: string) => setStatsModal({ connectionId: connId, database: dbName, collection: collName })}
             onShowServerInfo={(connId: string, connName: string) => setServerInfoModal({ connectionId: connId, connectionName: connName })}
             onManageIndexes={(connId: string, dbName: string, collName: string) => openIndexTab(connId, dbName, collName)}
@@ -633,12 +629,14 @@ function App(): JSX.Element {
         <PerformancePanel onClose={() => setShowPerformance(false)} />
       )}
 
-      {/* Export databases modal */}
+      {/* Export modal (databases, collections, or single collection) */}
       {exportModal && (
         <div style={{ display: exportModal.visible ? undefined : 'none' }}>
-          <ExportDatabasesModal
+          <UnifiedExportModal
             connectionId={exportModal.connectionId}
             connectionName={exportModal.connectionName}
+            databaseName={exportModal.databaseName}
+            collectionName={exportModal.collectionName}
             onClose={() => setExportModal(null)}
             onHide={() => setExportModal(prev => prev ? { ...prev, visible: false } : null)}
             onShow={() => setExportModal(prev => prev ? { ...prev, visible: true } : null)}
@@ -646,57 +644,46 @@ function App(): JSX.Element {
         </div>
       )}
 
-      {/* Import databases modal */}
-      {importModal && (
-        <div style={{ display: importModal.visible ? undefined : 'none' }}>
-          <ImportDatabasesModal
-            connectionId={importModal.connectionId}
-            connectionName={importModal.connectionName}
-            onClose={() => setImportModal(null)}
-            onHide={() => setImportModal(prev => prev ? { ...prev, visible: false } : null)}
-            onShow={() => setImportModal(prev => prev ? { ...prev, visible: true } : null)}
+      {/* ZIP import modal (unified for both connection and database scope) */}
+      {zipImportModal && (
+        <div style={{ display: zipImportModal.visible ? undefined : 'none' }}>
+          <UnifiedImportModal
+            connectionId={zipImportModal.connectionId}
+            connectionName={zipImportModal.connectionName}
+            databaseName={zipImportModal.databaseName}
+            initialFilePath={zipImportModal.filePath}
+            onClose={() => setZipImportModal(null)}
+            onHide={() => setZipImportModal(prev => prev ? { ...prev, visible: false } : null)}
+            onShow={() => setZipImportModal(prev => prev ? { ...prev, visible: true } : null)}
             onComplete={() => {
-              // Optionally refresh the connection tree after import
               if (go?.ListDatabases) {
-                go.ListDatabases(importModal.connectionId).catch(console.error)
+                go.ListDatabases(zipImportModal.connectionId).catch(console.error)
               }
             }}
           />
         </div>
       )}
 
-      {/* Export collections modal */}
-      {exportCollectionsModal && (
-        <div style={{ display: exportCollectionsModal.visible ? undefined : 'none' }}>
-          <ExportCollectionsModal
-            connectionId={exportCollectionsModal.connectionId}
-            connectionName={exportCollectionsModal.connectionName}
-            databaseName={exportCollectionsModal.databaseName}
-            onClose={() => setExportCollectionsModal(null)}
-            onHide={() => setExportCollectionsModal(prev => prev ? { ...prev, visible: false } : null)}
-            onShow={() => setExportCollectionsModal(prev => prev ? { ...prev, visible: true } : null)}
-          />
-        </div>
-      )}
-
-      {/* Import collections modal */}
-      {importCollectionsModal && (
-        <div style={{ display: importCollectionsModal.visible ? undefined : 'none' }}>
-          <ImportCollectionsModal
-            connectionId={importCollectionsModal.connectionId}
-            connectionName={importCollectionsModal.connectionName}
-            databaseName={importCollectionsModal.databaseName}
-            onClose={() => setImportCollectionsModal(null)}
-            onHide={() => setImportCollectionsModal(prev => prev ? { ...prev, visible: false } : null)}
-            onShow={() => setImportCollectionsModal(prev => prev ? { ...prev, visible: true } : null)}
-            onComplete={() => {
-              // Optionally refresh the database's collections after import
-              if (go?.ListCollections) {
-                go.ListCollections(importCollectionsModal.connectionId, importCollectionsModal.databaseName).catch(console.error)
-              }
-            }}
-          />
-        </div>
+      {/* Unified import dialog (JSON, CSV, with ZIP delegation) */}
+      {unifiedImportModal && (
+        <ImportDialog
+          open={unifiedImportModal.visible}
+          connectionId={unifiedImportModal.connectionId}
+          connectionName={unifiedImportModal.connectionName}
+          databaseName={unifiedImportModal.databaseName}
+          onClose={() => setUnifiedImportModal(null)}
+          onHide={() => setUnifiedImportModal(prev => prev ? { ...prev, visible: false } : null)}
+          onComplete={() => {
+            if (go?.ListDatabases) {
+              go.ListDatabases(unifiedImportModal.connectionId).catch(console.error)
+            }
+          }}
+          onZipDetected={(filePath: string) => {
+            const { connectionId, connectionName, databaseName } = unifiedImportModal
+            setUnifiedImportModal(null)
+            setZipImportModal({ connectionId, connectionName, databaseName, visible: true, filePath })
+          }}
+        />
       )}
 
       {/* Collection stats modal */}

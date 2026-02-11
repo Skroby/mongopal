@@ -306,8 +306,8 @@ export default function ExportManager(): React.ReactElement {
                       <span className={`text-xs ${getPhaseColor(entry)}`}>
                         {getPhaseLabel(entry)}
                       </span>
-                      {/* Pause/Resume button */}
-                      {!queued && (
+                      {/* Pause/Resume button — hidden for BSON exports (external CLI, can't pause) */}
+                      {!queued && (entry.direction === 'import' || (expEntry && expEntry.supportsPause)) && (
                         <button
                           className="p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text-light transition-colors"
                           onClick={() => handlePauseResume(entry)}

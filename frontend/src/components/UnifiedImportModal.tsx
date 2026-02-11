@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, ChangeEvent } from 'react'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { useNotification } from './NotificationContext'
 import { useExportQueue } from './contexts/ExportQueueContext'
@@ -9,38 +9,66 @@ import { getErrorSummary } from '../utils/errorParser'
 // Go bindings type
 interface GoApp {
   PreviewImportFile?: () => Promise<ImportPreview | null>
+  PreviewImportFilePath?: (filePath: string) => Promise<ImportPreview | null>
+  PreviewCollectionsImportFile?: () => Promise<CollectionsImportPreview | null>
+  PreviewCollectionsImportFilePath?: (filePath: string) => Promise<CollectionsImportPreview | null>
   ImportDatabases?: (connectionId: string, options: ImportOptions) => Promise<void>
   DryRunImport?: (connectionId: string, options: ImportOptions) => Promise<void>
+  ImportSelectiveDatabases?: (connectionId: string, dbCollections: Record<string, string[]>, mode: string, filePath: string) => Promise<void>
+  DryRunSelectiveImport?: (connectionId: string, dbCollections: Record<string, string[]>, mode: string, filePath: string) => Promise<void>
+  ImportCollections?: (connectionId: string, databaseName: string, options: CollectionsImportOptions) => Promise<void>
+  DryRunImportCollections?: (connectionId: string, databaseName: string, options: CollectionsImportOptions) => Promise<CollectionsImportResult | null>
   CancelImport?: () => void
   PauseImport?: () => void
   ResumeImport?: () => void
 }
 
-// Import options passed to Go backend
+// Import options passed to Go backend (connection scope)
 interface ImportOptions {
   filePath: string
   databases: string[]
   mode: ImportMode
 }
 
-// Import mode
-type ImportMode = 'skip' | 'override'
+// Import options passed to Go backend (database scope)
+interface CollectionsImportOptions {
+  filePath: string
+  sourceDatabase: string
+  collections: string[]
+  mode: ImportMode
+}
 
-// Modal step type
+type ImportMode = 'skip' | 'override'
 type ModalStep = 'select' | 'configure' | 'previewing' | 'preview' | 'importing' | 'done' | 'error'
 
-// Preview data from archive file
+// Connection-scope preview (from PreviewImportFile)
 interface ImportPreview {
   filePath: string
   exportedAt: string
   databases: PreviewDatabase[]
 }
 
-// Database in preview
 interface PreviewDatabase {
   name: string
   collectionCount: number
   documentCount: number
+}
+
+// Collections-level preview (from PreviewCollectionsImportFile)
+interface CollectionsImportPreview {
+  filePath: string
+  exportedAt: string
+  databases: CollectionsPreviewDatabase[]
+}
+
+interface CollectionsPreviewDatabase {
+  name: string
+  collections: CollectionsPreviewItem[]
+}
+
+interface CollectionsPreviewItem {
+  name: string
+  docCount: number
 }
 
 // Collection result from import/dry-run
@@ -59,7 +87,7 @@ interface DatabaseResult {
 }
 
 // Import/dry-run result
-interface ImportResult {
+interface CollectionsImportResult {
   databases: DatabaseResult[]
   documentsInserted: number
   documentsSkipped: number
@@ -72,6 +100,8 @@ interface ImportResult {
 interface ImportProgressEventData {
   databaseIndex?: number
   databaseTotal?: number
+  collectionIndex?: number
+  collectionTotal?: number
   database?: string
   collection?: string
   current?: number
@@ -84,23 +114,24 @@ interface ImportProgressEventData {
 // Error event data from Wails
 interface ImportErrorEventData {
   error: string
-  partialResult: ImportResult
+  partialResult: CollectionsImportResult
   failedDatabase: string
   failedCollection: string
-  remainingDatabases: string[]
+  remainingDatabases?: string[]
 }
 
 // Component props
-export interface ImportDatabasesModalProps {
+export interface UnifiedImportModalProps {
   connectionId: string
   connectionName: string
+  databaseName?: string      // absent = connection scope
+  initialFilePath?: string   // pre-selected from ImportDialog ZIP detection
   onClose: () => void
   onHide?: () => void
   onShow?: () => void
   onComplete?: () => void
 }
 
-// Access go at call time, not module load time (bindings may not be ready yet)
 const getGo = (): GoApp | undefined =>
   (window as { go?: { main?: { App?: GoApp } } }).go?.main?.App
 
@@ -108,17 +139,19 @@ function formatNumber(num: number | undefined): string {
   return num?.toLocaleString() || '0'
 }
 
-function formatResultForClipboard(result: ImportResult, connectionName: string): string {
+function formatResultForClipboard(result: CollectionsImportResult, connectionName: string, databaseName?: string): string {
   const status = result.cancelled ? 'Import Cancelled' : 'Import Results'
-  const lines = [`${status} - ${connectionName}`, '']
+  const target = databaseName ? `${connectionName} / ${databaseName}` : connectionName
+  const lines = [`${status} - ${target}`, '']
   lines.push(`Total: ${formatNumber(result.documentsInserted)} inserted${result.documentsSkipped > 0 ? `, ${formatNumber(result.documentsSkipped)} skipped` : ''}`)
   lines.push('')
 
   for (const db of result.databases || []) {
-    lines.push(`${db.name}`)
+    if (!databaseName) lines.push(`${db.name}`)
     for (const coll of db.collections || []) {
       const skipped = coll.documentsSkipped > 0 ? `, ${formatNumber(coll.documentsSkipped)} skipped` : ''
-      lines.push(`  - ${coll.name}: ${formatNumber(coll.documentsInserted)} inserted${skipped}`)
+      const prefix = databaseName ? '  ' : '    '
+      lines.push(`${prefix}${coll.name}: ${formatNumber(coll.documentsInserted)} inserted${skipped}`)
     }
   }
 
@@ -133,27 +166,35 @@ function formatResultForClipboard(result: ImportResult, connectionName: string):
   return lines.join('\n')
 }
 
-export default function ImportDatabasesModal({
+export default function UnifiedImportModal({
   connectionId,
   connectionName,
+  databaseName,
+  initialFilePath,
   onClose,
   onHide,
   onShow,
   onComplete,
-}: ImportDatabasesModalProps): React.ReactElement {
+}: UnifiedImportModalProps): React.ReactElement {
+  const isConnectionScope = !databaseName
   const { notify } = useNotification()
   const { trackImport, updateTrackedImport, completeTrackedImport, removeTrackedImport } = useExportQueue()
   const { recordProgress, getETA, reset: resetETA } = useProgressETA()
 
-  // Step: 'select' | 'configure' | 'previewing' | 'preview' | 'importing' | 'done' | 'error'
   const [step, setStep] = useState<ModalStep>('select')
-  const [preview, setPreview] = useState<ImportPreview | null>(null)
-  const [selectedDbs, setSelectedDbs] = useState<Set<string>>(new Set())
+  // Connection scope: uses CollectionsImportPreview (has collection details per DB)
+  const [preview, setPreview] = useState<CollectionsImportPreview | null>(null)
+  // Selection: db → set of collection names
+  const [selection, setSelection] = useState<Map<string, Set<string>>>(new Map())
+  // Database scope: source database from archive
+  const [selectedSourceDb, setSelectedSourceDb] = useState<string>('')
+  // Connection scope: which databases are expanded
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [mode, setMode] = useState<ImportMode>('skip')
   const [progress, setProgress] = useState<ImportProgressEventData | null>(null)
   const [paused, setPaused] = useState<boolean>(false)
-  const [result, setResult] = useState<ImportResult | null>(null)
-  const [dryRunResult, setDryRunResult] = useState<ImportResult | null>(null)
+  const [result, setResult] = useState<CollectionsImportResult | null>(null)
+  const [dryRunResult, setDryRunResult] = useState<CollectionsImportResult | null>(null)
   const [showOverrideConfirm, setShowOverrideConfirm] = useState<boolean>(false)
   const importId = useRef<string | null>(null)
   const [errorInfo, setErrorInfo] = useState<ImportErrorEventData | null>(null)
@@ -161,12 +202,14 @@ export default function ImportDatabasesModal({
   const totalDocsRef = useRef<number>(0)
   const processedDocsRef = useRef<number>(0)
 
+  // Get total selected collection count
+  const selectedCollectionCount = Array.from(selection.values()).reduce((sum, set) => sum + set.size, 0)
+  const selectedDatabaseCount = selection.size
+
   useEffect(() => {
-    // Listen for import progress events
     const unsubProgress = EventsOn('import:progress', (data: ImportProgressEventData) => {
       setProgress(data)
 
-      // Track cumulative progress for ETA calculation
       if (data.totalDocs && data.totalDocs > totalDocsRef.current) {
         totalDocsRef.current = data.totalDocs
       }
@@ -175,28 +218,28 @@ export default function ImportDatabasesModal({
         recordProgress(data.processedDocs)
       }
 
-      // Update transfer manager
       if (importId.current) {
         let progressPercent = 0
-
         if (data.total && data.total > 0 && data.current && data.current > 0) {
           progressPercent = Math.min(100, Math.round((data.current / data.total) * 100))
         } else if (data.databaseTotal && data.databaseTotal > 0) {
           progressPercent = Math.round((((data.databaseIndex || 1) - 1) / data.databaseTotal) * 100)
+        } else if (data.collectionTotal && data.collectionTotal > 0) {
+          progressPercent = Math.round((((data.collectionIndex || 1) - 1) / data.collectionTotal) * 100)
         }
 
         updateTrackedImport(importId.current, {
           phase: 'importing',
           progress: progressPercent,
           currentItem: data.collection || data.database || null,
-          itemIndex: data.databaseIndex || 0,
-          itemTotal: data.databaseTotal || 0,
+          itemIndex: data.databaseIndex || data.collectionIndex || 0,
+          itemTotal: data.databaseTotal || data.collectionTotal || 0,
           processedDocs: data.processedDocs || 0,
           totalDocs: data.totalDocs || 0,
         })
       }
     })
-    const unsubComplete = EventsOn('import:complete', (data: ImportResult) => {
+    const unsubComplete = EventsOn('import:complete', (data: CollectionsImportResult) => {
       setStep('done')
       setProgress(null)
       setResult(data)
@@ -204,10 +247,9 @@ export default function ImportDatabasesModal({
         completeTrackedImport(importId.current)
         importId.current = null
       }
-      // Auto-show modal so user sees the result
       onShow?.()
     })
-    const unsubCancelled = EventsOn('import:cancelled', (data: ImportResult) => {
+    const unsubCancelled = EventsOn('import:cancelled', (data: CollectionsImportResult) => {
       setStep('done')
       setProgress(null)
       setPaused(false)
@@ -217,7 +259,6 @@ export default function ImportDatabasesModal({
         removeTrackedImport(importId.current)
         importId.current = null
       }
-      // Auto-show modal so user sees the result
       onShow?.()
     })
     const unsubError = EventsOn('import:error', (data: ImportErrorEventData) => {
@@ -225,6 +266,7 @@ export default function ImportDatabasesModal({
       setProgress(null)
       setPaused(false)
       setErrorInfo(data)
+      onShow?.()
     })
     const unsubPaused = EventsOn('import:paused', () => {
       setPaused(true)
@@ -233,12 +275,11 @@ export default function ImportDatabasesModal({
       setPaused(false)
     })
 
-    // Listen for dry-run events
+    // Dry-run events (connection scope uses event-based completion)
     const unsubDryRunProgress = EventsOn('dryrun:progress', (data: ImportProgressEventData) => {
       setProgress(data)
     })
-    const unsubDryRunComplete = EventsOn('dryrun:complete', (data: ImportResult) => {
-      // Ignore if preview was cancelled - user went back to configure step
+    const unsubDryRunComplete = EventsOn('dryrun:complete', (data: CollectionsImportResult) => {
       if (previewCancelledRef.current) {
         previewCancelledRef.current = false
         return
@@ -260,13 +301,11 @@ export default function ImportDatabasesModal({
     }
   }, [connectionName, updateTrackedImport, completeTrackedImport, removeTrackedImport, recordProgress, notify])
 
-  // Handle Escape key to close modal (respects nested ConfirmDialog)
+  // Handle Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
-        // Don't handle if ConfirmDialog is open (it has its own handler)
         if (showOverrideConfirm) return
-
         if (step === 'importing') {
           getGo()?.CancelImport?.()
         } else if (step === 'previewing') {
@@ -278,21 +317,66 @@ export default function ImportDatabasesModal({
         }
       }
     }
-
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [step, showOverrideConfirm, onClose])
 
+  // Auto-preview when opened with a pre-selected file path
+  useEffect(() => {
+    if (!initialFilePath) return
+    const autoPreview = async (): Promise<void> => {
+      try {
+        const previewData = await getGo()?.PreviewCollectionsImportFilePath?.(initialFilePath)
+        if (previewData) {
+          setPreview(previewData)
+          initSelectionFromPreview(previewData)
+          setStep('configure')
+        }
+      } catch (err) {
+        console.error('Failed to preview file:', err)
+        notify.error(getErrorSummary((err as Error)?.message || String(err)))
+      }
+    }
+    autoPreview()
+  }, [initialFilePath, notify])
+
+  // Initialize selection from preview data
+  const initSelectionFromPreview = useCallback((previewData: CollectionsImportPreview): void => {
+    if (isConnectionScope) {
+      // Pre-select all databases and all collections
+      const sel = new Map<string, Set<string>>()
+      for (const db of previewData.databases || []) {
+        sel.set(db.name, new Set(db.collections.map(c => c.name)))
+      }
+      setSelection(sel)
+      // Auto-expand if few databases
+      if (previewData.databases.length <= 5) {
+        setExpanded(new Set(previewData.databases.map(db => db.name)))
+      }
+    } else {
+      // Database scope: find matching source database
+      const matchingDb = previewData.databases?.find(db => db.name === databaseName)
+      if (matchingDb) {
+        setSelectedSourceDb(matchingDb.name)
+        const sel = new Map<string, Set<string>>()
+        sel.set(matchingDb.name, new Set(matchingDb.collections.map(c => c.name)))
+        setSelection(sel)
+      } else if (previewData.databases?.length > 0) {
+        setSelectedSourceDb(previewData.databases[0].name)
+        const sel = new Map<string, Set<string>>()
+        sel.set(previewData.databases[0].name, new Set(previewData.databases[0].collections.map(c => c.name)))
+        setSelection(sel)
+      }
+    }
+  }, [isConnectionScope, databaseName])
+
   const handleSelectFile = async (): Promise<void> => {
     try {
-      const previewData = await getGo()?.PreviewImportFile?.()
-      if (!previewData) {
-        // User cancelled file dialog
-        return
-      }
+      // Always use collections-level preview (has more detail)
+      const previewData = await getGo()?.PreviewCollectionsImportFile?.()
+      if (!previewData) return
       setPreview(previewData)
-      // Pre-select all databases
-      setSelectedDbs(new Set(previewData.databases.map(db => db.name)))
+      initSelectionFromPreview(previewData)
       setStep('configure')
     } catch (err) {
       console.error('Failed to preview file:', err)
@@ -300,8 +384,53 @@ export default function ImportDatabasesModal({
     }
   }
 
+  // --- Connection scope selection helpers ---
+
+  const getDbCheckboxState = (dbName: string): 'checked' | 'unchecked' | 'indeterminate' => {
+    const colls = selection.get(dbName)
+    if (!colls || colls.size === 0) return 'unchecked'
+    const dbPreview = preview?.databases?.find(db => db.name === dbName)
+    if (!dbPreview) return 'unchecked'
+    if (colls.size === dbPreview.collections.length) return 'checked'
+    return 'indeterminate'
+  }
+
   const toggleDatabase = (dbName: string): void => {
-    setSelectedDbs(prev => {
+    const dbPreview = preview?.databases?.find(db => db.name === dbName)
+    if (!dbPreview) return
+    setSelection(prev => {
+      const next = new Map(prev)
+      const state = getDbCheckboxState(dbName)
+      if (state === 'checked') {
+        next.delete(dbName)
+      } else {
+        next.set(dbName, new Set(dbPreview.collections.map(c => c.name)))
+      }
+      return next
+    })
+  }
+
+  const toggleCollection = (dbName: string, collName: string): void => {
+    setSelection(prev => {
+      const next = new Map(prev)
+      const colls = new Set(next.get(dbName) || [])
+      if (colls.has(collName)) {
+        colls.delete(collName)
+        if (colls.size === 0) {
+          next.delete(dbName)
+        } else {
+          next.set(dbName, colls)
+        }
+      } else {
+        colls.add(collName)
+        next.set(dbName, colls)
+      }
+      return next
+    })
+  }
+
+  const toggleExpand = (dbName: string): void => {
+    setExpanded(prev => {
       const next = new Set(prev)
       if (next.has(dbName)) {
         next.delete(dbName)
@@ -313,13 +442,58 @@ export default function ImportDatabasesModal({
   }
 
   const selectAll = (): void => {
-    if (preview) {
-      setSelectedDbs(new Set(preview.databases.map(db => db.name)))
+    if (!preview) return
+    if (isConnectionScope) {
+      const sel = new Map<string, Set<string>>()
+      for (const db of preview.databases || []) {
+        sel.set(db.name, new Set(db.collections.map(c => c.name)))
+      }
+      setSelection(sel)
+    } else {
+      // Database scope: select all collections from source DB
+      const sourceDb = preview.databases?.find(db => db.name === selectedSourceDb)
+      if (sourceDb) {
+        const sel = new Map<string, Set<string>>()
+        sel.set(sourceDb.name, new Set(sourceDb.collections.map(c => c.name)))
+        setSelection(sel)
+      }
     }
   }
 
   const deselectAll = (): void => {
-    setSelectedDbs(new Set())
+    setSelection(new Map())
+  }
+
+  // --- Database scope source DB change ---
+  const handleSourceDbChange = (dbName: string): void => {
+    setSelectedSourceDb(dbName)
+    const db = preview?.databases?.find(db => db.name === dbName)
+    if (db) {
+      const sel = new Map<string, Set<string>>()
+      sel.set(db.name, new Set(db.collections.map(c => c.name)))
+      setSelection(sel)
+    } else {
+      setSelection(new Map())
+    }
+  }
+
+  // --- Import helpers ---
+
+  const allDatabasesFullySelected = (): boolean => {
+    if (!preview) return false
+    for (const db of preview.databases) {
+      const colls = selection.get(db.name)
+      if (!colls || colls.size !== db.collections.length) return false
+    }
+    return selection.size === preview.databases.length
+  }
+
+  const buildDbCollections = (): Record<string, string[]> => {
+    const result: Record<string, string[]> = {}
+    for (const [db, colls] of selection) {
+      result[db] = [...colls]
+    }
+    return result
   }
 
   const togglePause = (): void => {
@@ -327,6 +501,53 @@ export default function ImportDatabasesModal({
       getGo()?.ResumeImport?.()
     } else {
       getGo()?.PauseImport?.()
+    }
+  }
+
+  const handlePreview = async (): Promise<void> => {
+    if (selectedCollectionCount === 0 || !preview) {
+      notify.warning(isConnectionScope ? 'Please select at least one database' : 'Please select at least one collection')
+      return
+    }
+
+    previewCancelledRef.current = false
+    setStep('previewing')
+    setDryRunResult(null)
+    try {
+      if (isConnectionScope) {
+        if (allDatabasesFullySelected()) {
+          await getGo()?.DryRunImport?.(connectionId, {
+            filePath: preview.filePath,
+            databases: [...selection.keys()],
+            mode: mode,
+          })
+        } else {
+          await getGo()?.DryRunSelectiveImport?.(connectionId, buildDbCollections(), mode, preview.filePath)
+        }
+        // Result set by dryrun:complete event
+      } else {
+        // Database scope — synchronous result
+        const dryResult = await getGo()?.DryRunImportCollections?.(connectionId, databaseName!, {
+          filePath: preview.filePath,
+          sourceDatabase: selectedSourceDb,
+          collections: [...(selection.get(selectedSourceDb) || [])],
+          mode: mode,
+        })
+        if (previewCancelledRef.current) {
+          previewCancelledRef.current = false
+          return
+        }
+        if (dryResult) {
+          setDryRunResult(dryResult)
+          setStep('preview')
+        } else {
+          setStep('configure')
+        }
+      }
+    } catch (err) {
+      console.error('Preview failed:', err)
+      notify.error(getErrorSummary((err as Error)?.message || String(err)))
+      setStep('configure')
     }
   }
 
@@ -339,67 +560,55 @@ export default function ImportDatabasesModal({
     totalDocsRef.current = 0
     processedDocsRef.current = 0
 
-    // Track in transfer manager
+    const itemNames = isConnectionScope ? [...selection.keys()] : [...(selection.get(selectedSourceDb) || [])]
+    const label = isConnectionScope
+      ? `Import to ${connectionName} (${selectedDatabaseCount} databases)`
+      : `Import to ${databaseName} (${selectedCollectionCount} collections)`
+
     importId.current = trackImport(
       connectionId,
-      connectionName,
-      Array.from(selectedDbs),
-      `Import to ${connectionName} (${selectedDbs.size} databases)`,
+      isConnectionScope ? connectionName : databaseName!,
+      itemNames,
+      label,
       onShow
     )
 
     try {
-      await getGo()?.ImportDatabases?.(connectionId, {
-        filePath: preview.filePath,
-        databases: Array.from(selectedDbs),
-        mode: mode,
-      })
-      // Result will be set by event handler (import:complete, import:cancelled, or import:error)
+      if (isConnectionScope) {
+        if (allDatabasesFullySelected()) {
+          await getGo()?.ImportDatabases?.(connectionId, {
+            filePath: preview.filePath,
+            databases: [...selection.keys()],
+            mode: mode,
+          })
+        } else {
+          await getGo()?.ImportSelectiveDatabases?.(connectionId, buildDbCollections(), mode, preview.filePath)
+        }
+      } else {
+        await getGo()?.ImportCollections?.(connectionId, databaseName!, {
+          filePath: preview.filePath,
+          sourceDatabase: selectedSourceDb,
+          collections: [...(selection.get(selectedSourceDb) || [])],
+          mode: mode,
+        })
+      }
     } catch (err) {
       const errMsg = (err as Error)?.message || String(err)
-      // Don't show error for cancellation - the event handler shows info toast
-      if (errMsg.toLowerCase().includes('cancel')) {
-        return
-      }
+      if (errMsg.toLowerCase().includes('cancel')) return
       console.error('Import failed:', err)
       notify.error(getErrorSummary(errMsg))
-      // Show error recovery screen
       setStep('error')
       setErrorInfo({
         error: errMsg,
         partialResult: { databases: [], documentsInserted: 0, documentsSkipped: 0, errors: [] },
-        failedDatabase: '',
+        failedDatabase: isConnectionScope ? '' : databaseName!,
         failedCollection: '',
-        remainingDatabases: Array.from(selectedDbs),
+        remainingDatabases: isConnectionScope ? [...selection.keys()] : undefined,
       })
       if (importId.current) {
         removeTrackedImport(importId.current)
         importId.current = null
       }
-    }
-  }
-
-  const handlePreview = async (): Promise<void> => {
-    if (selectedDbs.size === 0 || !preview) {
-      notify.warning('Please select at least one database')
-      return
-    }
-
-    // Reset cancelled flag when starting a new preview
-    previewCancelledRef.current = false
-    setStep('previewing')
-    setDryRunResult(null)
-    try {
-      await getGo()?.DryRunImport?.(connectionId, {
-        filePath: preview.filePath,
-        databases: Array.from(selectedDbs),
-        mode: mode,
-      })
-      // Result will be set by event handler
-    } catch (err) {
-      console.error('Preview failed:', err)
-      notify.error(getErrorSummary((err as Error)?.message || String(err)))
-      setStep('configure')
     }
   }
 
@@ -409,7 +618,6 @@ export default function ImportDatabasesModal({
   }
 
   const handleCancelAnalysis = (): void => {
-    // Mark preview as cancelled so we ignore the dryrun:complete event
     previewCancelledRef.current = true
     setStep('configure')
     setProgress(null)
@@ -424,24 +632,36 @@ export default function ImportDatabasesModal({
   }
 
   const handleRetryFailed = async (): Promise<void> => {
-    // Retry with only the remaining databases (starting from the failed one)
-    if (!errorInfo?.remainingDatabases?.length || !preview) return
-
-    setSelectedDbs(new Set(errorInfo.remainingDatabases))
-    setErrorInfo(null)
-    setStep('importing')
-    resetETA()
-    totalDocsRef.current = 0
-    processedDocsRef.current = 0
-    try {
-      await getGo()?.ImportDatabases?.(connectionId, {
-        filePath: preview.filePath,
-        databases: errorInfo.remainingDatabases,
-        mode: mode,
-      })
-    } catch (err) {
-      console.error('Retry failed:', err)
-      if (step === 'importing') {
+    if (!preview) return
+    if (isConnectionScope && errorInfo?.remainingDatabases?.length) {
+      // Retry with remaining databases
+      const remainingSet = new Set(errorInfo.remainingDatabases)
+      const newSelection = new Map<string, Set<string>>()
+      for (const [db, colls] of selection) {
+        if (remainingSet.has(db)) newSelection.set(db, colls)
+      }
+      setSelection(newSelection)
+      setErrorInfo(null)
+      setStep('importing')
+      resetETA()
+      totalDocsRef.current = 0
+      processedDocsRef.current = 0
+      try {
+        if (allDatabasesFullySelected()) {
+          await getGo()?.ImportDatabases?.(connectionId, {
+            filePath: preview.filePath,
+            databases: errorInfo.remainingDatabases,
+            mode: mode,
+          })
+        } else {
+          const dbColls: Record<string, string[]> = {}
+          for (const [db, colls] of newSelection) {
+            dbColls[db] = [...colls]
+          }
+          await getGo()?.ImportSelectiveDatabases?.(connectionId, dbColls, mode, preview.filePath)
+        }
+      } catch (err) {
+        console.error('Retry failed:', err)
         setStep('error')
         setErrorInfo({
           error: (err as Error)?.message || String(err),
@@ -451,48 +671,90 @@ export default function ImportDatabasesModal({
           remainingDatabases: errorInfo.remainingDatabases,
         })
       }
+    } else {
+      // Database scope: retry same import
+      setErrorInfo(null)
+      setStep('importing')
+      resetETA()
+      totalDocsRef.current = 0
+      processedDocsRef.current = 0
+      try {
+        await getGo()?.ImportCollections?.(connectionId, databaseName!, {
+          filePath: preview.filePath,
+          sourceDatabase: selectedSourceDb,
+          collections: [...(selection.get(selectedSourceDb) || [])],
+          mode: mode,
+        })
+      } catch (err) {
+        console.error('Retry failed:', err)
+        setStep('error')
+        setErrorInfo({
+          error: (err as Error)?.message || String(err),
+          partialResult: { databases: [], documentsInserted: 0, documentsSkipped: 0, errors: [] },
+          failedDatabase: databaseName!,
+          failedCollection: '',
+        })
+      }
     }
   }
 
   const handleSkipAndContinue = async (): Promise<void> => {
-    // Skip the failed database and continue with the remaining ones
-    if (!errorInfo?.remainingDatabases?.length || errorInfo.remainingDatabases.length <= 1 || !preview) {
-      // No more databases to continue with, go to done with partial results
+    if (!isConnectionScope || !errorInfo?.remainingDatabases?.length || errorInfo.remainingDatabases.length <= 1 || !preview) {
       setResult(errorInfo?.partialResult || { databases: [], documentsInserted: 0, documentsSkipped: 0, errors: [] })
       setStep('done')
       return
     }
 
-    const remaining = errorInfo.remainingDatabases.slice(1) // Skip the first (failed) one
-    setSelectedDbs(new Set(remaining))
+    const remaining = errorInfo.remainingDatabases.slice(1)
+    const remainingSet = new Set(remaining)
+    const newSelection = new Map<string, Set<string>>()
+    for (const [db, colls] of selection) {
+      if (remainingSet.has(db)) newSelection.set(db, colls)
+    }
+    setSelection(newSelection)
     setErrorInfo(null)
     setStep('importing')
     resetETA()
     totalDocsRef.current = 0
     processedDocsRef.current = 0
     try {
-      await getGo()?.ImportDatabases?.(connectionId, {
-        filePath: preview.filePath,
-        databases: remaining,
-        mode: mode,
-      })
+      const dbColls: Record<string, string[]> = {}
+      for (const [db, colls] of newSelection) {
+        dbColls[db] = [...colls]
+      }
+      // Check if all remaining are fully selected
+      let allFull = true
+      for (const dbName of remaining) {
+        const dbPreview = preview.databases?.find(d => d.name === dbName)
+        const colls = newSelection.get(dbName)
+        if (!dbPreview || !colls || colls.size !== dbPreview.collections.length) {
+          allFull = false
+          break
+        }
+      }
+      if (allFull) {
+        await getGo()?.ImportDatabases?.(connectionId, {
+          filePath: preview.filePath,
+          databases: remaining,
+          mode: mode,
+        })
+      } else {
+        await getGo()?.ImportSelectiveDatabases?.(connectionId, dbColls, mode, preview.filePath)
+      }
     } catch (err) {
       console.error('Continue failed:', err)
-      if (step === 'importing') {
-        setStep('error')
-        setErrorInfo({
-          error: (err as Error)?.message || String(err),
-          partialResult: { databases: [], documentsInserted: 0, documentsSkipped: 0, errors: [] },
-          failedDatabase: '',
-          failedCollection: '',
-          remainingDatabases: remaining,
-        })
-      }
+      setStep('error')
+      setErrorInfo({
+        error: (err as Error)?.message || String(err),
+        partialResult: { databases: [], documentsInserted: 0, documentsSkipped: 0, errors: [] },
+        failedDatabase: '',
+        failedCollection: '',
+        remainingDatabases: remaining,
+      })
     }
   }
 
   const handleDismissError = (): void => {
-    // Show partial results as done
     if (errorInfo?.partialResult?.documentsInserted && errorInfo.partialResult.documentsInserted > 0) {
       setResult({
         ...errorInfo.partialResult,
@@ -512,7 +774,17 @@ export default function ImportDatabasesModal({
     if (progress.databaseTotal && progress.databaseTotal > 0) {
       return (((progress.databaseIndex || 1) - 1) / progress.databaseTotal) * 100
     }
+    if (progress.collectionTotal && progress.collectionTotal > 0) {
+      return (((progress.collectionIndex || 1) - 1) / progress.collectionTotal) * 100
+    }
     return 0
+  }
+
+  // Get source collections for database scope
+  const getSourceCollections = (): CollectionsPreviewItem[] => {
+    if (!preview || !selectedSourceDb) return []
+    const db = preview.databases?.find(db => db.name === selectedSourceDb)
+    return db?.collections || []
   }
 
   return (
@@ -520,10 +792,17 @@ export default function ImportDatabasesModal({
       <div className="bg-surface-secondary text-text border border-border rounded-lg w-[500px] max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="px-4 py-3 border-b border-border">
-          <h2 className="text-lg font-medium text-text">Import Databases</h2>
+          <h2 className="text-lg font-medium text-text">
+            {isConnectionScope ? 'Import Databases' : 'Import Collections'}
+          </h2>
           <p className="text-sm text-text-muted mt-1">
-            {connectionName}
-            {preview && <span className="text-text-muted"> - {preview.databases.length} databases in archive</span>}
+            {isConnectionScope ? connectionName : `${connectionName} / ${databaseName}`}
+            {preview && isConnectionScope && (
+              <span className="text-text-muted"> - {preview.databases.length} databases in archive</span>
+            )}
+            {preview && !isConnectionScope && (
+              <span className="text-text-muted"> - {preview.databases?.length || 0} database{preview.databases?.length !== 1 ? 's' : ''} in archive</span>
+            )}
           </p>
         </div>
 
@@ -535,7 +814,10 @@ export default function ImportDatabasesModal({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
               <p className="text-text-muted mb-4 text-center">
-                Select a previously exported .zip archive to import
+                {isConnectionScope
+                  ? 'Select a previously exported .zip archive to import'
+                  : <>Select a previously exported .zip archive to import into <span className="text-text-light">{databaseName}</span></>
+                }
               </p>
               <button className="btn btn-primary" onClick={handleSelectFile}>
                 Select File
@@ -550,44 +832,145 @@ export default function ImportDatabasesModal({
                 Exported: {preview.exportedAt}
               </div>
 
-              {/* Selection controls */}
-              <div className="px-4 py-2 border-b border-border flex items-center gap-2">
-                <button className="text-sm text-primary hover:text-primary/80" onClick={selectAll}>
-                  Select All
-                </button>
-                <span className="text-text-dim">|</span>
-                <button className="text-sm text-primary hover:text-primary/80" onClick={deselectAll}>
-                  Deselect All
-                </button>
-                <span className="ml-auto text-sm text-text-muted">
-                  {selectedDbs.size} selected
-                </span>
-              </div>
-
-              {/* Database list */}
-              <div className="flex-1 overflow-y-auto p-2">
-                {preview.databases.map(db => (
-                  <label
-                    key={db.name}
-                    className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer hover:bg-surface-hover/50 ${
-                      selectedDbs.has(db.name) ? 'bg-surface-hover/30' : ''
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
-                      checked={selectedDbs.has(db.name)}
-                      onChange={() => toggleDatabase(db.name)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm text-text-light truncate">{db.name}</div>
-                      <div className="text-xs text-text-muted">
-                        {db.collectionCount} collections, {formatNumber(db.documentCount)} docs
-                      </div>
-                    </div>
+              {/* Database scope: source database selector */}
+              {!isConnectionScope && (
+                <div className="px-4 py-3 border-b border-border">
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
+                    Import from database
                   </label>
-                ))}
-              </div>
+                  <select
+                    className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-light focus:outline-none focus:border-primary"
+                    value={selectedSourceDb}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) => handleSourceDbChange(e.target.value)}
+                  >
+                    <option value="">Select a database...</option>
+                    {preview.databases?.map(db => (
+                      <option key={db.name} value={db.name}>
+                        {db.name} ({db.collections?.length || 0} collections)
+                      </option>
+                    ))}
+                  </select>
+                  {selectedSourceDb && selectedSourceDb !== databaseName && (
+                    <p className="text-xs text-yellow-500 mt-1">
+                      Collections from "{selectedSourceDb}" will be imported into "{databaseName}"
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Selection controls */}
+              {(isConnectionScope || selectedSourceDb) && (
+                <div className="px-4 py-2 border-b border-border flex items-center gap-2">
+                  <button className="text-sm text-primary hover:text-primary/80" onClick={selectAll}>
+                    Select All
+                  </button>
+                  <span className="text-text-dim">|</span>
+                  <button className="text-sm text-primary hover:text-primary/80" onClick={deselectAll}>
+                    Deselect All
+                  </button>
+                  <span className="ml-auto text-sm text-text-muted">
+                    {isConnectionScope
+                      ? `${selectedCollectionCount} collection${selectedCollectionCount !== 1 ? 's' : ''} in ${selectedDatabaseCount} database${selectedDatabaseCount !== 1 ? 's' : ''}`
+                      : `${selectedCollectionCount} selected`
+                    }
+                  </span>
+                </div>
+              )}
+
+              {/* Connection scope: expandable database rows */}
+              {isConnectionScope && (
+                <div className="flex-1 overflow-y-auto p-2">
+                  {preview.databases.map(db => {
+                    const state = getDbCheckboxState(db.name)
+                    const isExpanded = expanded.has(db.name)
+                    const totalDocs = db.collections.reduce((sum, c) => sum + c.docCount, 0)
+                    return (
+                      <div key={db.name}>
+                        <div
+                          className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer hover:bg-surface-hover/50 ${
+                            state !== 'unchecked' ? 'bg-surface-hover/30' : ''
+                          }`}
+                        >
+                          {/* Expand arrow */}
+                          <button
+                            className="w-4 h-4 flex items-center justify-center text-text-muted hover:text-text-light shrink-0"
+                            onClick={() => toggleExpand(db.name)}
+                          >
+                            <svg className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                          {/* Tri-state checkbox */}
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
+                            checked={state === 'checked'}
+                            ref={(el) => { if (el) el.indeterminate = state === 'indeterminate' }}
+                            onChange={() => toggleDatabase(db.name)}
+                          />
+                          <div className="flex-1 min-w-0" onClick={() => toggleExpand(db.name)}>
+                            <div className="text-sm text-text-light truncate">{db.name}</div>
+                            <div className="text-xs text-text-muted">
+                              {db.collections.length} collections, {formatNumber(totalDocs)} docs
+                            </div>
+                          </div>
+                        </div>
+                        {/* Expanded collection list */}
+                        {isExpanded && (
+                          <div className="ml-10 mb-1">
+                            {db.collections.map(coll => (
+                              <label
+                                key={coll.name}
+                                className="flex items-center gap-3 px-3 py-1.5 rounded cursor-pointer hover:bg-surface-hover/30"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="w-3.5 h-3.5 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
+                                  checked={selection.get(db.name)?.has(coll.name) || false}
+                                  onChange={() => toggleCollection(db.name, coll.name)}
+                                />
+                                <span className="text-xs text-text-light truncate flex-1">{coll.name}</span>
+                                <span className="text-xs text-text-muted shrink-0">{formatNumber(coll.docCount)} docs</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Database scope: flat collection list */}
+              {!isConnectionScope && selectedSourceDb && (
+                <div className="flex-1 overflow-y-auto p-2">
+                  {getSourceCollections().map(coll => (
+                    <label
+                      key={coll.name}
+                      className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer hover:bg-surface-hover/50 ${
+                        selection.get(selectedSourceDb)?.has(coll.name) ? 'bg-surface-hover/30' : ''
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-border-light bg-surface text-primary focus:ring-primary/50"
+                        checked={selection.get(selectedSourceDb)?.has(coll.name) || false}
+                        onChange={() => toggleCollection(selectedSourceDb, coll.name)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-text-light truncate">{coll.name}</div>
+                      </div>
+                      <span className="text-xs text-text-muted shrink-0">{formatNumber(coll.docCount)} docs</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {!isConnectionScope && !selectedSourceDb && (
+                <div className="flex-1 flex items-center justify-center p-6 text-text-muted text-sm">
+                  Select a source database to view its collections
+                </div>
+              )}
 
               {/* Import mode */}
               <div className="p-4 border-t border-border">
@@ -624,7 +1007,9 @@ export default function ImportDatabasesModal({
                     <div>
                       <div className="text-sm text-text-light">Override (Drop & Replace)</div>
                       <div className="text-xs text-error">
-                        Drops the selected databases first, then imports fresh.
+                        {isConnectionScope
+                          ? 'Drops the selected databases first, then imports fresh.'
+                          : 'Drops matching collections first, then imports fresh.'}
                       </div>
                     </div>
                   </label>
@@ -639,18 +1024,20 @@ export default function ImportDatabasesModal({
                 <div className="flex items-center justify-between text-sm text-text-secondary mb-2 h-5">
                   {progress?.databaseTotal && progress.databaseTotal > 0 && (
                     <>
-                      <span>
-                        Analyzing {progress?.databaseIndex || 0} of {progress?.databaseTotal}
-                      </span>
-                      <span className="text-text-muted">
-                        {progress?.database}
-                      </span>
+                      <span>Analyzing {progress?.databaseIndex || 0} of {progress?.databaseTotal}</span>
+                      <span className="text-text-muted">{progress?.database}</span>
+                    </>
+                  )}
+                  {progress?.collectionTotal && progress.collectionTotal > 0 && !progress?.databaseTotal && (
+                    <>
+                      <span>Analyzing {progress?.collectionIndex || 0} of {progress?.collectionTotal}</span>
+                      <span className="text-text-muted">{progress?.collection}</span>
                     </>
                   )}
                 </div>
 
                 <div className="text-sm mb-2 h-5">
-                  {progress?.collection && (
+                  {progress?.collection && progress?.databaseTotal && (
                     <span className="text-text-muted">Collection: <span className="text-text-secondary">{progress.collection}</span></span>
                   )}
                 </div>
@@ -668,12 +1055,8 @@ export default function ImportDatabasesModal({
                   )}
                 </div>
               </div>
-              <p className="text-sm text-text-muted text-center">
-                Analyzing changes...
-              </p>
-              <p className="text-xs text-text-dim text-center mt-2">
-                This may take a while for large files
-              </p>
+              <p className="text-sm text-text-muted text-center">Analyzing changes...</p>
+              <p className="text-xs text-text-dim text-center mt-2">This may take a while for large files</p>
             </div>
           )}
 
@@ -709,7 +1092,7 @@ export default function ImportDatabasesModal({
                 {dryRunResult.databases?.map(db => (
                   <div key={db.name} className="bg-surface/50 rounded p-3">
                     <div className="flex items-center justify-between text-sm font-medium text-text-light mb-2">
-                      <span>{db.name}</span>
+                      <span>{isConnectionScope ? db.name : databaseName}</span>
                       {db.currentCount && db.currentCount > 0 && (
                         <span className="text-xs text-error font-normal">
                           {formatNumber(db.currentCount)} docs will be dropped
@@ -747,7 +1130,6 @@ export default function ImportDatabasesModal({
           {step === 'importing' && (
             <div className="p-4 min-h-[160px]">
               <div className="mb-4">
-                {/* Paused indicator */}
                 {paused && (
                   <div className="mb-3 p-2 bg-yellow-900/30 border border-yellow-700/50 rounded text-sm text-yellow-400 flex items-center gap-2">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -756,36 +1138,44 @@ export default function ImportDatabasesModal({
                     Import paused
                   </div>
                 )}
-                {/* Database progress */}
+                {/* Progress counter */}
                 <div className="flex items-center justify-between text-sm text-text-secondary mb-2 h-5">
                   {progress?.databaseTotal && progress.databaseTotal > 0 && (
                     <>
-                      <span>
-                        Database {progress?.databaseIndex || 0} of {progress?.databaseTotal}
-                      </span>
+                      <span>Database {progress?.databaseIndex || 0} of {progress?.databaseTotal}</span>
                       <div className="flex items-center gap-3">
                         {(() => {
                           const eta = getETA(processedDocsRef.current, totalDocsRef.current)
                           return eta ? <span className="text-primary text-xs font-mono">{eta} left</span> : null
                         })()}
-                        <span className="text-text-muted">
-                          {progress?.database}
-                        </span>
+                        <span className="text-text-muted">{progress?.database}</span>
+                      </div>
+                    </>
+                  )}
+                  {progress?.collectionTotal && progress.collectionTotal > 0 && !progress?.databaseTotal && (
+                    <>
+                      <span>Collection {progress?.collectionIndex || 0} of {progress?.collectionTotal}</span>
+                      <div className="flex items-center gap-3">
+                        {(() => {
+                          const eta = getETA(processedDocsRef.current, totalDocsRef.current)
+                          return eta ? <span className="text-primary text-xs font-mono">{eta} left</span> : null
+                        })()}
+                        <span className="text-text-muted">{progress?.collection}</span>
                       </div>
                     </>
                   )}
                 </div>
 
-                {/* Collection/Phase info - fixed height slot */}
                 <div className="text-sm mb-2 h-5">
                   {progress?.phase === 'dropping' ? (
-                    <span className="text-yellow-400">Dropping database: {progress?.database}</span>
+                    <span className="text-yellow-400">
+                      Dropping {isConnectionScope ? 'database' : 'collection'}: {progress?.collection || progress?.database}
+                    </span>
                   ) : progress?.collection && progress?.phase === 'importing' ? (
                     <span className="text-text-muted">Collection: <span className="text-text-secondary">{progress.collection}</span></span>
                   ) : null}
                 </div>
 
-                {/* Progress bar */}
                 <div className="h-2 bg-surface-hover rounded-full overflow-hidden">
                   <div
                     className="h-full bg-primary transition-all duration-300"
@@ -793,7 +1183,6 @@ export default function ImportDatabasesModal({
                   />
                 </div>
 
-                {/* Document count - fixed height slot */}
                 <div className="text-xs text-text-muted mt-1 h-4">
                   {progress?.total && progress.total > 0 && progress?.phase === 'importing' && (
                     <span>{formatNumber(progress.current)} / {formatNumber(progress.total)} documents</span>
@@ -801,7 +1190,7 @@ export default function ImportDatabasesModal({
                 </div>
               </div>
               <p className="text-sm text-text-muted text-center">
-                Please wait while your databases are being imported...
+                Please wait while your {isConnectionScope ? 'databases are' : 'collections are'} being imported...
               </p>
             </div>
           )}
@@ -826,7 +1215,7 @@ export default function ImportDatabasesModal({
                 <button
                   className="text-xs text-text-muted hover:text-text-light flex items-center gap-1"
                   onClick={() => {
-                    navigator.clipboard.writeText(formatResultForClipboard(result, connectionName))
+                    navigator.clipboard.writeText(formatResultForClipboard(result, connectionName, databaseName))
                     notify.success('Copied to clipboard')
                   }}
                   title="Copy results to clipboard"
@@ -838,7 +1227,6 @@ export default function ImportDatabasesModal({
                 </button>
               </div>
 
-              {/* Summary totals */}
               <div className="flex gap-4 mb-4 text-sm">
                 <div className="flex items-center gap-1.5">
                   <span className="text-text-muted">Total Inserted:</span>
@@ -852,11 +1240,12 @@ export default function ImportDatabasesModal({
                 )}
               </div>
 
-              {/* Per-database breakdown */}
               <div className="flex-1 overflow-y-auto space-y-3">
                 {result.databases?.map(db => (
                   <div key={db.name} className="bg-surface/50 rounded p-3">
-                    <div className="text-sm font-medium text-text-light mb-2">{db.name}</div>
+                    <div className="text-sm font-medium text-text-light mb-2">
+                      {isConnectionScope ? db.name : databaseName}
+                    </div>
                     <div className="space-y-1">
                       {db.collections?.map(coll => (
                         <div key={coll.name} className="flex items-center justify-between text-xs">
@@ -889,7 +1278,6 @@ export default function ImportDatabasesModal({
 
           {step === 'error' && errorInfo && (
             <div className="p-4">
-              {/* Error header */}
               <div className="flex items-center gap-2 mb-4">
                 <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -897,11 +1285,10 @@ export default function ImportDatabasesModal({
                 <span className="text-lg font-medium text-text">Import Failed</span>
               </div>
 
-              {/* Error message */}
               <div className="bg-error-dark border border-red-800/50 rounded p-3 mb-4">
                 <div className="text-sm text-error font-medium mb-1">Error:</div>
                 <div className="text-sm text-text-secondary">{errorInfo.error}</div>
-                {errorInfo.failedDatabase && (
+                {(errorInfo.failedDatabase || errorInfo.failedCollection) && (
                   <div className="text-xs text-text-muted mt-2">
                     Failed at: {errorInfo.failedDatabase}
                     {errorInfo.failedCollection && ` / ${errorInfo.failedCollection}`}
@@ -909,7 +1296,6 @@ export default function ImportDatabasesModal({
                 )}
               </div>
 
-              {/* Partial results */}
               {errorInfo.partialResult?.documentsInserted > 0 && (
                 <div className="mb-4">
                   <div className="text-sm font-medium text-text-secondary mb-2">Partial Progress (before failure):</div>
@@ -945,8 +1331,7 @@ export default function ImportDatabasesModal({
                 </div>
               )}
 
-              {/* Remaining databases */}
-              {errorInfo.remainingDatabases?.length > 0 && (
+              {isConnectionScope && errorInfo.remainingDatabases && errorInfo.remainingDatabases.length > 0 && (
                 <div className="mb-4">
                   <div className="text-sm font-medium text-text-secondary mb-2">Remaining ({errorInfo.remainingDatabases.length}):</div>
                   <div className="bg-surface/50 rounded p-2 max-h-24 overflow-y-auto">
@@ -967,16 +1352,14 @@ export default function ImportDatabasesModal({
               <button className="btn btn-ghost" onClick={handleDismissError}>
                 {errorInfo?.partialResult?.documentsInserted && errorInfo.partialResult.documentsInserted > 0 ? 'View Results' : 'Close'}
               </button>
-              {errorInfo?.remainingDatabases?.length && errorInfo.remainingDatabases.length > 1 && (
+              {isConnectionScope && errorInfo?.remainingDatabases && errorInfo.remainingDatabases.length > 1 && (
                 <button className="btn btn-ghost" onClick={handleSkipAndContinue}>
                   Skip & Continue
                 </button>
               )}
-              {errorInfo?.remainingDatabases?.length && errorInfo.remainingDatabases.length > 0 && (
-                <button className="btn btn-primary" onClick={handleRetryFailed}>
-                  Retry
-                </button>
-              )}
+              <button className="btn btn-primary" onClick={handleRetryFailed}>
+                Retry
+              </button>
             </>
           ) : step === 'done' ? (
             <button className="btn btn-primary" onClick={handleClose}>
@@ -1047,7 +1430,7 @@ export default function ImportDatabasesModal({
                 <button
                   className="btn btn-primary"
                   onClick={handlePreview}
-                  disabled={selectedDbs.size === 0}
+                  disabled={selectedCollectionCount === 0 || (!isConnectionScope && !selectedSourceDb)}
                 >
                   Preview Changes
                 </button>
@@ -1059,37 +1442,62 @@ export default function ImportDatabasesModal({
 
       <ConfirmDialog
         open={showOverrideConfirm}
-        title="Override Databases"
+        title={isConnectionScope ? 'Override Databases' : 'Override Collections'}
         message={
           <div>
-            {/* Impact summary when we have dry-run data */}
             {dryRunResult && dryRunResult.documentsDropped && dryRunResult.documentsDropped > 0 && (
               <div className="mb-4 p-3 bg-error-dark border border-red-800/50 rounded">
                 <div className="text-error font-medium text-sm">
-                  This will permanently delete {formatNumber(dryRunResult.documentsDropped)} documents across {dryRunResult.databases?.length || 0} database{(dryRunResult.databases?.length || 0) !== 1 ? 's' : ''}
+                  This will permanently delete {formatNumber(dryRunResult.documentsDropped)} documents
+                  {isConnectionScope
+                    ? ` across ${dryRunResult.databases?.length || 0} database${(dryRunResult.databases?.length || 0) !== 1 ? 's' : ''}`
+                    : ` across ${dryRunResult.databases?.[0]?.collections?.length || 0} collection${(dryRunResult.databases?.[0]?.collections?.length || 0) !== 1 ? 's' : ''}`
+                  }
                 </div>
               </div>
             )}
 
-            <p className="mb-3">This will DROP and replace the following databases:</p>
+            <p className="mb-3">
+              {isConnectionScope
+                ? 'This will DROP and replace the following databases:'
+                : <>This will DROP and replace the following collections in <span className="text-text-light">{databaseName}</span>:</>
+              }
+            </p>
             <div className="max-h-40 overflow-y-auto bg-surface rounded p-2 mb-3 space-y-1">
-              {dryRunResult?.databases ? (
-                // Show with document counts from dry-run
-                dryRunResult.databases.map(db => (
-                  <div key={db.name} className="py-1.5 px-2 flex items-center justify-between">
-                    <span className="text-text-light">{db.name}</span>
-                    {db.currentCount && db.currentCount > 0 && (
-                      <span className="text-error text-sm font-medium">
-                        {formatNumber(db.currentCount)} docs
-                      </span>
-                    )}
-                  </div>
-                ))
+              {isConnectionScope ? (
+                dryRunResult?.databases ? (
+                  dryRunResult.databases.map(db => (
+                    <div key={db.name} className="py-1.5 px-2 flex items-center justify-between">
+                      <span className="text-text-light">{db.name}</span>
+                      {db.currentCount && db.currentCount > 0 && (
+                        <span className="text-error text-sm font-medium">
+                          {formatNumber(db.currentCount)} docs
+                        </span>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  [...selection.keys()].map(db => (
+                    <div key={db} className="py-1 px-2 text-text-light">{db}</div>
+                  ))
+                )
               ) : (
-                // Fallback: just show names (no preview was done)
-                Array.from(selectedDbs).map(db => (
-                  <div key={db} className="py-1 px-2 text-text-light">{db}</div>
-                ))
+                dryRunResult?.databases?.[0]?.collections ? (
+                  dryRunResult.databases[0].collections.map(coll => (
+                    <div key={coll.name} className="py-1.5 px-2 flex items-center justify-between">
+                      <span className="text-text-light">{coll.name}</span>
+                      {coll.currentCount && coll.currentCount > 0 && (
+                        <span className="text-error text-sm font-medium">
+                          {formatNumber(coll.currentCount)} docs
+                        </span>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  [...(selection.get(selectedSourceDb) || [])].map(coll => (
+                    <div key={coll} className="py-1 px-2 text-text-light">{coll}</div>
+                  ))
+                )
               )}
             </div>
             <p className="text-error text-sm">This action cannot be undone.</p>

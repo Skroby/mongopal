@@ -33,8 +33,8 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | `internal/database` | List databases/collections, drop operations | `listing.go`, `operations.go` |
 | `internal/document` | Document CRUD operations | `crud.go`, `parser.go` |
 | `internal/schema` | Schema inference and export | `inference.go`, `export.go` |
-| `internal/export` | Database/collection export | `database.go`, `collection.go`, `documents.go` |
-| `internal/importer` | Database/collection import | `database.go`, `collection.go`, `helpers.go` |
+| `internal/export` | Database/collection export (CSV, JSON, BSON) | `database.go`, `collection.go`, `documents.go`, `json.go`, `bson.go` |
+| `internal/importer` | Database/collection import (ZIP, JSON, CSV) | `database.go`, `collection.go`, `helpers.go`, `json.go`, `csv.go`, `detect.go` |
 | `internal/script` | Mongosh script execution | `mongosh.go` |
 | `internal/performance` | Go runtime and connection metrics | `metrics.go` |
 
@@ -62,10 +62,12 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | Toast notifications + history | `frontend/src/components/NotificationContext.tsx` |
 | Confirmation dialogs | `frontend/src/components/ConfirmDialog.tsx` |
 | Error boundary wrapper | `frontend/src/components/ErrorBoundary.tsx` |
-| Database export modal | `frontend/src/components/ExportDatabasesModal.tsx` |
-| Database import modal | `frontend/src/components/ImportDatabasesModal.tsx` |
-| Collection export modal | `frontend/src/components/ExportCollectionsModal.tsx` |
-| Collection import modal | `frontend/src/components/ImportCollectionsModal.tsx` |
+| Unified export modal (databases & collections) | `frontend/src/components/UnifiedExportModal.tsx` |
+| Unified import modal (databases & collections) | `frontend/src/components/UnifiedImportModal.tsx` |
+| Collection export dropdown (CSV/JSON/BSON) | `frontend/src/components/CollectionExportButton.tsx` |
+| JSON export dialog | `frontend/src/components/JSONExportDialog.tsx` |
+| BSON export dialog (mongodump) | `frontend/src/components/BSONExportDialog.tsx` |
+| Unified import dialog (JSON, CSV, BSON) | `frontend/src/components/ImportDialog.tsx` |
 | Keyboard shortcuts modal | `frontend/src/components/KeyboardShortcuts.tsx` |
 | Actionable error display | `frontend/src/components/ActionableError.tsx` |
 | Performance metrics panel | `frontend/src/components/PerformancePanel.tsx` |
@@ -79,6 +81,7 @@ Lightweight, cross-platform MongoDB GUI for exploring, viewing, and editing docu
 | Status bar state | `frontend/src/components/contexts/StatusContext.tsx` |
 | Operation tracking (busy indicator) | `frontend/src/components/contexts/OperationContext.tsx` |
 | Debug logging (toggle via Settings) | `frontend/src/components/contexts/DebugContext.tsx` |
+| Export/import queue tracking | `frontend/src/components/contexts/ExportQueueContext.tsx` |
 
 ### Hooks
 | Purpose | File |
@@ -235,8 +238,8 @@ The backend uses a thin facade pattern:
 | Database | ListDatabases, ListCollections, DropDatabase, DropCollection | `internal/database` |
 | Document | FindDocuments, GetDocument, InsertDocument, UpdateDocument, DeleteDocument | `internal/document` |
 | Schema | InferCollectionSchema, ExportSchemaAsJSON | `internal/schema` |
-| Export | ExportDatabases, ExportCollections, ExportDocumentsAsZip | `internal/export` |
-| Import | ImportDatabases, ImportCollections, PreviewImportFile | `internal/importer` |
+| Export | ExportDatabases, ExportSelectiveDatabases, ExportCollections, ExportDocumentsAsZip, ExportCollectionAsJSON, GetJSONSavePath, CheckToolAvailability, ExportWithMongodump | `internal/export` |
+| Import | ImportDatabases, ImportSelectiveDatabases, DryRunSelectiveImport, ImportCollections, PreviewImportFile, ImportJSON, DryRunImportJSON, PreviewJSONFile, DetectFileFormat, GetImportFilePath, PreviewCSVFile, ImportCSV, DryRunImportCSV, ImportWithMongorestore | `internal/importer`, `internal/export` |
 | Script | ExecuteScript, CheckMongoshAvailable | `internal/script` |
 | Performance | GetPerformanceMetrics, ForceGC | `internal/performance` |
 

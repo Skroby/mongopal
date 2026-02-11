@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, RefObject, ReactNode } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, RefObject, ReactNode } from 'react'
 import { useNotification } from './NotificationContext'
 import { useConnection, SavedConnection, Folder } from './contexts/ConnectionContext'
 import { useTab } from './contexts/TabContext'
 import ConfirmDialog from './ConfirmDialog'
+import CSVExportDialog from './CSVExportDialog'
+import JSONExportDialog from './JSONExportDialog'
 import { getErrorSummary } from '../utils/errorParser'
 
 // =============================================================================
@@ -91,6 +93,7 @@ interface ContextMenuItem {
   danger?: boolean
   disabled?: boolean
   shortcut?: string
+  children?: ContextMenuItem[]
 }
 
 /**
@@ -404,6 +407,86 @@ interface ContextMenuProps {
   onClose: () => void
 }
 
+function SubmenuPopover({ children }: { children: React.ReactNode }): React.ReactElement {
+  const submenuRef = useRef<HTMLDivElement>(null)
+  const [flipToLeft, setFlipToLeft] = useState(false)
+
+  useLayoutEffect(() => {
+    const el = submenuRef.current
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      setFlipToLeft(rect.right > window.innerWidth)
+    }
+  }, [])
+
+  return (
+    <div
+      ref={submenuRef}
+      className={`absolute ${flipToLeft ? 'right-full' : 'left-full'} top-0 bg-surface border border-border rounded-lg shadow-xl py-1 min-w-[160px] -mt-1 ml-0`}
+    >
+      {children}
+    </div>
+  )
+}
+
+function ContextMenuItems({ items, onClose }: { items: ContextMenuItem[]; onClose: () => void }): React.ReactElement {
+  const [openSubmenu, setOpenSubmenu] = useState<number | null>(null)
+
+  return (
+    <>
+      {items.map((item, idx) => {
+        if (item.type === 'separator') {
+          return <div key={idx} className="border-t border-border my-1" />
+        }
+        if (item.children) {
+          return (
+            <div
+              key={idx}
+              className="relative"
+              onMouseEnter={() => setOpenSubmenu(idx)}
+              onMouseLeave={() => setOpenSubmenu(null)}
+            >
+              <button
+                className="context-menu-item w-full px-3 py-1.5 text-left text-sm flex items-center gap-2 text-text-light hover:bg-surface-hover"
+              >
+                {item.label}
+                <span className="ml-auto text-xs text-text-dim">&#9656;</span>
+              </button>
+              {openSubmenu === idx && (
+                <SubmenuPopover>
+                  <ContextMenuItems items={item.children} onClose={onClose} />
+                </SubmenuPopover>
+              )}
+            </div>
+          )
+        }
+        return (
+          <button
+            key={idx}
+            className={`context-menu-item w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
+              ${item.danger ? 'text-error hover:bg-error-dark/30' : ''}
+              ${item.disabled
+                ? 'text-text-dim cursor-not-allowed'
+                : item.danger ? '' : 'text-text-light hover:bg-surface-hover'}`}
+            onClick={() => {
+              if (!item.disabled) {
+                item.onClick?.()
+                onClose()
+              }
+            }}
+            disabled={item.disabled}
+          >
+            {item.label}
+            {item.shortcut && (
+              <span className="ml-auto text-xs text-text-dim">{item.shortcut}</span>
+            )}
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
 function ContextMenu({ x, y, items, onClose }: ContextMenuProps): React.ReactElement {
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -437,33 +520,7 @@ function ContextMenu({ x, y, items, onClose }: ContextMenuProps): React.ReactEle
       className="bg-surface border border-border rounded-lg shadow-xl py-1 min-w-[180px]"
       style={adjustedStyle}
     >
-      {items.map((item, idx) => {
-        if (item.type === 'separator') {
-          return <div key={idx} className="border-t border-border my-1" />
-        }
-        return (
-          <button
-            key={idx}
-            className={`context-menu-item w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
-              ${item.danger ? 'text-error hover:bg-error-dark/30' : ''}
-              ${item.disabled
-                ? 'text-text-dim cursor-not-allowed'
-                : item.danger ? '' : 'text-text-light hover:bg-surface-hover'}`}
-            onClick={() => {
-              if (!item.disabled) {
-                item.onClick?.()
-                onClose()
-              }
-            }}
-            disabled={item.disabled}
-          >
-            {item.label}
-            {item.shortcut && (
-              <span className="ml-auto text-xs text-text-dim">{item.shortcut}</span>
-            )}
-          </button>
-        )
-      })}
+      <ContextMenuItems items={items} onClose={onClose} />
     </div>
   )
 }
@@ -708,6 +765,7 @@ interface ConnectionNodeProps {
   onExportDatabases?: () => void
   onImportDatabases?: () => void
   onExportCollections?: (dbName: string) => void
+  onExportCollection?: (dbName: string, collName: string) => void
   onImportCollections?: (dbName: string) => void
   onError?: (msg: string) => void
   favorites: Set<string>
@@ -763,6 +821,7 @@ function ConnectionNode({
   onExportDatabases,
   onImportDatabases,
   onExportCollections,
+  onExportCollection,
   onImportCollections,
   onError,
   favorites,
@@ -801,6 +860,9 @@ function ConnectionNode({
 
   const [dbData, setDbData] = useState<DbDataCache>({})
   const [_loading, setLoading] = useState(false)
+
+  // Collection export dialog state (for context menu "Export" submenu)
+  const [collectionExport, setCollectionExport] = useState<{ db: string; coll: string; format: 'csv' | 'json' } | null>(null)
 
   const removeCollection = (dbName: string, collName: string): void => {
     setDbData(prev => {
@@ -896,7 +958,7 @@ function ConnectionNode({
           { label: 'Server Info...', onClick: onShowServerInfo },
           { type: 'separator' },
           { label: 'Export Databases...', onClick: onExportDatabases },
-          { label: 'Import Databases...', onClick: onImportDatabases },
+          { label: 'Import...', onClick: onImportDatabases },
           { type: 'separator' },
           { label: 'Copy Connection URI', onClick: onCopyURI },
           { label: 'Edit Connection...', onClick: onEdit },
@@ -945,7 +1007,7 @@ function ConnectionNode({
     ]
     if (!isReadOnly) {
       items.push(
-        { label: 'Import Collections...', onClick: () => onImportCollections?.(dbName) },
+        { label: 'Import...', onClick: () => onImportCollections?.(dbName) },
         { type: 'separator' },
         { label: 'Drop Database...', onClick: () => onDropDatabase(connection.id, dbName, removeDatabase), danger: true },
       )
@@ -962,6 +1024,13 @@ function ConnectionNode({
     const items: ContextMenuItem[] = [
       { label: 'Open Collection', onClick: () => onOpenCollection(connection.id, dbName, collName) },
       { label: 'View Schema...', onClick: () => onViewSchema(connection.id, dbName, collName) },
+      { type: 'separator' },
+      { label: 'Export', children: [
+        { label: 'Export as CSV...', onClick: () => setCollectionExport({ db: dbName, coll: collName, format: 'csv' }) },
+        { label: 'Export as JSON...', onClick: () => setCollectionExport({ db: dbName, coll: collName, format: 'json' }) },
+        { type: 'separator' },
+        { label: 'Export as ZIP...', onClick: () => onExportCollection?.(dbName, collName) },
+      ]},
       { type: 'separator' },
       isFavorite
         ? { label: 'Remove from Favorites', onClick: () => onToggleFavorite?.(connection.id, dbName, collName) }
@@ -1024,6 +1093,7 @@ function ConnectionNode({
   }
 
   return (
+    <>
     <TreeNode
       label={getLabel()}
       icon={<ServerIcon />}
@@ -1154,6 +1224,27 @@ function ConnectionNode({
         })
       ) : null}
     </TreeNode>
+
+    {/* Collection export dialogs triggered by context menu */}
+    {collectionExport?.format === 'csv' && (
+      <CSVExportDialog
+        open
+        connectionId={connection.id}
+        database={collectionExport.db}
+        collection={collectionExport.coll}
+        onClose={() => setCollectionExport(null)}
+      />
+    )}
+    {collectionExport?.format === 'json' && (
+      <JSONExportDialog
+        open
+        connectionId={connection.id}
+        database={collectionExport.db}
+        collection={collectionExport.coll}
+        onClose={() => setCollectionExport(null)}
+      />
+    )}
+    </>
   )
 }
 
@@ -1260,6 +1351,7 @@ export interface SidebarProps {
   onExportDatabases?: (connId: string, connName: string) => void
   onImportDatabases?: (connId: string, connName: string) => void
   onExportCollections?: (connId: string, connName: string, dbName: string) => void
+  onExportCollection?: (connId: string, connName: string, dbName: string, collName: string) => void
   onImportCollections?: (connId: string, connName: string, dbName: string) => void
   onShowStats?: (connId: string, dbName: string, collName: string) => void
   onManageIndexes?: (connId: string, dbName: string, collName: string) => void
@@ -1273,6 +1365,7 @@ export default function Sidebar({
   onExportDatabases,
   onImportDatabases,
   onExportCollections,
+  onExportCollection,
   onImportCollections,
   onShowStats,
   onManageIndexes,
@@ -2146,6 +2239,7 @@ export default function Sidebar({
         onExportDatabases={() => onExportDatabases?.(conn.id, conn.name)}
         onImportDatabases={() => onImportDatabases?.(conn.id, conn.name)}
         onExportCollections={(dbName) => onExportCollections?.(conn.id, conn.name, dbName)}
+        onExportCollection={(dbName, collName) => onExportCollection?.(conn.id, conn.name, dbName, collName)}
         onImportCollections={(dbName) => onImportCollections?.(conn.id, conn.name, dbName)}
         onError={(msg) => notify.error(msg)}
         favorites={favorites}

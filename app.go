@@ -70,6 +70,19 @@ type CollectionsImportPreviewDatabase = types.CollectionsImportPreviewDatabase
 type CollectionsImportPreviewItem = types.CollectionsImportPreviewItem
 type ScriptResult = types.ScriptResult
 type CSVExportOptions = types.CSVExportOptions
+type JSONExportOptions = types.JSONExportOptions
+type JSONImportOptions = types.JSONImportOptions
+type JSONImportPreview = types.JSONImportPreview
+type CSVImportPreviewOptions = types.CSVImportPreviewOptions
+type CSVImportOptions = types.CSVImportOptions
+type CSVImportPreview = types.CSVImportPreview
+type ToolAvailability = types.ToolAvailability
+type MongodumpOptions = types.MongodumpOptions
+type MongorestoreOptions = types.MongorestoreOptions
+type ImportDirEntry = types.ImportDirEntry
+type ArchivePreview = types.ArchivePreview
+type ArchivePreviewDatabase = types.ArchivePreviewDatabase
+type ArchivePreviewCollection = types.ArchivePreviewCollection
 type SavedQuery = types.SavedQuery
 type CollectionProfile = types.CollectionProfile
 type ServerInfo = types.ServerInfo
@@ -537,8 +550,49 @@ func (a *App) ExportSchemaAsJSON(jsonContent, defaultFilename string) error {
 // Export Methods
 // =============================================================================
 
-func (a *App) ExportDatabases(connID string, dbNames []string) error {
-	return a.export.ExportDatabases(connID, dbNames)
+func (a *App) ExportDatabases(connID string, dbNames []string, savePath string) error {
+	return a.export.ExportDatabases(connID, dbNames, savePath)
+}
+
+func (a *App) ExportSelectiveDatabases(connID string, dbCollections map[string][]string, savePath string) error {
+	return a.export.ExportSelectiveDatabases(connID, dbCollections, savePath)
+}
+
+// GetZipSavePath opens a native save file dialog for ZIP files and returns the selected path.
+func (a *App) GetZipSavePath(defaultFilename string) (string, error) {
+	selected, err := runtime.SaveFileDialog(a.state.Ctx, runtime.SaveDialogOptions{
+		DefaultFilename: defaultFilename,
+		Title:           "Save Export",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Zip Files (*.zip)", Pattern: "*.zip"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to open save dialog: %w", err)
+	}
+	return selected, nil
+}
+
+// GetBSONImportDirPath opens a native directory dialog for selecting a mongodump output directory.
+func (a *App) GetBSONImportDirPath() (string, error) {
+	return a.export.GetBSONImportDirPath()
+}
+
+// ScanImportDir lists all files in a directory with their sizes.
+func (a *App) ScanImportDir(dirPath string) ([]ImportDirEntry, error) {
+	return export.ScanImportDir(dirPath)
+}
+
+// GetBSONSavePath opens a native save file dialog for .archive files and returns the selected path.
+func (a *App) GetBSONSavePath(defaultFilename string) (string, error) {
+	selected, err := runtime.SaveFileDialog(a.state.Ctx, runtime.SaveDialogOptions{
+		DefaultFilename: defaultFilename,
+		Title:           "Save BSON Export",
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to open save dialog: %w", err)
+	}
+	return selected, nil
 }
 
 func (a *App) CancelExport() {
@@ -573,6 +627,14 @@ func (a *App) GetCSVSavePath(defaultFilename string) (string, error) {
 	return a.export.GetCSVSavePath(defaultFilename)
 }
 
+func (a *App) GetJSONSavePath(defaultFilename string) (string, error) {
+	return a.export.GetJSONSavePath(defaultFilename)
+}
+
+func (a *App) ExportCollectionAsJSON(connID, dbName, collName, defaultFilename string, opts JSONExportOptions) error {
+	return a.export.ExportCollectionAsJSON(connID, dbName, collName, defaultFilename, opts)
+}
+
 func (a *App) RevealInFinder(filePath string) error {
 	return a.export.RevealInFinder(filePath)
 }
@@ -585,12 +647,26 @@ func (a *App) PreviewImportFile() (*ImportPreview, error) {
 	return a.importer.PreviewImportFile()
 }
 
+func (a *App) PreviewImportFilePath(filePath string) (*ImportPreview, error) {
+	return a.importer.PreviewImportFilePath(filePath)
+}
+
 func (a *App) DryRunImport(connID string, opts ImportOptions) (*ImportResult, error) {
 	return a.importer.DryRunImport(connID, opts)
 }
 
 func (a *App) ImportDatabases(connID string, opts ImportOptions) (*ImportResult, error) {
 	return a.importer.ImportDatabases(connID, opts)
+}
+
+func (a *App) ImportSelectiveDatabases(connID string, dbCollections map[string][]string, mode string, filePath string) error {
+	_, err := a.importer.ImportSelectiveDatabases(connID, dbCollections, types.ImportOptions{FilePath: filePath, Mode: mode})
+	return err
+}
+
+func (a *App) DryRunSelectiveImport(connID string, dbCollections map[string][]string, mode string, filePath string) error {
+	_, err := a.importer.DryRunSelectiveImport(connID, dbCollections, types.ImportOptions{FilePath: filePath, Mode: mode})
+	return err
 }
 
 func (a *App) CancelImport() {
@@ -613,12 +689,68 @@ func (a *App) PreviewCollectionsImportFile() (*CollectionsImportPreview, error) 
 	return a.importer.PreviewCollectionsImportFile()
 }
 
+func (a *App) PreviewCollectionsImportFilePath(filePath string) (*CollectionsImportPreview, error) {
+	return a.importer.PreviewCollectionsImportFilePath(filePath)
+}
+
 func (a *App) DryRunImportCollections(connID, dbName string, opts ImportOptions) (*ImportResult, error) {
 	return a.importer.DryRunImportCollections(connID, dbName, opts)
 }
 
 func (a *App) ImportCollections(connID, dbName string, opts ImportOptions) (*ImportResult, error) {
 	return a.importer.ImportCollections(connID, dbName, opts)
+}
+
+func (a *App) GetImportFilePath() (string, error) {
+	return a.importer.GetImportFilePath()
+}
+
+func (a *App) DetectFileFormat(filePath string) (string, error) {
+	return importer.DetectFileFormat(filePath)
+}
+
+func (a *App) PreviewJSONFile(filePath string) (*JSONImportPreview, error) {
+	return a.importer.PreviewJSONFile(filePath)
+}
+
+func (a *App) ImportJSON(connID, dbName, collName string, opts JSONImportOptions) (*ImportResult, error) {
+	return a.importer.ImportJSON(connID, dbName, collName, opts)
+}
+
+func (a *App) DryRunImportJSON(connID, dbName, collName string, opts JSONImportOptions) (*ImportResult, error) {
+	return a.importer.DryRunImportJSON(connID, dbName, collName, opts)
+}
+
+// CSV Import Methods
+
+func (a *App) PreviewCSVFile(opts CSVImportPreviewOptions) (*CSVImportPreview, error) {
+	return a.importer.PreviewCSVFile(opts)
+}
+
+func (a *App) ImportCSV(connID, dbName, collName string, opts CSVImportOptions) (*ImportResult, error) {
+	return a.importer.ImportCSV(connID, dbName, collName, opts)
+}
+
+func (a *App) DryRunImportCSV(connID, dbName, collName string, opts CSVImportOptions) (*ImportResult, error) {
+	return a.importer.DryRunImportCSV(connID, dbName, collName, opts)
+}
+
+// BSON (mongodump/mongorestore) Methods
+
+func (a *App) CheckToolAvailability() *ToolAvailability {
+	return export.CheckToolAvailability()
+}
+
+func (a *App) ExportWithMongodump(connID string, opts MongodumpOptions) error {
+	return a.export.ExportWithMongodump(connID, opts)
+}
+
+func (a *App) ImportWithMongorestore(connID string, opts MongorestoreOptions) (*ImportResult, error) {
+	return a.export.ImportWithMongorestore(connID, opts)
+}
+
+func (a *App) PreviewArchive(connectionId, archivePath string) (*ArchivePreview, error) {
+	return a.export.PreviewArchive(connectionId, archivePath)
 }
 
 // =============================================================================
