@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -106,6 +105,7 @@ type App struct {
 	storage          *storage.Service
 	encryptedStorage *credential.EncryptedStorage
 	connStore        *storage.ConnectionService
+	connLifecycle    *storage.ConnectionLifecycle
 	folderSvc        *storage.FolderService
 	querySvc         *storage.QueryService
 	favoriteSvc      *storage.FavoriteService
@@ -176,6 +176,7 @@ func (a *App) startup(ctx context.Context) {
 	a.querySvc = storage.NewQueryService(configDir)
 	a.favoriteSvc = storage.NewFavoriteService(configDir)
 	a.dbMetaSvc = storage.NewDatabaseMetadataService(configDir)
+	a.connLifecycle = storage.NewConnectionLifecycle(a.connStore, a.favoriteSvc, a.dbMetaSvc, a.querySvc)
 	a.connection = connection.NewService(a.state, a.connStore)
 	a.database = database.NewService(a.state)
 	a.document = document.NewService(a.state)
@@ -249,15 +250,7 @@ func (a *App) GetSavedConnection(connID string) (SavedConnection, error) {
 }
 
 func (a *App) DeleteSavedConnection(connID string) error {
-	// Delete the connection
-	if err := a.connStore.DeleteSavedConnection(connID); err != nil {
-		return err
-	}
-	// Clean up associated data (ignore errors, these are secondary)
-	_ = a.favoriteSvc.RemoveFavoritesForConnection(connID)
-	_ = a.dbMetaSvc.RemoveMetadataForConnection(connID)
-	_ = a.querySvc.DeleteQueriesForConnection(connID)
-	return nil
+	return a.connLifecycle.DeleteConnection(connID)
 }
 
 func (a *App) DuplicateConnection(connID, newName string) (SavedConnection, error) {
@@ -286,16 +279,6 @@ func (a *App) resolveFolderPath(folderID string) []string {
 	return path
 }
 
-// prepareConnectionForExport strips internal fields and adds folder path.
-func (a *App) prepareConnectionForExport(ext *ExtendedConnection) {
-	ext.FolderPath = a.resolveFolderPath(ext.FolderID)
-	ext.ID = ""
-	ext.FolderID = ""
-	ext.ReadOnly = false
-	ext.CreatedAt = time.Time{}
-	ext.LastAccessedAt = time.Time{}
-}
-
 // ExportEncryptedConnection encrypts a saved connection for sharing.
 // Requires OS authentication for saved connections with credentials.
 func (a *App) ExportEncryptedConnection(connID string) (*ConnectionShareResult, error) {
@@ -309,19 +292,7 @@ func (a *App) ExportEncryptedConnection(connID string) (*ConnectionShareResult, 
 		return nil, err
 	}
 
-	a.prepareConnectionForExport(&ext)
-
-	data, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize connection: %w", err)
-	}
-
-	bundle, key, err := credential.EncryptForSharing(data)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ConnectionShareResult{Bundle: bundle, Key: key}, nil
+	return credential.ExportConnection(ext, a.resolveFolderPath(ext.FolderID))
 }
 
 // ExportEncryptedConnections encrypts multiple connections with a single shared key.
@@ -331,38 +302,18 @@ func (a *App) ExportEncryptedConnections(connIDs []string) (*BulkConnectionShare
 		return nil, fmt.Errorf("authentication required to export credentials")
 	}
 
-	sharedKey, err := credential.GenerateSharingKey()
-	if err != nil {
-		return nil, err
-	}
-
-	entries := make([]BulkShareEntry, 0, len(connIDs))
+	connections := make([]types.ExtendedConnection, 0, len(connIDs))
+	folderPaths := make([][]string, 0, len(connIDs))
 	for _, connID := range connIDs {
 		ext, err := a.connStore.GetExtendedConnection(connID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load connection %s: %w", connID, err)
 		}
-
-		a.prepareConnectionForExport(&ext)
-
-		data, err := json.Marshal(ext)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize connection: %w", err)
-		}
-
-		bundle, err := credential.EncryptForSharingWithKey(data, sharedKey)
-		if err != nil {
-			return nil, err
-		}
-
-		entries = append(entries, BulkShareEntry{Name: ext.Name, Bundle: bundle})
+		connections = append(connections, ext)
+		folderPaths = append(folderPaths, a.resolveFolderPath(ext.FolderID))
 	}
 
-	return &BulkConnectionShareResult{
-		Version:     1,
-		Connections: entries,
-		Key:         sharedKey,
-	}, nil
+	return credential.ExportConnections(connections, folderPaths)
 }
 
 // ExportEncryptedConnectionFromForm encrypts form data directly (for unsaved connections).

@@ -190,13 +190,14 @@ doctor:
 
 # Format code
 fmt:
-	go fmt ./...
-	cd frontend && npm run format 2>/dev/null || true
+	gofmt -w .
+	cd frontend && npm run format
 
 # Lint
 lint:
 	go vet ./...
-	cd frontend && npm run lint 2>/dev/null || true
+	golangci-lint run || true
+	cd frontend && npm run lint
 
 # ===========================================
 # Test Data

@@ -125,7 +125,8 @@ afterEach(() => {
 })
 
 // Import after mocks are set up
-import Sidebar, { SidebarProps } from './Sidebar'
+import Sidebar from './sidebar'
+import type { SidebarProps } from './sidebar'
 
 // =============================================================================
 // Helper Functions

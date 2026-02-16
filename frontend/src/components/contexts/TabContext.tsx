@@ -478,34 +478,43 @@ export function TabProvider({ children }: TabProviderProps): React.JSX.Element {
   const closeTabsForConnection = useCallback((connectionId: string): void => {
     setTabs(prev => {
       const filtered = prev.filter(t => t.connectionId !== connectionId)
-      if (activeTab && !filtered.find(t => t.id === activeTab)) {
-        setActiveTab(filtered[filtered.length - 1]?.id || null)
-      }
+      setActiveTab(currentActiveTab => {
+        if (currentActiveTab && !filtered.find(t => t.id === currentActiveTab)) {
+          return filtered.length > 0 ? filtered[filtered.length - 1].id : null
+        }
+        return currentActiveTab
+      })
       return filtered
     })
-  }, [activeTab])
+  }, [])
 
   // Close tabs for a specific database (used when dropping database)
   const closeTabsForDatabase = useCallback((connectionId: string, database: string): void => {
     setTabs(prev => {
       const filtered = prev.filter(t => !(t.connectionId === connectionId && t.database === database))
-      if (activeTab && !filtered.find(t => t.id === activeTab)) {
-        setActiveTab(filtered[filtered.length - 1]?.id || null)
-      }
+      setActiveTab(currentActiveTab => {
+        if (currentActiveTab && !filtered.find(t => t.id === currentActiveTab)) {
+          return filtered.length > 0 ? filtered[filtered.length - 1].id : null
+        }
+        return currentActiveTab
+      })
       return filtered
     })
-  }, [activeTab])
+  }, [])
 
   // Close tabs for a specific collection (used when dropping collection)
   const closeTabsForCollection = useCallback((connectionId: string, database: string, collection: string): void => {
     setTabs(prev => {
       const filtered = prev.filter(t => !(t.connectionId === connectionId && t.database === database && t.collection === collection))
-      if (activeTab && !filtered.find(t => t.id === activeTab)) {
-        setActiveTab(filtered[filtered.length - 1]?.id || null)
-      }
+      setActiveTab(currentActiveTab => {
+        if (currentActiveTab && !filtered.find(t => t.id === currentActiveTab)) {
+          return filtered.length > 0 ? filtered[filtered.length - 1].id : null
+        }
+        return currentActiveTab
+      })
       return filtered
     })
-  }, [activeTab])
+  }, [])
 
   // Close all tabs (used when disconnecting all)
   const closeAllTabs = useCallback((): void => {
@@ -517,12 +526,15 @@ export function TabProvider({ children }: TabProviderProps): React.JSX.Element {
   const keepOnlyConnectionTabs = useCallback((connectionId: string): void => {
     setTabs(prev => {
       const filtered = prev.filter(t => t.connectionId === connectionId)
-      if (activeTab && !filtered.find(t => t.id === activeTab)) {
-        setActiveTab(filtered[filtered.length - 1]?.id || null)
-      }
+      setActiveTab(currentActiveTab => {
+        if (currentActiveTab && !filtered.find(t => t.id === currentActiveTab)) {
+          return filtered.length > 0 ? filtered[filtered.length - 1].id : null
+        }
+        return currentActiveTab
+      })
       return filtered
     })
-  }, [activeTab])
+  }, [])
 
   // Navigate to next tab
   const nextTab = useCallback((): void => {
@@ -555,7 +567,7 @@ export function TabProvider({ children }: TabProviderProps): React.JSX.Element {
     closeTab(activeTab)
   }, [activeTab, tabs, closeTab])
 
-  const value: TabContextValue = {
+  const value: TabContextValue = useMemo(() => ({
     // State
     tabs,
     activeTab,
@@ -597,7 +609,16 @@ export function TabProvider({ children }: TabProviderProps): React.JSX.Element {
     sessionConnections,
     trackConnection,
     untrackConnection,
-  }
+  }), [
+    tabs, activeTab, currentTab,
+    openTab, openNewQueryTab, openDocumentTab, openInsertTab, openSchemaTab, openIndexTab,
+    closeTab, pinTab, renameTab, reorderTabs, convertInsertToDocumentTab,
+    setTabDirty, markTabActivated, updateTabDocument,
+    closeTabsForConnection, closeTabsForDatabase, closeTabsForCollection,
+    closeAllTabs, keepOnlyConnectionTabs,
+    nextTab, previousTab, goToTab, closeActiveTab,
+    sessionConnections, trackConnection, untrackConnection,
+  ])
 
   return (
     <TabContext.Provider value={value}>

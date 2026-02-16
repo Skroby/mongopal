@@ -63,7 +63,7 @@ func (s *Service) ExecuteScript(connID, script string) (*types.ScriptResult, err
 
 	// Security: Pass script via stdin to avoid exposing URI with password in process listings.
 	// We use --nodb mode and connect() within the script.
-	wrappedScript := buildWrappedScript(uri, "", script)
+	wrappedScript := buildWrappedScript(uri, script)
 
 	// Build command arguments
 	args := []string{
@@ -114,19 +114,15 @@ func (s *Service) ExecuteScript(connID, script string) (*types.ScriptResult, err
 
 // buildWrappedScript creates a script that connects first, then runs the user script.
 // This keeps the URI out of the command line arguments.
-func buildWrappedScript(uri, dbName, userScript string) string {
+// When a specific database is needed, the caller should embed it in the URI path
+// (e.g. "mongodb://host/mydb") before calling this function.
+func buildWrappedScript(uri, userScript string) string {
 	var sb strings.Builder
 	// Escape backticks and backslashes in URI for JavaScript string
 	escapedURI := strings.ReplaceAll(uri, "\\", "\\\\")
 	escapedURI = strings.ReplaceAll(escapedURI, "`", "\\`")
 
-	if dbName != "" {
-		// Connect to specific database
-		sb.WriteString(fmt.Sprintf("db = connect(`%s`);\n", escapedURI))
-	} else {
-		// Connect without specific database - use 'test' as default
-		sb.WriteString(fmt.Sprintf("db = connect(`%s`);\n", escapedURI))
-	}
+	sb.WriteString(fmt.Sprintf("db = connect(`%s`);\n", escapedURI))
 	sb.WriteString(userScript)
 	return sb.String()
 }
@@ -167,7 +163,7 @@ func (s *Service) ExecuteScriptWithDatabase(connID, dbName, script string) (*typ
 	defer cancel()
 
 	// Security: Pass script via stdin to avoid exposing URI with password in process listings.
-	wrappedScript := buildWrappedScript(uriWithDB, dbName, script)
+	wrappedScript := buildWrappedScript(uriWithDB, script)
 
 	// Build command arguments
 	args := []string{

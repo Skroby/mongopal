@@ -3,6 +3,8 @@ package credential
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/peternagy/mongopal/internal/types"
 )
 
 func TestEncryptDecryptRoundTrip(t *testing.T) {
@@ -33,7 +35,7 @@ func TestEncryptDecryptRoundTrip(t *testing.T) {
 	}
 
 	// Bundle should be valid JSON with expected fields
-	var bundle ConnectionShareBundle
+	var bundle types.ConnectionShareBundle
 	if err := json.Unmarshal([]byte(bundleJSON), &bundle); err != nil {
 		t.Fatalf("bundle is not valid JSON: %v", err)
 	}

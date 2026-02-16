@@ -6,6 +6,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 
+	"github.com/peternagy/mongopal/internal/bsonutil"
 	"github.com/peternagy/mongopal/internal/core"
 	"github.com/peternagy/mongopal/internal/types"
 )
@@ -85,11 +86,11 @@ func (s *Service) ExplainQuery(connID, dbName, collName, filter string) (*types.
 
 	// Parse executionStats
 	if es, ok := explainResult["executionStats"].(bson.M); ok {
-		result.ExecutionStats.ExecutionSuccess = getBoolValue(es, "executionSuccess")
-		result.ExecutionStats.NReturned = getInt64Value(es, "nReturned")
-		result.ExecutionStats.ExecutionTimeMs = getInt64Value(es, "executionTimeMillis")
-		result.ExecutionStats.TotalKeysExamined = getInt64Value(es, "totalKeysExamined")
-		result.ExecutionStats.TotalDocsExamined = getInt64Value(es, "totalDocsExamined")
+		result.ExecutionStats.ExecutionSuccess = bsonutil.BoolFromMap(es, "executionSuccess")
+		result.ExecutionStats.NReturned = bsonutil.Int64FromMap(es, "nReturned")
+		result.ExecutionStats.ExecutionTimeMs = bsonutil.Int64FromMap(es, "executionTimeMillis")
+		result.ExecutionStats.TotalKeysExamined = bsonutil.Int64FromMap(es, "totalKeysExamined")
+		result.ExecutionStats.TotalDocsExamined = bsonutil.Int64FromMap(es, "totalDocsExamined")
 	}
 
 	return result, nil
@@ -191,24 +192,3 @@ func isCollectionScan(plan bson.M) bool {
 	return false
 }
 
-// getInt64Value extracts an int64 value from a bson.M.
-func getInt64Value(m bson.M, key string) int64 {
-	switch v := m[key].(type) {
-	case int32:
-		return int64(v)
-	case int64:
-		return v
-	case float64:
-		return int64(v)
-	default:
-		return 0
-	}
-}
-
-// getBoolValue extracts a bool value from a bson.M.
-func getBoolValue(m bson.M, key string) bool {
-	if v, ok := m[key].(bool); ok {
-		return v
-	}
-	return false
-}

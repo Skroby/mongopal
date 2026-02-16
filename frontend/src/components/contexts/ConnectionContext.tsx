@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { useNotification } from '../NotificationContext'
 import { useDebugLog, DEBUG_CATEGORIES } from './DebugContext'
 import { getErrorSummary } from '../../utils/errorParser'
@@ -370,7 +370,7 @@ export function ConnectionProvider({ children }: ConnectionProviderProps): React
     return connectingIds.has(connId)
   }, [connectingIds])
 
-  const value: ConnectionContextValue = {
+  const value: ConnectionContextValue = useMemo(() => ({
     // State
     connections,
     folders,
@@ -409,7 +409,15 @@ export function ConnectionProvider({ children }: ConnectionProviderProps): React
     getConnectionById,
     loadConnections,
     isConnecting,
-  }
+  }), [
+    connections, folders, activeConnections, connectingIds,
+    selectedConnection, selectedDatabase, selectedCollection,
+    connect, disconnect, disconnectAll, disconnectOthers,
+    deleteConnection, duplicateConnection, refreshConnection,
+    dropDatabase, dropCollection, clearCollection,
+    createFolder, deleteFolder, moveConnectionToFolder, moveFolderToFolder,
+    getConnectionById, loadConnections, isConnecting,
+  ])
 
   return (
     <ConnectionContext.Provider value={value}>

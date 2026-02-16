@@ -12,7 +12,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"github.com/peternagy/mongopal/internal/bsonutil"
 	"github.com/peternagy/mongopal/internal/core"
+	"github.com/peternagy/mongopal/internal/credential"
 	"github.com/peternagy/mongopal/internal/debug"
 	"github.com/peternagy/mongopal/internal/storage"
 	"github.com/peternagy/mongopal/internal/types"
@@ -146,6 +148,9 @@ func (s *Service) TestConnection(uri string) (*types.TestConnectionResult, error
 		result.Hint = "Use mongodb:// for standard connections or mongodb+srv:// for SRV connections"
 		return result, nil
 	}
+
+	// Strip vendor-specific params (mongopal.*, 3t.*) before passing to driver
+	uri = credential.StripVendorParams(uri)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -307,8 +312,8 @@ func (s *Service) GetServerInfo(connID string) (*types.ServerInfo, error) {
 	if err := admin.RunCommand(ctx, bson.D{{Key: "buildInfo", Value: 1}}).Decode(&buildInfo); err != nil {
 		info.Errors["buildInfo"] = err.Error()
 	} else {
-		info.ServerVersion = toString(buildInfo["version"])
-		info.GitVersion = toString(buildInfo["gitVersion"])
+		info.ServerVersion = bsonutil.ToString(buildInfo["version"])
+		info.GitVersion = bsonutil.ToString(buildInfo["gitVersion"])
 		if modules, ok := buildInfo["modules"].(bson.A); ok {
 			for _, m := range modules {
 				if s, ok := m.(string); ok {
@@ -317,7 +322,7 @@ func (s *Service) GetServerInfo(connID string) (*types.ServerInfo, error) {
 			}
 		}
 		if ssl, ok := buildInfo["openssl"].(bson.M); ok {
-			info.OpenSSLVersion = toString(ssl["running"])
+			info.OpenSSLVersion = bsonutil.ToString(ssl["running"])
 		}
 	}
 	if info.Modules == nil {
@@ -330,17 +335,17 @@ func (s *Service) GetServerInfo(connID string) (*types.ServerInfo, error) {
 		info.Errors["hello"] = err.Error()
 		info.Topology = "unknown"
 	} else {
-		if setName := toString(hello["setName"]); setName != "" {
+		if setName := bsonutil.ToString(hello["setName"]); setName != "" {
 			info.Topology = "replicaset"
-		} else if msg := toString(hello["msg"]); msg == "isdbgrid" {
+		} else if msg := bsonutil.ToString(hello["msg"]); msg == "isdbgrid" {
 			info.Topology = "sharded"
 		} else {
 			info.Topology = "standalone"
 		}
-		info.MaxBsonSize = toInt64(hello["maxBsonObjectSize"])
-		info.MaxMsgSize = toInt64(hello["maxMessageSizeBytes"])
-		info.MaxWriteBatch = toInt64(hello["maxWriteBatchSize"])
-		info.ReadOnly = toBool(hello["readOnly"])
+		info.MaxBsonSize = bsonutil.ToInt64(hello["maxBsonObjectSize"])
+		info.MaxMsgSize = bsonutil.ToInt64(hello["maxMessageSizeBytes"])
+		info.MaxWriteBatch = bsonutil.ToInt64(hello["maxWriteBatchSize"])
+		info.ReadOnly = bsonutil.ToBool(hello["readOnly"])
 	}
 
 	// 3. featureCompatibilityVersion
@@ -353,7 +358,7 @@ func (s *Service) GetServerInfo(connID string) (*types.ServerInfo, error) {
 		info.Errors["getParameter"] = err.Error()
 	} else {
 		if fcv, ok := fcvResult["featureCompatibilityVersion"].(bson.M); ok {
-			info.FCV = toString(fcv["version"])
+			info.FCV = bsonutil.ToString(fcv["version"])
 		}
 	}
 
@@ -364,22 +369,18 @@ func (s *Service) GetServerInfo(connID string) (*types.ServerInfo, error) {
 	} else {
 		host := &types.ServerHostInfo{}
 		if sys, ok := hostInfo["system"].(bson.M); ok {
-			host.Hostname = toString(sys["hostname"])
-			host.CPUs = int(toInt64(sys["numCores"]))
-			host.MemoryMB = toFloat64(sys["memSizeMB"])
+			host.Hostname = bsonutil.ToString(sys["hostname"])
+			host.CPUs = int(bsonutil.ToInt64(sys["numCores"]))
+			host.MemoryMB = bsonutil.ToFloat64(sys["memSizeMB"])
 		}
 		if os, ok := hostInfo["os"].(bson.M); ok {
-			host.OS = toString(os["name"])
+			host.OS = bsonutil.ToString(os["name"])
 			if host.OS == "" {
-				host.OS = toString(os["type"])
+				host.OS = bsonutil.ToString(os["type"])
 			}
-			host.Arch = toString(hostInfo["extra"].(bson.M)["cpuArch"])
 		}
-		// Try fallback for arch from extra
-		if host.Arch == "" {
-			if extra, ok := hostInfo["extra"].(bson.M); ok {
-				host.Arch = toString(extra["cpuArch"])
-			}
+		if extra, ok := hostInfo["extra"].(bson.M); ok {
+			host.Arch = bsonutil.ToString(extra["cpuArch"])
 		}
 		info.Host = host
 	}
@@ -390,33 +391,33 @@ func (s *Service) GetServerInfo(connID string) (*types.ServerInfo, error) {
 		info.Errors["serverStatus"] = err.Error()
 	} else {
 		status := &types.ServerStatusInfo{}
-		status.Uptime = toInt64(serverStatus["uptime"])
+		status.Uptime = bsonutil.ToInt64(serverStatus["uptime"])
 
 		if conns, ok := serverStatus["connections"].(bson.M); ok {
-			status.ConnsActive = toInt64(conns["active"])
-			status.ConnsCurrent = toInt64(conns["current"])
-			status.ConnsAvailable = toInt64(conns["available"])
-			status.ConnsTotalCreated = toInt64(conns["totalCreated"])
+			status.ConnsActive = bsonutil.ToInt64(conns["active"])
+			status.ConnsCurrent = bsonutil.ToInt64(conns["current"])
+			status.ConnsAvailable = bsonutil.ToInt64(conns["available"])
+			status.ConnsTotalCreated = bsonutil.ToInt64(conns["totalCreated"])
 		}
 		if ops, ok := serverStatus["opcounters"].(bson.M); ok {
-			status.OpsInsert = toInt64(ops["insert"])
-			status.OpsQuery = toInt64(ops["query"])
-			status.OpsUpdate = toInt64(ops["update"])
-			status.OpsDelete = toInt64(ops["delete"])
-			status.OpsGetmore = toInt64(ops["getmore"])
-			status.OpsCommand = toInt64(ops["command"])
+			status.OpsInsert = bsonutil.ToInt64(ops["insert"])
+			status.OpsQuery = bsonutil.ToInt64(ops["query"])
+			status.OpsUpdate = bsonutil.ToInt64(ops["update"])
+			status.OpsDelete = bsonutil.ToInt64(ops["delete"])
+			status.OpsGetmore = bsonutil.ToInt64(ops["getmore"])
+			status.OpsCommand = bsonutil.ToInt64(ops["command"])
 		}
 		if mem, ok := serverStatus["mem"].(bson.M); ok {
-			status.MemResident = toInt64(mem["resident"])
-			status.MemVirtual = toInt64(mem["virtual"])
+			status.MemResident = bsonutil.ToInt64(mem["resident"])
+			status.MemVirtual = bsonutil.ToInt64(mem["virtual"])
 		}
 		if net, ok := serverStatus["network"].(bson.M); ok {
-			status.NetworkBytesIn = toInt64(net["bytesIn"])
-			status.NetworkBytesOut = toInt64(net["bytesOut"])
-			status.NetworkRequests = toInt64(net["numRequests"])
+			status.NetworkBytesIn = bsonutil.ToInt64(net["bytesIn"])
+			status.NetworkBytesOut = bsonutil.ToInt64(net["bytesOut"])
+			status.NetworkRequests = bsonutil.ToInt64(net["numRequests"])
 		}
 		if se, ok := serverStatus["storageEngine"].(bson.M); ok {
-			status.StorageEngine = toString(se["name"])
+			status.StorageEngine = bsonutil.ToString(se["name"])
 		}
 		info.Status = status
 
@@ -433,23 +434,23 @@ func (s *Service) GetServerInfo(connID string) (*types.ServerInfo, error) {
 			info.Errors["replSetGetStatus"] = err.Error()
 		} else {
 			rs := &types.ReplicaSetInfo{
-				Name: toString(replStatus["set"]),
+				Name: bsonutil.ToString(replStatus["set"]),
 			}
 			if members, ok := replStatus["members"].(bson.A); ok {
 				for _, m := range members {
 					if member, ok := m.(bson.M); ok {
 						rm := types.ReplicaSetMember{
-							ID:       int(toInt64(member["_id"])),
-							Name:     toString(member["name"]),
-							StateStr: toString(member["stateStr"]),
-							Health:   int(toInt64(member["health"])),
-							Uptime:   toInt64(member["uptime"]),
-							Self:     toBool(member["self"]),
+							ID:       int(bsonutil.ToInt64(member["_id"])),
+							Name:     bsonutil.ToString(member["name"]),
+							StateStr: bsonutil.ToString(member["stateStr"]),
+							Health:   int(bsonutil.ToInt64(member["health"])),
+							Uptime:   bsonutil.ToInt64(member["uptime"]),
+							Self:     bsonutil.ToBool(member["self"]),
 						}
-						if syncSrc := toString(member["syncSourceHost"]); syncSrc != "" {
+						if syncSrc := bsonutil.ToString(member["syncSourceHost"]); syncSrc != "" {
 							rm.SyncSource = syncSrc
 						} else {
-							rm.SyncSource = toString(member["syncingTo"])
+							rm.SyncSource = bsonutil.ToString(member["syncingTo"])
 						}
 						if optime, ok := member["optimeDate"].(time.Time); ok {
 							rm.OptimeDate = optime.UTC().Format(time.RFC3339)
@@ -471,64 +472,6 @@ func (s *Service) GetServerInfo(connID string) (*types.ServerInfo, error) {
 	}
 
 	return info, nil
-}
-
-// BSON type conversion helpers
-
-func toString(v interface{}) string {
-	if v == nil {
-		return ""
-	}
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return fmt.Sprintf("%v", v)
-}
-
-func toInt64(v interface{}) int64 {
-	if v == nil {
-		return 0
-	}
-	switch n := v.(type) {
-	case int32:
-		return int64(n)
-	case int64:
-		return n
-	case float64:
-		return int64(n)
-	case int:
-		return int64(n)
-	default:
-		return 0
-	}
-}
-
-func toFloat64(v interface{}) float64 {
-	if v == nil {
-		return 0
-	}
-	switch n := v.(type) {
-	case float64:
-		return n
-	case int32:
-		return float64(n)
-	case int64:
-		return float64(n)
-	case int:
-		return float64(n)
-	default:
-		return 0
-	}
-}
-
-func toBool(v interface{}) bool {
-	if v == nil {
-		return false
-	}
-	if b, ok := v.(bool); ok {
-		return b
-	}
-	return false
 }
 
 func marshalBsonToJSON(m bson.M) (string, error) {

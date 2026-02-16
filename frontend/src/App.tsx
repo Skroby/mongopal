@@ -1,6 +1,6 @@
 import { useState, useEffect, CSSProperties } from 'react'
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime'
-import Sidebar from './components/Sidebar'
+import Sidebar from './components/sidebar'
 import TabBar from './components/TabBar'
 import CollectionView from './components/CollectionView'
 import DocumentEditView from './components/DocumentEditView'
@@ -103,8 +103,6 @@ function App(): JSX.Element {
     tabs,
     activeTab,
     currentTab,
-    setActiveTab,
-    closeTab,
     closeAllTabs,
     convertInsertToDocumentTab,
     openIndexTab,
@@ -173,21 +171,11 @@ function App(): JSX.Element {
     const handleKeyDown = (e: KeyboardEvent): void => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
       const modKey = isMac ? e.metaKey : e.ctrlKey
-      const altKey = e.altKey
 
       // Cmd+N: New document (if a tab is open)
       if (e.key === 'n' && modKey && currentTab) {
         e.preventDefault()
         // Trigger insert in CollectionView - handled there
-        return
-      }
-
-      // Cmd+W: Close current tab
-      if (e.key === 'w' && modKey && !e.shiftKey) {
-        e.preventDefault()
-        if (activeTab) {
-          closeTab(activeTab)
-        }
         return
       }
 
@@ -198,80 +186,66 @@ function App(): JSX.Element {
         return
       }
 
-      // Cmd+Option+Left (Mac) / Ctrl+Alt+Left (Win/Linux): Previous tab
-      if (e.key === 'ArrowLeft' && modKey && altKey) {
-        e.preventDefault()
-        if (tabs.length > 1 && activeTab) {
-          const currentIndex = tabs.findIndex(t => t.id === activeTab)
-          if (currentIndex > 0) {
-            setActiveTab(tabs[currentIndex - 1].id)
-          } else {
-            // Wrap to last tab
-            setActiveTab(tabs[tabs.length - 1].id)
-          }
-        }
-        return
-      }
-
-      // Cmd+Option+Right (Mac) / Ctrl+Alt+Right (Win/Linux): Next tab
-      if (e.key === 'ArrowRight' && modKey && altKey) {
-        e.preventDefault()
-        if (tabs.length > 1 && activeTab) {
-          const currentIndex = tabs.findIndex(t => t.id === activeTab)
-          if (currentIndex < tabs.length - 1) {
-            setActiveTab(tabs[currentIndex + 1].id)
-          } else {
-            // Wrap to first tab
-            setActiveTab(tabs[0].id)
-          }
-        }
-        return
-      }
-
-      // Cmd+1-9: Jump to tab by position
-      if (modKey && !e.shiftKey && !altKey && e.key >= '1' && e.key <= '9') {
-        e.preventDefault()
-        const tabIndex = parseInt(e.key, 10) - 1
-        if (tabIndex < tabs.length) {
-          setActiveTab(tabs[tabIndex].id)
-        }
-        return
-      }
-      // Cmd+? or Cmd+/: Show keyboard shortcuts
-      if ((e.key === '?' || e.key === '/') && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        setShowKeyboardShortcuts(true)
-      }
-      // Cmd+,: Open settings
-      if (e.key === ',' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        setShowSettings(true)
-      }
       // Cmd+W: Close current tab
-      if (e.key === 'w' && (e.metaKey || e.ctrlKey)) {
+      if (e.key === 'w' && modKey) {
         e.preventDefault()
         closeActiveTab()
+        return
       }
+
       // Cmd+1 through Cmd+9: Jump to tab by number
-      if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '9') {
+      if (modKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault()
         goToTab(parseInt(e.key, 10))
+        return
       }
+
       // Cmd+Shift+]: Next tab
-      if (e.key === ']' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+      if (e.key === ']' && modKey && e.shiftKey) {
         e.preventDefault()
         nextTab()
+        return
       }
+
       // Cmd+Shift+[: Previous tab
-      if (e.key === '[' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+      if (e.key === '[' && modKey && e.shiftKey) {
         e.preventDefault()
         previousTab()
+        return
+      }
+
+      // Cmd+Option+Left: Previous tab (alternative binding)
+      if (e.key === 'ArrowLeft' && modKey && e.altKey) {
+        e.preventDefault()
+        previousTab()
+        return
+      }
+
+      // Cmd+Option+Right: Next tab (alternative binding)
+      if (e.key === 'ArrowRight' && modKey && e.altKey) {
+        e.preventDefault()
+        nextTab()
+        return
+      }
+
+      // Cmd+? or Cmd+/: Show keyboard shortcuts
+      if ((e.key === '?' || e.key === '/') && modKey) {
+        e.preventDefault()
+        setShowKeyboardShortcuts(true)
+        return
+      }
+
+      // Cmd+,: Open settings
+      if (e.key === ',' && modKey) {
+        e.preventDefault()
+        setShowSettings(true)
+        return
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentTab, closeActiveTab, goToTab, nextTab, previousTab])
+  }, [currentTab, closeActiveTab, closeAllTabs, goToTab, nextTab, previousTab])
 
   // Connection form actions
   const handleAddConnection = (): void => {

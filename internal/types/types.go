@@ -146,6 +146,42 @@ type TestConnectionResult struct {
 }
 
 // =============================================================================
+// Connection Form Data Types (for URI building from stored form state)
+// =============================================================================
+
+// HostPort represents a single host:port pair in a connection.
+type HostPort struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
+// ConnectionFormData represents the form fields stored in ExtendedConnection.FormData.
+// Used to rebuild the MongoDB URI at connect time without url.Parse roundtrips.
+type ConnectionFormData struct {
+	ConnectionType         string      `json:"connectionType"` // standalone|replicaset|sharded|srv
+	Hosts                  []HostPort  `json:"hosts"`
+	SRVHostname            string      `json:"srvHostname"`
+	ReplicaSetName         string      `json:"replicaSetName"`
+	DefaultDatabase        string      `json:"defaultDatabase"`
+	AuthMechanism          string      `json:"authMechanism"` // none|scram-sha-1|scram-sha-256|x509|mongodb-aws|kerberos
+	Username               string      `json:"username"`
+	AuthDatabase           string      `json:"authDatabase"`
+	TLSEnabled             bool        `json:"tlsEnabled"`
+	TLSInsecure            bool        `json:"tlsInsecure"`
+	MaxPoolSize            int         `json:"maxPoolSize"`
+	RetryWrites            bool        `json:"retryWrites"`
+	WriteConcernW          interface{} `json:"writeConcernW"`
+	WriteConcernJ          bool        `json:"writeConcernJ"`
+	WriteConcernWTimeout   int         `json:"writeConcernWTimeout"`
+	ReadPreference         string      `json:"readPreference"`
+	AppName                string      `json:"appName"`
+	Compressors            []string    `json:"compressors"`
+	ConnectTimeout         int         `json:"connectTimeout"`         // seconds
+	SocketTimeout          int         `json:"socketTimeout"`          // seconds
+	ServerSelectionTimeout int         `json:"serverSelectionTimeout"` // seconds
+}
+
+// =============================================================================
 // Database and Collection Types
 // =============================================================================
 

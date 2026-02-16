@@ -7,6 +7,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"github.com/peternagy/mongopal/internal/bsonutil"
 	"github.com/peternagy/mongopal/internal/core"
 	"github.com/peternagy/mongopal/internal/types"
 )
@@ -40,8 +41,8 @@ func (s *Service) GetCollectionProfile(connID, dbName, collName string) (*types.
 		return nil, fmt.Errorf("failed to get collection stats: %w", err)
 	}
 
-	profile.AvgDocSizeBytes = parseBsonInt64(statsResult["avgObjSize"])
-	profile.DocCount = parseBsonInt64(statsResult["count"])
+	profile.AvgDocSizeBytes = bsonutil.ToInt64(statsResult["avgObjSize"])
+	profile.DocCount = bsonutil.ToInt64(statsResult["count"])
 
 	// 2. Quick schema sample for field count and nesting depth
 	if profile.DocCount > 0 {
@@ -113,16 +114,3 @@ func walkFields(prefix string, doc bson.M, paths map[string]bool, depth int, max
 	}
 }
 
-// parseBsonInt64 extracts an int64 from a BSON numeric value.
-func parseBsonInt64(v interface{}) int64 {
-	switch val := v.(type) {
-	case int32:
-		return int64(val)
-	case int64:
-		return val
-	case float64:
-		return int64(val)
-	default:
-		return 0
-	}
-}

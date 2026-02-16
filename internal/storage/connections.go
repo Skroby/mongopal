@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -48,8 +49,8 @@ func (s *ConnectionService) SaveExtendedConnection(conn types.ExtendedConnection
 			conn.FolderID = existing.FolderID
 		}
 		_, incomingPw, _ := credential.ExtractPasswordFromURI(conn.MongoURI)
+		_, existingPw, _ := credential.ExtractPasswordFromURI(existing.MongoURI)
 		if incomingPw == "" {
-			_, existingPw, _ := credential.ExtractPasswordFromURI(existing.MongoURI)
 			if existingPw != "" {
 				if injected, err := credential.InjectPasswordIntoURI(conn.MongoURI, existingPw); err == nil {
 					conn.MongoURI = injected
@@ -356,11 +357,25 @@ func (s *ConnectionService) MergeStoredCredentials(connID, uri string) string {
 }
 
 // GetConnectionURI returns the URI for a saved connection with password from encrypted storage.
+// If FormData is available, the URI is rebuilt from it to avoid url.Parse roundtrip issues
+// (which can lose query params like directConnection=true). Falls back to stored MongoURI.
 func (s *ConnectionService) GetConnectionURI(connID string) (string, error) {
 	var extended types.ExtendedConnection
 	if err := s.encryptedStorage.LoadConnection(connID, &extended); err != nil {
 		return "", fmt.Errorf("failed to load connection: %w", err)
 	}
 
-	return extended.MongoURI, nil
+	// Extract password from stored URI (always present there)
+	_, pw, _ := credential.ExtractPasswordFromURI(extended.MongoURI)
+
+	// Build URI from FormData if available (preferred path)
+	if extended.FormData != "" {
+		var fd types.ConnectionFormData
+		if err := json.Unmarshal([]byte(extended.FormData), &fd); err == nil {
+			return credential.BuildURIFromFormData(&fd, pw), nil
+		}
+	}
+
+	// Legacy fallback: use stored MongoURI, strip vendor params
+	return credential.StripVendorParams(extended.MongoURI), nil
 }

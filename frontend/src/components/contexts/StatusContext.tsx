@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react'
 
 // Type definitions
 export interface StatusContextValue {
@@ -32,12 +32,12 @@ export function StatusProvider({ children }: StatusProviderProps): React.JSX.Ele
     setQueryTime(null)
   }, [])
 
-  const value: StatusContextValue = {
+  const value: StatusContextValue = useMemo(() => ({
     documentCount,
     queryTime,
     updateDocumentStatus,
     clearStatus,
-  }
+  }), [documentCount, queryTime, updateDocumentStatus, clearStatus])
 
   return (
     <StatusContext.Provider value={value}>

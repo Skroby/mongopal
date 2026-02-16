@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react'
 
 const DEBUG_STORAGE_KEY = 'mongopal-debug-enabled'
 
@@ -174,13 +174,13 @@ export function DebugProvider({ children }: DebugProviderProps): React.JSX.Eleme
     setLogs([])
   }, [])
 
-  const value: DebugContextValue = {
+  const value: DebugContextValue = useMemo(() => ({
     isDebugEnabled,
     toggleDebug,
     debugLog,
     logs,
     clearLogs,
-  }
+  }), [isDebugEnabled, toggleDebug, debugLog, logs, clearLogs])
 
   return (
     <DebugContext.Provider value={value}>

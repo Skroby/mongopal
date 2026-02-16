@@ -28,9 +28,8 @@ type AppState struct {
 	CancelMu         sync.Mutex                      // Mutex for export/import cancel functions
 	ExportCancels    map[string]context.CancelFunc   // Cancel functions for ongoing exports (keyed by export ID)
 	ImportCancel     context.CancelFunc              // Cancel function for ongoing import
-	ExportPaused     bool                            // Flag indicating if export is paused
-	ImportPaused     bool                            // Flag indicating if import is paused
-	PauseCond        *sync.Cond                      // Condition variable for pause/resume signaling
+	ExportPause      *PauseController                // Pause controller for export operations
+	ImportPause      *PauseController                // Pause controller for import operations
 	Ctx              context.Context                 // Wails context
 	DisableEvents    bool                            // Disable event emission (for tests)
 	Emitter          EventEmitter                    // Event emitter for UI notifications
@@ -38,15 +37,15 @@ type AppState struct {
 
 // NewAppState creates a new AppState with initialized maps.
 func NewAppState() *AppState {
-	state := &AppState{
+	return &AppState{
 		Clients:          make(map[string]*mongo.Client),
 		Connecting:       make(map[string]bool),
 		SavedConnections: []types.SavedConnection{},
 		Folders:          []types.Folder{},
 		ExportCancels:    make(map[string]context.CancelFunc),
+		ExportPause:      NewPauseController(),
+		ImportPause:      NewPauseController(),
 	}
-	state.PauseCond = sync.NewCond(&state.CancelMu)
-	return state
 }
 
 // ConnectionInProgressError is returned when a connection attempt is already in progress.
@@ -170,7 +169,7 @@ func (s *AppState) CancelExport(exportID string) {
 		delete(s.ExportCancels, exportID)
 	}
 	// Wake any goroutines blocked in WaitIfExportPaused so they see the cancelled context
-	s.PauseCond.Broadcast()
+	s.ExportPause.Broadcast()
 }
 
 // SetImportCancel safely sets the import cancel function.
@@ -189,7 +188,7 @@ func (s *AppState) ClearImportCancel() {
 		s.ImportCancel = nil
 	}
 	// Wake any goroutines blocked in WaitIfImportPaused so they see the cancelled context
-	s.PauseCond.Broadcast()
+	s.ImportPause.Broadcast()
 }
 
 // GetImportCancel safely gets the import cancel function.
@@ -208,107 +207,37 @@ func (s *AppState) EmitEvent(eventName string, data interface{}) {
 }
 
 // PauseExport pauses ongoing export operations.
-func (s *AppState) PauseExport() {
-	s.CancelMu.Lock()
-	defer s.CancelMu.Unlock()
-	s.ExportPaused = true
-}
+func (s *AppState) PauseExport() { s.ExportPause.Pause() }
 
 // ResumeExport resumes paused export operations.
-func (s *AppState) ResumeExport() {
-	s.CancelMu.Lock()
-	defer s.CancelMu.Unlock()
-	s.ExportPaused = false
-	s.PauseCond.Broadcast()
-}
+func (s *AppState) ResumeExport() { s.ExportPause.Resume() }
 
 // IsExportPaused returns whether export is currently paused.
-func (s *AppState) IsExportPaused() bool {
-	s.CancelMu.Lock()
-	defer s.CancelMu.Unlock()
-	return s.ExportPaused
-}
+func (s *AppState) IsExportPaused() bool { return s.ExportPause.IsPaused() }
 
 // WaitIfExportPaused blocks until export is resumed (if paused).
 // Returns true if the operation should continue, false if cancelled.
 func (s *AppState) WaitIfExportPaused(ctx context.Context) bool {
-	s.CancelMu.Lock()
-	defer s.CancelMu.Unlock()
-	for s.ExportPaused {
-		// Check for cancellation before waiting
-		select {
-		case <-ctx.Done():
-			return false
-		default:
-		}
-		// Wait for resume signal
-		s.PauseCond.Wait()
-	}
-	// Check for cancellation after waking up
-	select {
-	case <-ctx.Done():
-		return false
-	default:
-		return true
-	}
+	return s.ExportPause.WaitIfPaused(ctx)
 }
+
+// ResetExportPause resets the export pause state (called when export completes or is cancelled).
+func (s *AppState) ResetExportPause() { s.ExportPause.Reset() }
 
 // PauseImport pauses ongoing import operations.
-func (s *AppState) PauseImport() {
-	s.CancelMu.Lock()
-	defer s.CancelMu.Unlock()
-	s.ImportPaused = true
-}
+func (s *AppState) PauseImport() { s.ImportPause.Pause() }
 
 // ResumeImport resumes paused import operations.
-func (s *AppState) ResumeImport() {
-	s.CancelMu.Lock()
-	defer s.CancelMu.Unlock()
-	s.ImportPaused = false
-	s.PauseCond.Broadcast()
-}
+func (s *AppState) ResumeImport() { s.ImportPause.Resume() }
 
 // IsImportPaused returns whether import is currently paused.
-func (s *AppState) IsImportPaused() bool {
-	s.CancelMu.Lock()
-	defer s.CancelMu.Unlock()
-	return s.ImportPaused
-}
+func (s *AppState) IsImportPaused() bool { return s.ImportPause.IsPaused() }
 
 // WaitIfImportPaused blocks until import is resumed (if paused).
 // Returns true if the operation should continue, false if cancelled.
 func (s *AppState) WaitIfImportPaused(ctx context.Context) bool {
-	s.CancelMu.Lock()
-	defer s.CancelMu.Unlock()
-	for s.ImportPaused {
-		// Check for cancellation before waiting
-		select {
-		case <-ctx.Done():
-			return false
-		default:
-		}
-		// Wait for resume signal
-		s.PauseCond.Wait()
-	}
-	// Check for cancellation after waking up
-	select {
-	case <-ctx.Done():
-		return false
-	default:
-		return true
-	}
-}
-
-// ResetExportPause resets the export pause state (called when export completes or is cancelled).
-func (s *AppState) ResetExportPause() {
-	s.CancelMu.Lock()
-	defer s.CancelMu.Unlock()
-	s.ExportPaused = false
+	return s.ImportPause.WaitIfPaused(ctx)
 }
 
 // ResetImportPause resets the import pause state (called when import completes or is cancelled).
-func (s *AppState) ResetImportPause() {
-	s.CancelMu.Lock()
-	defer s.CancelMu.Unlock()
-	s.ImportPaused = false
-}
+func (s *AppState) ResetImportPause() { s.ImportPause.Reset() }

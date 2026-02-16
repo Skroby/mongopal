@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode, JSX } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode, JSX } from 'react'
 import { EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime'
 import { regenerateMonacoThemes } from '../../monacoConfig'
 import type { Theme, ThemeColors } from '../../types/wails.d'
@@ -225,18 +225,20 @@ export function ThemeProvider({ children }: ThemeProviderProps): JSX.Element {
     })
   }, [])
 
+  const value = useMemo(() => ({
+    themes,
+    currentTheme,
+    setTheme: setThemeById,
+    reloadThemes,
+    openThemesDir,
+    uiFontId: fontPrefs.uiFontId,
+    monoFontId: fontPrefs.monoFontId,
+    setUIFont,
+    setMonoFont,
+  }), [themes, currentTheme, setThemeById, reloadThemes, openThemesDir, fontPrefs, setUIFont, setMonoFont])
+
   return (
-    <ThemeContext.Provider value={{
-      themes,
-      currentTheme,
-      setTheme: setThemeById,
-      reloadThemes,
-      openThemesDir,
-      uiFontId: fontPrefs.uiFontId,
-      monoFontId: fontPrefs.monoFontId,
-      setUIFont,
-      setMonoFont,
-    }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   )

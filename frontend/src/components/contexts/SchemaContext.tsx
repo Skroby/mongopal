@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useMemo, useRef, ReactNode } from 'react'
 import type { CollectionProfile } from '../../types/wails.d'
 
 // =============================================================================
@@ -449,7 +449,7 @@ export function SchemaProvider({ children }: SchemaProviderProps): JSX.Element {
     [getCacheKey]
   )
 
-  const value: SchemaContextValue = {
+  const value: SchemaContextValue = useMemo(() => ({
     // Cache access
     getCachedSchema,
     getFieldNames,
@@ -468,7 +468,12 @@ export function SchemaProvider({ children }: SchemaProviderProps): JSX.Element {
     invalidateConnection,
     clearCache,
     mergeFieldNames,
-  }
+  }), [
+    getCachedSchema, getFieldNames, isSchemaLoading,
+    fetchSchema, prefetchSchema,
+    getCollectionProfile, fetchCollectionProfile,
+    invalidateSchema, invalidateConnection, clearCache, mergeFieldNames,
+  ])
 
   return <SchemaContext.Provider value={value}>{children}</SchemaContext.Provider>
 }

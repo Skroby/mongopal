@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/peternagy/mongopal/internal/core"
@@ -320,5 +322,155 @@ func TestDuplicateConnection_StripsPasswordFromMemory(t *testing.T) {
 	uri, _ := svc.GetConnectionURI(dup.ID)
 	if uri != "mongodb://user:secret@localhost:27017/" {
 		t.Errorf("expected password in stored duplicate URI, got %s", uri)
+	}
+}
+
+// =============================================================================
+// GetConnectionURI — FormData-based URI building
+// =============================================================================
+
+func TestGetConnectionURI_FromFormData(t *testing.T) {
+	svc := setupTestConnectionService(t)
+
+	// Build FormData JSON for a standalone connection
+	fd := types.ConnectionFormData{
+		ConnectionType: "standalone",
+		Hosts:          []types.HostPort{{Host: "k8s-internal.example.com", Port: 27017}},
+		Username:       "admin",
+		AuthMechanism:  "none",
+		RetryWrites:    true,
+	}
+	fdJSON, _ := json.Marshal(fd)
+
+	conn := types.ExtendedConnection{
+		ID:       "conn-form",
+		Name:     "Standalone K8s",
+		MongoURI: "mongodb://admin:s3cret@k8s-internal.example.com:27017/",
+		FormData: string(fdJSON),
+	}
+
+	if err := svc.SaveExtendedConnection(conn); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	uri, err := svc.GetConnectionURI("conn-form")
+	if err != nil {
+		t.Fatalf("get uri: %v", err)
+	}
+
+	// Must include directConnection=true (the whole reason for this change)
+	if !strings.Contains(uri, "directConnection=true") {
+		t.Errorf("expected directConnection=true in URI, got %s", uri)
+	}
+
+	// Must include credentials
+	if !strings.Contains(uri, "admin:s3cret@") {
+		t.Errorf("expected credentials in URI, got %s", uri)
+	}
+
+	// Must NOT contain mongopal.* params
+	if strings.Contains(uri, "mongopal.") {
+		t.Errorf("expected no mongopal.* params in URI, got %s", uri)
+	}
+}
+
+func TestGetConnectionURI_LegacyFallback(t *testing.T) {
+	svc := setupTestConnectionService(t)
+
+	// Legacy connection: no FormData, just MongoURI
+	conn := types.ExtendedConnection{
+		ID:       "conn-legacy",
+		Name:     "Legacy",
+		MongoURI: "mongodb://user:pass@localhost:27017/mydb?authSource=admin",
+	}
+
+	if err := svc.SaveExtendedConnection(conn); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	uri, err := svc.GetConnectionURI("conn-legacy")
+	if err != nil {
+		t.Fatalf("get uri: %v", err)
+	}
+
+	// Should return stored MongoURI (no FormData to build from)
+	if uri != "mongodb://user:pass@localhost:27017/mydb?authSource=admin" {
+		t.Errorf("expected legacy URI returned, got %s", uri)
+	}
+}
+
+func TestGetConnectionURI_StripsVendorParamsLegacy(t *testing.T) {
+	svc := setupTestConnectionService(t)
+
+	// Legacy connection with vendor params in the URI
+	conn := types.ExtendedConnection{
+		ID:       "conn-vendor",
+		Name:     "Vendor",
+		MongoURI: "mongodb://localhost:27017/?directConnection=true&mongopal.ssh.enabled=true&mongopal.ssh.host=bastion",
+	}
+
+	if err := svc.SaveExtendedConnection(conn); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	uri, err := svc.GetConnectionURI("conn-vendor")
+	if err != nil {
+		t.Fatalf("get uri: %v", err)
+	}
+
+	// Vendor params should be stripped
+	if strings.Contains(uri, "mongopal.") {
+		t.Errorf("expected vendor params stripped, got %s", uri)
+	}
+
+	// Non-vendor params should be preserved
+	if !strings.Contains(uri, "directConnection=true") {
+		t.Errorf("expected directConnection=true preserved, got %s", uri)
+	}
+}
+
+func TestGetConnectionURI_FormDataWithReplicaSet(t *testing.T) {
+	svc := setupTestConnectionService(t)
+
+	fd := types.ConnectionFormData{
+		ConnectionType: "replicaset",
+		Hosts: []types.HostPort{
+			{Host: "host1", Port: 27017},
+			{Host: "host2", Port: 27018},
+		},
+		ReplicaSetName: "rs0",
+		Username:       "admin",
+		AuthMechanism:  "scram-sha-256",
+		AuthDatabase:   "admin",
+		RetryWrites:    true,
+	}
+	fdJSON, _ := json.Marshal(fd)
+
+	conn := types.ExtendedConnection{
+		ID:       "conn-rs",
+		Name:     "ReplicaSet",
+		MongoURI: "mongodb://admin:pass@host1:27017,host2:27018/?replicaSet=rs0",
+		FormData: string(fdJSON),
+	}
+
+	if err := svc.SaveExtendedConnection(conn); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	uri, err := svc.GetConnectionURI("conn-rs")
+	if err != nil {
+		t.Fatalf("get uri: %v", err)
+	}
+
+	// Should have replica set params
+	if !strings.Contains(uri, "replicaSet=rs0") {
+		t.Errorf("expected replicaSet=rs0 in URI, got %s", uri)
+	}
+	if !strings.Contains(uri, "authMechanism=SCRAM-SHA-256") {
+		t.Errorf("expected authMechanism in URI, got %s", uri)
+	}
+	// Should NOT have directConnection
+	if strings.Contains(uri, "directConnection") {
+		t.Errorf("replicaset should not have directConnection, got %s", uri)
 	}
 }

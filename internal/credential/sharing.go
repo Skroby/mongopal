@@ -9,16 +9,9 @@ import (
 	"fmt"
 	"io"
 	"time"
-)
 
-// ConnectionShareBundle is the encrypted bundle format for sharing connections.
-type ConnectionShareBundle struct {
-	Version int    `json:"v"`
-	App     string `json:"app"`
-	Time    string `json:"ts"`
-	Nonce   string `json:"nonce"`
-	Data    string `json:"data"`
-}
+	"github.com/peternagy/mongopal/internal/types"
+)
 
 // EncryptForSharing encrypts arbitrary JSON data with a random AES-256-GCM key.
 // Returns the JSON bundle and the base64url-encoded key.
@@ -49,7 +42,7 @@ func EncryptForSharing(data []byte) (string, string, error) {
 	ciphertext := gcm.Seal(nil, nonce, data, nil)
 
 	// Build bundle
-	bundle := ConnectionShareBundle{
+	bundle := types.ConnectionShareBundle{
 		Version: 1,
 		App:     "mongopal",
 		Time:    time.Now().UTC().Format(time.RFC3339),
@@ -95,7 +88,7 @@ func EncryptForSharingWithKey(data []byte, keyStr string) (string, error) {
 
 	ciphertext := gcm.Seal(nil, nonce, data, nil)
 
-	bundle := ConnectionShareBundle{
+	bundle := types.ConnectionShareBundle{
 		Version: 1,
 		App:     "mongopal",
 		Time:    time.Now().UTC().Format(time.RFC3339),
@@ -120,10 +113,76 @@ func GenerateSharingKey() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(key), nil
 }
 
+// PrepareConnectionForExport strips internal fields from an ExtendedConnection
+// and attaches the provided folder path. This prepares the connection for export
+// by removing instance-specific data (ID, folder ID, timestamps, read-only flag).
+func PrepareConnectionForExport(conn *types.ExtendedConnection, folderPath []string) {
+	conn.FolderPath = folderPath
+	conn.ID = ""
+	conn.FolderID = ""
+	conn.ReadOnly = false
+	conn.CreatedAt = time.Time{}
+	conn.LastAccessedAt = time.Time{}
+}
+
+// ExportConnection serializes and encrypts an ExtendedConnection for sharing.
+// The connection is stripped of internal fields before encryption.
+func ExportConnection(conn types.ExtendedConnection, folderPath []string) (*types.ConnectionShareResult, error) {
+	PrepareConnectionForExport(&conn, folderPath)
+
+	data, err := json.Marshal(conn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize connection: %w", err)
+	}
+
+	bundle, key, err := EncryptForSharing(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.ConnectionShareResult{Bundle: bundle, Key: key}, nil
+}
+
+// ExportConnections serializes and encrypts multiple connections with a shared key.
+// Each connection is stripped of internal fields before encryption.
+func ExportConnections(connections []types.ExtendedConnection, folderPaths [][]string) (*types.BulkConnectionShareResult, error) {
+	sharedKey, err := GenerateSharingKey()
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]types.BulkShareEntry, 0, len(connections))
+	for i, conn := range connections {
+		var fp []string
+		if i < len(folderPaths) {
+			fp = folderPaths[i]
+		}
+		PrepareConnectionForExport(&conn, fp)
+
+		data, err := json.Marshal(conn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize connection: %w", err)
+		}
+
+		bundle, err := EncryptForSharingWithKey(data, sharedKey)
+		if err != nil {
+			return nil, err
+		}
+
+		entries = append(entries, types.BulkShareEntry{Name: conn.Name, Bundle: bundle})
+	}
+
+	return &types.BulkConnectionShareResult{
+		Version:     1,
+		Connections: entries,
+		Key:         sharedKey,
+	}, nil
+}
+
 // DecryptFromSharing decrypts a connection share bundle using the provided key.
 // Returns the decrypted JSON data.
 func DecryptFromSharing(bundleJSON string, keyStr string) ([]byte, error) {
-	var bundle ConnectionShareBundle
+	var bundle types.ConnectionShareBundle
 	if err := json.Unmarshal([]byte(bundleJSON), &bundle); err != nil {
 		return nil, fmt.Errorf("invalid bundle format: %w", err)
 	}

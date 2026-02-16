@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react'
 
 /**
  * Operation types:
@@ -105,11 +105,14 @@ export function OperationProvider({ children }: OperationProviderProps): JSX.Ele
     })
   }, [])
 
-  // Check if any destructive operation is active
-  const hasDestructiveOperation = Array.from(operations.values()).some(op => op.destructive)
-
   // Get active operations as array for display
-  const activeOperations = Array.from(operations.values())
+  const activeOperations = useMemo(() => Array.from(operations.values()), [operations])
+
+  // Check if any destructive operation is active
+  const hasDestructiveOperation = useMemo(() =>
+    activeOperations.some(op => op.destructive),
+    [activeOperations]
+  )
 
   // Prevent app close during destructive operations
   useEffect(() => {
@@ -126,14 +129,14 @@ export function OperationProvider({ children }: OperationProviderProps): JSX.Ele
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [hasDestructiveOperation])
 
-  const value: OperationContextValue = {
+  const value: OperationContextValue = useMemo(() => ({
     operations,
     activeOperations,
     hasDestructiveOperation,
     startOperation,
     updateOperation,
     completeOperation,
-  }
+  }), [operations, activeOperations, hasDestructiveOperation, startOperation, updateOperation, completeOperation])
 
   return (
     <OperationContext.Provider value={value}>

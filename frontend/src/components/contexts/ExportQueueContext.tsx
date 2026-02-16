@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, ReactNode } from 'react'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import { useNotification } from '../NotificationContext'
 
@@ -210,7 +210,7 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
   const processingRef = useRef<boolean>(false)
   const completedIdsRef = useRef<Set<string>>(new Set()) // Track completed IDs to prevent duplicates
 
-  const generateId = (): string => `export-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  const generateId = (): string => `export-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 
   // Count active (non-queued) exports for a connection
   const getActiveCount = useCallback((connectionId: string, currentExports: ExportEntryUnion[]): number => {
@@ -227,6 +227,9 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
     if (processingRef.current) return
     processingRef.current = true
 
+    // Collect entries to start outside the state updater
+    const entriesToStart: ExportEntryUnion[] = []
+
     setExports(prev => {
       const next = [...prev]
       let changed = false
@@ -234,55 +237,11 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
       for (let i = 0; i < next.length; i++) {
         const entry = next[i]
         if (entry.phase === 'queued') {
-          const activeCount = getActiveCount(entry.connectionId, next)
-          if (activeCount < MAX_CONCURRENT_PER_CONNECTION) {
+          const activeForConn = getActiveCount(entry.connectionId, next)
+          if (activeForConn < MAX_CONCURRENT_PER_CONNECTION) {
             next[i] = { ...entry, phase: 'starting' }
             changed = true
-
-            const startExportAsync = async (): Promise<void> => {
-              try {
-                if (entry.type === 'csv') {
-                  const csvEntry = entry as CSVExportEntry
-                  const csvOptions: CSVExportOptions = {
-                    delimiter: csvEntry.options?.delimiter || ',',
-                    includeHeaders: csvEntry.options?.includeHeaders !== false,
-                    flattenArrays: csvEntry.options?.flattenArrays !== false,
-                    filter: csvEntry.options?.filter || '',
-                    filePath: csvEntry.options?.filePath,
-                  }
-                  await getGo()?.ExportCollectionAsCSV?.(
-                    csvEntry.connectionId,
-                    csvEntry.database,
-                    csvEntry.collection,
-                    '',
-                    csvOptions
-                  )
-                } else if (entry.type === 'json') {
-                  const jsonEntry = entry as JSONExportEntry
-                  const jsonOptions: JSONExportOptions = {
-                    filter: jsonEntry.options?.filter || '',
-                    filePath: jsonEntry.options?.filePath,
-                    pretty: jsonEntry.options?.pretty || false,
-                    array: jsonEntry.options?.array || false,
-                  }
-                  await getGo()?.ExportCollectionAsJSON?.(
-                    jsonEntry.connectionId,
-                    jsonEntry.database,
-                    jsonEntry.collection,
-                    '',
-                    jsonOptions
-                  )
-                }
-              } catch (err) {
-                const errorMsg = (err as Error)?.message || String(err)
-                if (!errorMsg.toLowerCase().includes('cancel')) {
-                  notify.error(`Export failed: ${entry.label}`)
-                }
-                setExports(p => p.filter(e => e.id !== entry.id))
-              }
-            }
-
-            startExportAsync()
+            entriesToStart.push(entry)
           }
         }
       }
@@ -290,6 +249,54 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
       processingRef.current = false
       return changed ? next : prev
     })
+
+    // Launch async operations AFTER state update
+    for (const entry of entriesToStart) {
+      const startExportAsync = async (): Promise<void> => {
+        try {
+          if (entry.type === 'csv') {
+            const csvEntry = entry as CSVExportEntry
+            const csvOptions: CSVExportOptions = {
+              delimiter: csvEntry.options?.delimiter || ',',
+              includeHeaders: csvEntry.options?.includeHeaders !== false,
+              flattenArrays: csvEntry.options?.flattenArrays !== false,
+              filter: csvEntry.options?.filter || '',
+              filePath: csvEntry.options?.filePath,
+            }
+            await getGo()?.ExportCollectionAsCSV?.(
+              csvEntry.connectionId,
+              csvEntry.database,
+              csvEntry.collection,
+              '',
+              csvOptions
+            )
+          } else if (entry.type === 'json') {
+            const jsonEntry = entry as JSONExportEntry
+            const jsonOptions: JSONExportOptions = {
+              filter: jsonEntry.options?.filter || '',
+              filePath: jsonEntry.options?.filePath,
+              pretty: jsonEntry.options?.pretty || false,
+              array: jsonEntry.options?.array || false,
+            }
+            await getGo()?.ExportCollectionAsJSON?.(
+              jsonEntry.connectionId,
+              jsonEntry.database,
+              jsonEntry.collection,
+              '',
+              jsonOptions
+            )
+          }
+        } catch (err) {
+          const errorMsg = (err as Error)?.message || String(err)
+          if (!errorMsg.toLowerCase().includes('cancel')) {
+            notify.error(`Export failed: ${entry.label}`)
+          }
+          setExports(p => p.filter(e => e.id !== entry.id))
+        }
+      }
+
+      startExportAsync()
+    }
   }, [getActiveCount, notify])
 
   // Auto-process queue when exports change
@@ -424,7 +431,7 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
 
   // Track an import operation
   const trackImport = useCallback((connectionId: string, database: string, collections: string[] | null, label: string, modalOpener?: () => void): string => {
-    const id = `import-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const id = `import-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
     const entry: ImportEntry = {
       id,
       direction: 'import',
@@ -788,15 +795,20 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
     completedIdsRef.current.clear()
   }, [])
 
-  const queuedCount = exports.filter(e => e.phase === 'queued').length
-  const activeExportCount = exports.filter(e => e.phase !== 'queued' && e.phase !== 'complete').length
-  const activeImportCount = imports.filter(e => e.phase !== 'complete' && e.phase !== 'error').length
-  const activeCount = activeExportCount + activeImportCount
+  const queuedCount = useMemo(() => exports.filter(e => e.phase === 'queued').length, [exports])
+  const activeCount = useMemo(() => {
+    const activeExportCount = exports.filter(e => e.phase !== 'queued' && e.phase !== 'complete').length
+    const activeImportCount = imports.filter(e => e.phase !== 'complete' && e.phase !== 'error').length
+    return activeExportCount + activeImportCount
+  }, [exports, imports])
 
   // Unified transfers list sorted by startedAt
-  const allTransfers: TransferEntry[] = [...exports, ...imports].sort((a, b) => a.startedAt - b.startedAt)
+  const allTransfers: TransferEntry[] = useMemo(
+    () => [...exports, ...imports].sort((a, b) => a.startedAt - b.startedAt),
+    [exports, imports]
+  )
 
-  const value: ExportQueueContextValue = {
+  const value: ExportQueueContextValue = useMemo(() => ({
     exports,
     imports,
     allTransfers,
@@ -817,7 +829,13 @@ export function ExportQueueProvider({ children }: ExportQueueProviderProps): Rea
     cancelExport,
     cancelAllExports,
     clearHistory,
-  }
+  }), [
+    exports, imports, allTransfers, completedExports, queuedCount, activeCount,
+    queueCSVExport, queueJSONExport, trackZipExport, updateTrackedExport,
+    completeTrackedExport, removeTrackedExport, trackImport, updateTrackedImport,
+    completeTrackedImport, removeTrackedImport, getLeadingExport,
+    cancelExport, cancelAllExports, clearHistory,
+  ])
 
   return (
     <ExportQueueContext.Provider value={value}>

@@ -1,0 +1,4 @@
+dist/
+wailsjs/
+coverage/
+node_modules/
