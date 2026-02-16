@@ -22,6 +22,9 @@ Thumbs.db
 # Wails
 wails.json.bak
 
+# Generated icon (rebuilt from appicon.svg)
+build/appicon.png
+
 # Go
 *.exe
 *.exe~

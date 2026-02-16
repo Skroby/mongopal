@@ -1,4 +1,4 @@
-.PHONY: help dev build clean install test test-unit test-unit-go test-unit-frontend typecheck test-watch test-integration test-integration-go test-integration-frontend test-coverage test-coverage-go test-coverage-frontend setup setup-quick install-hooks install-frontend generate doctor fmt lint frontend-dist seed-testdb seed-testdb-stop
+.PHONY: help dev build clean install test test-unit test-unit-go test-unit-frontend typecheck test-watch test-integration test-integration-go test-integration-frontend test-coverage test-coverage-go test-coverage-frontend setup setup-quick install-hooks install-frontend generate doctor fmt lint frontend-dist appicon seed-testdb seed-testdb-stop
 
 # Ensure Go bin is in PATH
 GOBIN := $(shell go env GOPATH)/bin
@@ -102,22 +102,26 @@ dev: generate frontend-dist
 # Build
 # ===========================================
 
+# Generate app icon PNG from SVG source
+appicon:
+	magick -background none build/appicon.svg -resize 1024x1024 build/appicon.png
+
 # Build for current platform
-build: generate
+build: appicon generate
 	$(GOBIN)/wails build
 
 # Build for production (optimized)
-build-prod: generate
+build-prod: appicon generate
 	$(GOBIN)/wails build -production
 
 # Build for specific platforms
-build-darwin: generate
+build-darwin: appicon generate
 	$(GOBIN)/wails build -platform darwin/universal
 
-build-windows: generate
+build-windows: appicon generate
 	$(GOBIN)/wails build -platform windows/amd64
 
-build-linux: generate
+build-linux: appicon generate
 	$(GOBIN)/wails build -platform linux/amd64
 
 # ===========================================

@@ -1,0 +1,6 @@
+<svg viewBox="0 0 1024 1024" width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Squircle background with macOS Big Sur radius -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="#4CC38A"/>
+  <!-- Black M letterform, centered -->
+  <text x="512" y="680" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="620" fill="#1a1d23">M</text>
+</svg>

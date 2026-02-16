@@ -325,6 +325,126 @@ func TestDuplicateConnection_StripsPasswordFromMemory(t *testing.T) {
 	}
 }
 
+func TestDuplicateConnection_ClonesAllSettingsWithNewIDAndName(t *testing.T) {
+	svc := setupTestConnectionService(t)
+
+	fd := `{"id":"conn-fd","name":"Original","connectionType":"standalone","hosts":[{"host":"db.example.com","port":27017}],"username":"admin","authMechanism":"scram-sha-256","authDatabase":"admin","tlsEnabled":true,"maxPoolSize":50,"retryWrites":true,"readPreference":"secondary","appName":"myapp","connectTimeout":10}`
+	conn := types.ExtendedConnection{
+		ID:                     "conn-fd",
+		Name:                   "Original",
+		FolderID:               "folder-1",
+		Color:                  "#FF0000",
+		ReadOnly:               true,
+		MongoURI:               "mongodb://admin:secret@db.example.com:27017/?authSource=admin",
+		SSHEnabled:             true,
+		SSHHost:                "bastion.example.com",
+		SSHPort:                2222,
+		SSHUser:                "deploy",
+		SSHPassword:            "sshpass",
+		SSHPrivateKey:          "-----BEGIN RSA-----",
+		SSHPassphrase:          "keypass",
+		TLSEnabled:             true,
+		TLSInsecure:            true,
+		TLSCAFile:              "ca-cert-content",
+		TLSCertFile:            "client-cert-content",
+		TLSKeyFile:             "client-key-content",
+		TLSKeyPassword:         "tlspass",
+		RequireDeleteConfirmation: true,
+		FormData:               fd,
+	}
+	svc.SaveExtendedConnection(conn)
+
+	dup, err := svc.DuplicateConnection("conn-fd", "Original (copy)")
+	if err != nil {
+		t.Fatalf("duplicate: %v", err)
+	}
+
+	// ID must be new
+	if dup.ID == "conn-fd" {
+		t.Error("duplicate must have a new ID")
+	}
+	if dup.Name != "Original (copy)" {
+		t.Errorf("expected name 'Original (copy)', got %q", dup.Name)
+	}
+
+	// Load the full extended connection to verify all fields
+	dupExt, err := svc.GetExtendedConnection(dup.ID)
+	if err != nil {
+		t.Fatalf("load dup: %v", err)
+	}
+
+	// Verify new ID and name
+	if dupExt.ID == "conn-fd" {
+		t.Error("extended dup must have a new ID")
+	}
+	if dupExt.Name != "Original (copy)" {
+		t.Errorf("expected name 'Original (copy)', got %q", dupExt.Name)
+	}
+
+	// Verify all other fields are cloned from original
+	if dupExt.FolderID != "folder-1" {
+		t.Errorf("FolderID: expected 'folder-1', got %q", dupExt.FolderID)
+	}
+	if dupExt.Color != "#FF0000" {
+		t.Errorf("Color: expected '#FF0000', got %q", dupExt.Color)
+	}
+	if !dupExt.ReadOnly {
+		t.Error("ReadOnly should be true")
+	}
+	if dupExt.MongoURI != "mongodb://admin:secret@db.example.com:27017/?authSource=admin" {
+		t.Errorf("MongoURI not cloned: got %q", dupExt.MongoURI)
+	}
+	if !dupExt.SSHEnabled || dupExt.SSHHost != "bastion.example.com" || dupExt.SSHPort != 2222 || dupExt.SSHUser != "deploy" {
+		t.Errorf("SSH settings not cloned: enabled=%v host=%q port=%d user=%q", dupExt.SSHEnabled, dupExt.SSHHost, dupExt.SSHPort, dupExt.SSHUser)
+	}
+	if dupExt.SSHPassword != "sshpass" || dupExt.SSHPrivateKey != "-----BEGIN RSA-----" || dupExt.SSHPassphrase != "keypass" {
+		t.Error("SSH credentials not cloned")
+	}
+	if !dupExt.TLSEnabled || !dupExt.TLSInsecure {
+		t.Error("TLS settings not cloned")
+	}
+	if dupExt.TLSCAFile != "ca-cert-content" || dupExt.TLSCertFile != "client-cert-content" || dupExt.TLSKeyFile != "client-key-content" || dupExt.TLSKeyPassword != "tlspass" {
+		t.Error("TLS credentials not cloned")
+	}
+	if !dupExt.RequireDeleteConfirmation {
+		t.Error("RequireDeleteConfirmation should be true")
+	}
+
+	// Verify FormData has new id/name but preserves everything else
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(dupExt.FormData), &parsed); err != nil {
+		t.Fatalf("parse FormData: %v", err)
+	}
+	if parsed["id"] != dup.ID {
+		t.Errorf("FormData id: expected %q, got %v", dup.ID, parsed["id"])
+	}
+	if parsed["name"] != "Original (copy)" {
+		t.Errorf("FormData name: expected 'Original (copy)', got %v", parsed["name"])
+	}
+	// All other FormData fields preserved
+	if parsed["connectionType"] != "standalone" {
+		t.Errorf("FormData connectionType not preserved: got %v", parsed["connectionType"])
+	}
+	if parsed["username"] != "admin" {
+		t.Errorf("FormData username not preserved: got %v", parsed["username"])
+	}
+	if parsed["authMechanism"] != "scram-sha-256" {
+		t.Errorf("FormData authMechanism not preserved: got %v", parsed["authMechanism"])
+	}
+	if parsed["tlsEnabled"] != true {
+		t.Errorf("FormData tlsEnabled not preserved: got %v", parsed["tlsEnabled"])
+	}
+	if parsed["retryWrites"] != true {
+		t.Errorf("FormData retryWrites not preserved: got %v", parsed["retryWrites"])
+	}
+	if parsed["readPreference"] != "secondary" {
+		t.Errorf("FormData readPreference not preserved: got %v", parsed["readPreference"])
+	}
+	if parsed["appName"] != "myapp" {
+		t.Errorf("FormData appName not preserved: got %v", parsed["appName"])
+	}
+}
+
 // =============================================================================
 // GetConnectionURI — FormData-based URI building
 // =============================================================================

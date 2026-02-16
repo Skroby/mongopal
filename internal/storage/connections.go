@@ -278,6 +278,18 @@ func (s *ConnectionService) DuplicateConnection(connID, newName string) (types.S
 	newConn.CreatedAt = time.Now()
 	newConn.LastAccessedAt = time.Time{}
 
+	// Update id and name inside FormData JSON blob so the edit form uses the new values
+	if newConn.FormData != "" {
+		var fd map[string]any
+		if err := json.Unmarshal([]byte(newConn.FormData), &fd); err == nil {
+			fd["id"] = newConn.ID
+			fd["name"] = newName
+			if updated, err := json.Marshal(fd); err == nil {
+				newConn.FormData = string(updated)
+			}
+		}
+	}
+
 	// Save to encrypted storage
 	if err := s.encryptedStorage.SaveConnection(newConn.ID, newConn); err != nil {
 		return types.SavedConnection{}, fmt.Errorf("failed to save duplicated connection: %w", err)
