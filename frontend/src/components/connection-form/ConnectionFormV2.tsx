@@ -505,7 +505,7 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
             {connection ? 'Edit Connection' : 'New Connection'}
           </h2>
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
+            <label className="flex items-center gap-2 cursor-pointer">
               <div className="relative">
                 <input
                   type="checkbox"
@@ -610,7 +610,7 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
             <div className="space-y-3">
               <h3 className="text-xs font-semibold text-text-dim uppercase tracking-wider">Share as URI</h3>
               <div className="flex items-center gap-4 text-xs text-text-muted">
-                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <label className="flex items-center gap-1.5 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={uriIncludeCredentials}
@@ -619,7 +619,7 @@ export function ConnectionFormV2({ connection, folders, onSave, onCancel }: Conn
                   />
                   Include credentials
                 </label>
-                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <label className="flex items-center gap-1.5 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={uriIncludeMongoPalParams}

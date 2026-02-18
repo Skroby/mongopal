@@ -126,7 +126,7 @@ const MetricRow: FC<MetricRowProps> = ({ label, value, subValue, sparklineData, 
       <span className="text-text-muted text-sm">{label}</span>
       <div className="flex items-center">
         <div className="text-right">
-          <span className="text-text-light font-mono text-sm">{value}</span>
+          <span className="text-text-light font-mono text-sm select-text">{value}</span>
           {subValue && (
             <span className="text-text-dim text-xs ml-1">({subValue})</span>
           )}

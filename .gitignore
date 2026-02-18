@@ -2,6 +2,7 @@
 build/bin/
 mongopal
 build/darwin/
+build/windows/
 frontend/dist/
 frontend/*.md5
 

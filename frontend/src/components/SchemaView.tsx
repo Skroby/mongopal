@@ -525,7 +525,7 @@ export default function SchemaView({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-2">
+      <div className="flex-1 overflow-auto p-2 select-text">
         {viewMode === 'tree' ? (
           <div className="font-mono">
             {Object.entries(schema.fields).map(([name, field]) => (

@@ -35,6 +35,7 @@ describe('TabBar', () => {
     reorderTabs: mockReorderTabs,
     openTab: vi.fn(),
     openDocumentTab: vi.fn(),
+    openViewDocumentTab: vi.fn(),
     openInsertTab: vi.fn(),
     openSchemaTab: vi.fn(),
     openIndexTab: vi.fn(),

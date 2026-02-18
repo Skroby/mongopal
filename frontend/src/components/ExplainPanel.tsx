@@ -29,12 +29,6 @@ const ChevronUpIcon: FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
-const CloseIcon: FC<IconProps> = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-)
-
 const CopyIcon: FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -74,7 +68,7 @@ export interface ExplainResult {
 
 export interface ExplainPanelProps {
   result: ExplainResult | null
-  onClose: () => void
+  explaining?: boolean
 }
 
 function formatNumber(num: number): string {
@@ -86,7 +80,7 @@ function formatNumber(num: number): string {
   return num.toString()
 }
 
-const ExplainPanel: FC<ExplainPanelProps> = ({ result, onClose }) => {
+const ExplainPanel: FC<ExplainPanelProps> = ({ result, explaining }) => {
   const [showRaw, setShowRaw] = useState<boolean>(false)
   const [copied, setCopied] = useState<boolean>(false)
 
@@ -101,7 +95,22 @@ const ExplainPanel: FC<ExplainPanelProps> = ({ result, onClose }) => {
     }
   }
 
-  if (!result) return null
+  if (explaining) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-text-muted gap-3">
+        <div className="spinner" />
+        <span>Analyzing query plan...</span>
+      </div>
+    )
+  }
+
+  if (!result) {
+    return (
+      <div className="h-full flex items-center justify-center text-text-muted">
+        <span>Click the Explain tab to analyze the current query</span>
+      </div>
+    )
+  }
 
   const { queryPlanner, executionStats, winningPlan, indexUsed, isCollectionScan, rawExplain } = result
 
@@ -115,55 +124,26 @@ const ExplainPanel: FC<ExplainPanelProps> = ({ result, onClose }) => {
   const hasWarning = isCollectionScan && docsExamined > 1000
 
   return (
-    <div className="border-t border-border bg-surface-secondary">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-text">Explain Plan</span>
+    <div className="h-full overflow-auto select-text">
+      <div className="p-4">
+        {/* Status badge */}
+        <div className="mb-4">
           {isEfficient ? (
-            <span className="flex items-center gap-1 text-xs text-success">
-              <CheckIcon className="w-3.5 h-3.5" />
-              Efficient
+            <span className="inline-flex items-center gap-1.5 text-sm text-success bg-success-dark/20 px-3 py-1.5 rounded-full">
+              <CheckIcon className="w-4 h-4" />
+              Efficient Query
             </span>
           ) : hasWarning ? (
-            <span className="flex items-center gap-1 text-xs text-warning">
-              <WarningIcon className="w-3.5 h-3.5" />
+            <span className="inline-flex items-center gap-1.5 text-sm text-warning bg-warning-dark/20 px-3 py-1.5 rounded-full">
+              <WarningIcon className="w-4 h-4" />
               Collection Scan
             </span>
           ) : null}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="text-xs text-text-muted hover:text-text-light flex items-center gap-1"
-            onClick={() => setShowRaw(!showRaw)}
-          >
-            {showRaw ? (
-              <>
-                <ChevronUpIcon className="w-3 h-3" />
-                Hide Raw
-              </>
-            ) : (
-              <>
-                <ChevronDownIcon className="w-3 h-3" />
-                Show Raw
-              </>
-            )}
-          </button>
-          <button
-            className="p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text-light"
-            onClick={onClose}
-            title="Close"
-          >
-            <CloseIcon className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
 
-      {/* Content */}
-      <div className="px-3 py-2">
         {/* Warning for collection scan */}
         {hasWarning && (
-          <div className="mb-3 px-3 py-2 bg-warning-dark/20 border border-amber-800 rounded text-warning text-xs flex items-start gap-2">
+          <div className="mb-4 px-3 py-2 bg-warning-dark/20 border border-amber-800 rounded text-warning text-xs flex items-start gap-2">
             <WarningIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-medium">Collection Scan Detected</p>
@@ -175,8 +155,8 @@ const ExplainPanel: FC<ExplainPanelProps> = ({ result, onClose }) => {
           </div>
         )}
 
-        {/* Stats grid - 2 column layout with wrapping values */}
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2 mb-3">
+        {/* Stats grid */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 mb-4">
           <div>
             <div className="text-xs text-text-muted mb-0.5">Stage</div>
             <div className={`text-sm font-mono ${isCollectionScan ? 'text-warning' : 'text-success'}`}>
@@ -230,24 +210,41 @@ const ExplainPanel: FC<ExplainPanelProps> = ({ result, onClose }) => {
           </div>
         </div>
 
-        {/* Raw explain output */}
-        {showRaw && (
-          <div className="mt-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-text-muted">Raw Explain Output</span>
-              <button
-                className={`p-1 rounded hover:bg-surface-hover ${copied ? 'text-primary' : 'text-text-muted hover:text-text-light'}`}
-                onClick={handleCopyRaw}
-                title={copied ? 'Copied!' : 'Copy raw output'}
-              >
-                {copied ? <CopyCheckIcon className="w-3.5 h-3.5" /> : <CopyIcon className="w-3.5 h-3.5" />}
-              </button>
+        {/* Raw explain output toggle */}
+        <div className="border-t border-border pt-3">
+          <button
+            className="text-xs text-text-muted hover:text-text-light flex items-center gap-1"
+            onClick={() => setShowRaw(!showRaw)}
+          >
+            {showRaw ? (
+              <>
+                <ChevronUpIcon className="w-3 h-3" />
+                Hide Raw Output
+              </>
+            ) : (
+              <>
+                <ChevronDownIcon className="w-3 h-3" />
+                Show Raw Output
+              </>
+            )}
+          </button>
+          {showRaw && (
+            <div className="mt-2">
+              <div className="flex items-center justify-end mb-1">
+                <button
+                  className={`p-1 rounded hover:bg-surface-hover ${copied ? 'text-primary' : 'text-text-muted hover:text-text-light'}`}
+                  onClick={handleCopyRaw}
+                  title={copied ? 'Copied!' : 'Copy raw output'}
+                >
+                  {copied ? <CopyCheckIcon className="w-3.5 h-3.5" /> : <CopyIcon className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              <pre className="p-3 bg-background border border-border rounded text-xs text-text-secondary overflow-auto max-h-96">
+                {rawExplain}
+              </pre>
             </div>
-            <pre className="p-2 bg-background border border-border rounded text-xs text-text-secondary overflow-auto max-h-64">
-              {rawExplain}
-            </pre>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )

@@ -59,7 +59,7 @@ export interface CollectionViewProps {
 /**
  * View mode options for document display
  */
-type ViewMode = 'table' | 'json' | 'raw'
+type ViewMode = 'table' | 'json' | 'explain'
 
 /**
  * Props for icon components
@@ -137,17 +137,6 @@ const HistoryIcon = ({ className = 'w-4 h-4' }: IconProps): ReactNode => (
 const PlusIcon = ({ className = 'w-4 h-4' }: IconProps): ReactNode => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-  </svg>
-)
-
-const ExplainIcon = ({ className = 'w-4 h-4' }: IconProps): ReactNode => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
-    />
   </svg>
 )
 
@@ -309,7 +298,7 @@ export default function CollectionView({
   restored,
 }: CollectionViewProps): ReactNode {
   const { connect } = useConnection()
-  const { openDocumentTab, openInsertTab, markTabActivated } = useTab()
+  const { openDocumentTab, openViewDocumentTab, openInsertTab, markTabActivated } = useTab()
 
   // --- Extracted Hooks ---
 
@@ -557,6 +546,17 @@ export default function CollectionView({
     [bulkActions.getDocIdForApi, openDocumentTab, connectionId, database, collection, bulkActions]
   )
 
+  // Open document in view-only mode
+  const handleView = useCallback(
+    (doc: MongoDocument): void => {
+      const docId = bulkActions.getDocIdForApi(doc)
+      if (docId) {
+        openViewDocumentTab(connectionId, database, collection, doc, docId)
+      }
+    },
+    [bulkActions.getDocIdForApi, openViewDocumentTab, connectionId, database, collection, bulkActions]
+  )
+
   // Monaco editor mount handlers
   const handleEditorBeforeMount: BeforeMount = useCallback((monaco) => {
     if (!monaco.languages.getLanguages().some((lang: MonacoLanguageInfo) => lang.id === 'mongoquery')) {
@@ -754,16 +754,6 @@ export default function CollectionView({
                   />
                 )}
               </div>
-              <button
-                className={`icon-btn p-1.5 hover:bg-surface-hover text-text-muted hover:text-text-light ${
-                  queryExec.explaining ? 'animate-pulse' : ''
-                } ${!queryExec.isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
-                onClick={queryExec.explainQuery}
-                disabled={queryExec.explaining || queryExec.loading || !queryExec.isConnected}
-                title={!queryExec.isConnected ? 'Connect to database first' : 'Explain query plan'}
-              >
-                <ExplainIcon className="w-4 h-4" />
-              </button>
               <CollectionExportButton
                 connectionId={connectionId}
                 database={database}
@@ -843,15 +833,24 @@ export default function CollectionView({
       <div className="flex-shrink-0 flex items-center justify-between px-3 py-1.5 border-b border-border bg-surface text-sm">
         <div className="flex items-center gap-3">
           <div className="flex gap-1" role="tablist" aria-label="View mode">
-            {(['table', 'json', 'raw'] as ViewMode[]).map((mode) => (
+            {(['table', 'json', 'explain'] as ViewMode[]).map((mode) => (
               <button
                 key={mode}
                 className={`view-mode-btn px-2 py-1 rounded text-xs capitalize ${
                   viewMode === mode
                     ? 'bg-surface-hover text-text'
                     : 'text-text-muted hover:text-text-light hover:bg-surface'
-                }`}
-                onClick={() => setViewMode(mode)}
+                } ${mode === 'explain' && queryExec.explaining ? 'animate-pulse' : ''} ${mode === 'explain' && !queryExec.isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={() => {
+                  if (mode === 'explain') {
+                    if (!queryExec.isConnected) return
+                    setViewMode('explain')
+                    queryExec.explainQuery()
+                  } else {
+                    setViewMode(mode)
+                  }
+                }}
+                disabled={mode === 'explain' && !queryExec.isConnected}
                 role="tab"
                 aria-selected={viewMode === mode}
               >
@@ -865,11 +864,11 @@ export default function CollectionView({
           )}
         </div>
 
-        {/* Pagination controls */}
+        {/* Pagination controls — hidden in explain mode */}
         <div
           className={`flex items-center gap-2 text-text-muted text-xs ${
             queryExec.paginationResetHighlight ? 'pagination-reset-highlight' : ''
-          }`}
+          } ${viewMode === 'explain' ? 'invisible' : ''}`}
         >
           {/* Page size selector */}
           <select
@@ -991,11 +990,6 @@ export default function CollectionView({
         <div className="flex-shrink-0 px-3 py-2 border-b border-red-800">
           <ActionableError error={queryExec.error} onDismiss={() => queryExec.setError(null)} compact />
         </div>
-      )}
-
-      {/* Explain panel */}
-      {queryExec.explainResult && (
-        <ExplainPanel result={queryExec.explainResult} onClose={() => queryExec.setExplainResult(null)} />
       )}
 
       {/* Health check warning banner (LDH-01) */}
@@ -1161,6 +1155,8 @@ export default function CollectionView({
             <div className="spinner" />
             <span>Loading documents...</span>
           </div>
+        ) : viewMode === 'explain' ? (
+          <ExplainPanel result={queryExec.explainResult} explaining={queryExec.explaining} />
         ) : queryExec.documents.length === 0 ? (
           <div className="h-full flex items-center justify-center text-text-muted">
             <span>No documents found</span>
@@ -1168,6 +1164,7 @@ export default function CollectionView({
         ) : viewMode === 'table' ? (
           <TableView
             documents={queryExec.documents}
+            onView={handleView}
             onEdit={handleEdit}
             onDelete={bulkActions.handleDelete}
             selectedIds={bulkActions.selectedIds}
@@ -1186,34 +1183,13 @@ export default function CollectionView({
             onHiddenColumnsChange={handleHiddenColumnsChange}
             allAvailableColumns={queryExec.allAvailableColumns}
           />
-        ) : viewMode === 'json' ? (
+        ) : (
           <MonacoErrorBoundary>
             <Editor
               height="100%"
               language="json"
               theme="mongopal-dark"
               value={documentsJson}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                fontSize: 13,
-                lineNumbers: 'on',
-                folding: true,
-                wordWrap: 'on',
-                automaticLayout: true,
-                tabSize: 2,
-              }}
-            />
-          </MonacoErrorBoundary>
-        ) : (
-          /* Raw view - unmodified mongosh output */
-          <MonacoErrorBoundary>
-            <Editor
-              height="100%"
-              language="javascript"
-              theme="mongopal-dark"
-              value={queryExec.rawOutput || JSON.stringify(queryExec.documents, null, 2)}
               options={{
                 readOnly: true,
                 minimap: { enabled: false },
@@ -1254,7 +1230,7 @@ export default function CollectionView({
                 {database} &gt; {collection}
               </p>
             </div>
-            <div className="flex-1 p-4 overflow-auto">
+            <div className="flex-1 p-4 overflow-auto select-text">
               <div className="mb-4">
                 <p className="text-text-secondary mb-2">
                   This will execute the following delete operation:

@@ -769,7 +769,7 @@ function BulkExportSection({
       {/* Connection list */}
       <div className="space-y-1.5">
         <label
-          className="flex items-center gap-1.5 text-xs font-medium text-text-secondary cursor-pointer select-none"
+          className="flex items-center gap-1.5 text-xs font-medium text-text-secondary cursor-pointer"
           onClick={toggleAll}
         >
           <input
@@ -786,7 +786,7 @@ function BulkExportSection({
           {rootConns.map(conn => (
             <label
               key={conn.id}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-surface cursor-pointer select-none border-b border-border/50 last:border-b-0"
+              className="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-surface cursor-pointer border-b border-border/50 last:border-b-0"
             >
               <input
                 type="checkbox"
@@ -810,7 +810,7 @@ function BulkExportSection({
                 {conns.map(conn => (
                   <label
                     key={conn.id}
-                    className="flex items-center gap-2 pl-6 pr-3 py-2 text-sm text-text-secondary hover:bg-surface cursor-pointer select-none border-b border-border/50 last:border-b-0"
+                    className="flex items-center gap-2 pl-6 pr-3 py-2 text-sm text-text-secondary hover:bg-surface cursor-pointer border-b border-border/50 last:border-b-0"
                   >
                     <input
                       type="checkbox"

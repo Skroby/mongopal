@@ -242,7 +242,6 @@ describe('useQueryExecution', () => {
       expect(value).toHaveProperty('documents')
       expect(value).toHaveProperty('loading')
       expect(value).toHaveProperty('error')
-      expect(value).toHaveProperty('rawOutput')
       expect(value).toHaveProperty('queryTime')
 
       // Pagination

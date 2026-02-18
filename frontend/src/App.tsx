@@ -382,6 +382,7 @@ function App(): JSX.Element {
                       collection={tab.collection}
                       document={tab.document as Record<string, unknown> | null | undefined}
                       documentId={tab.documentId}
+                      mode={tab.viewOnly ? 'view' : 'edit'}
                       onSave={() => {
                         // Could refresh the collection tab if open
                       }}
@@ -452,7 +453,7 @@ function App(): JSX.Element {
 
       {/* Status bar */}
       <div className="h-6 bg-surface-secondary border-t border-border flex items-center justify-between px-3 text-xs text-text-muted flex-shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 select-text">
           {/* Connection info */}
           {currentTab ? (
             <>

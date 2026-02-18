@@ -72,6 +72,8 @@ interface IconProps {
 export interface TableViewProps {
   /** Array of MongoDB documents to display */
   documents: MongoDocument[]
+  /** Callback when viewing a document (read-only) */
+  onView?: (doc: MongoDocument) => void
   /** Callback when editing a document */
   onEdit?: (doc: MongoDocument) => void
   /** Callback when deleting a document */
@@ -115,6 +117,7 @@ const FROZEN_COLUMNS_KEY = 'mongopal-frozen-columns'
 
 // localStorage key for masked columns per collection
 const MASKED_COLUMNS_KEY = 'mongopal-masked-columns'
+
 
 // Masked value display constant
 const MASKED_VALUE_DISPLAY = '\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF' // 8 filled circles
@@ -296,6 +299,13 @@ const EyeOffIcon = ({ className = "w-4 h-4" }: IconProps): React.JSX.Element => 
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
   </svg>
 )
+const EyeIcon = ({ className = "w-4 h-4" }: IconProps): React.JSX.Element => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+  </svg>
+)
+
 // Alias for field masking feature
 const MaskIcon = EyeOffIcon
 
@@ -312,6 +322,7 @@ const UnmaskIcon = ({ className = "w-4 h-4" }: IconProps): React.JSX.Element => 
 
 export default function TableView({
   documents,
+  onView,
   onEdit,
   onDelete,
   selectedIds = new Set<string>(),
@@ -385,13 +396,36 @@ export default function TableView({
     })
   }, [connectionId, database, collection])
 
-  // Reorder columns: filter out hidden, then put frozen first (LDH-02)
+  // Column order state (in-memory only, resets on remount)
+  const [columnOrder, setColumnOrder] = useState<string[]>([])
+
+  // Column drag state
+  const [dragColumn, setDragColumn] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+
+  // Reset column order when collection changes
+  useEffect(() => {
+    setColumnOrder([])
+  }, [connectionId, database, collection])
+
+  // Reorder columns: filter out hidden, apply custom order, then put frozen first (LDH-02)
   const columns = useMemo(() => {
     const visible = rawColumns.filter(col => !hiddenColumns.has(col))
-    const frozen = visible.filter(col => frozenColumns.has(col))
-    const unfrozen = visible.filter(col => !frozenColumns.has(col))
+    // Apply custom column order if set
+    let ordered = visible
+    if (columnOrder.length > 0) {
+      const orderIndex = new Map(columnOrder.map((col, i) => [col, i]))
+      ordered = [...visible].sort((a, b) => {
+        const ai = orderIndex.get(a) ?? Infinity
+        const bi = orderIndex.get(b) ?? Infinity
+        if (ai === Infinity && bi === Infinity) return 0
+        return ai - bi
+      })
+    }
+    const frozen = ordered.filter(col => frozenColumns.has(col))
+    const unfrozen = ordered.filter(col => !frozenColumns.has(col))
     return [...frozen, ...unfrozen]
-  }, [rawColumns, frozenColumns, hiddenColumns])
+  }, [rawColumns, frozenColumns, hiddenColumns, columnOrder])
 
   // Memoize columnHasExpandableObjects into a Map (LDH-02)
   const expandableColumnsMap = useMemo(() => {
@@ -422,6 +456,42 @@ export default function TableView({
     next.add(column)
     onHiddenColumnsChange(next)
   }, [hiddenColumns, onHiddenColumnsChange])
+
+  // Column drag-reorder handlers
+  const handleColumnDragStart = useCallback((e: React.DragEvent<HTMLTableCellElement>, col: string) => {
+    setDragColumn(col)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', col)
+  }, [])
+
+  const handleColumnDragOver = useCallback((e: React.DragEvent<HTMLTableCellElement>, col: string) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (col !== dragColumn) {
+      setDropTarget(col)
+    }
+  }, [dragColumn])
+
+  const handleColumnDrop = useCallback((e: React.DragEvent<HTMLTableCellElement>, targetCol: string) => {
+    e.preventDefault()
+    if (!dragColumn || dragColumn === targetCol) {
+      setDragColumn(null)
+      setDropTarget(null)
+      return
+    }
+    // Build new order from current columns
+    const newOrder = columns.filter(c => c !== dragColumn)
+    const targetIndex = newOrder.indexOf(targetCol)
+    newOrder.splice(targetIndex, 0, dragColumn)
+    setColumnOrder(newOrder)
+    setDragColumn(null)
+    setDropTarget(null)
+  }, [dragColumn, columns])
+
+  const handleColumnDragEnd = useCallback(() => {
+    setDragColumn(null)
+    setDropTarget(null)
+  }, [])
 
   // Virtual scrolling state
   const [scrollTop, setScrollTop] = useState<number>(0)
@@ -697,6 +767,13 @@ export default function TableView({
     setContextMenu(null)
   }
 
+  const handleView = (): void => {
+    if (contextMenu?.doc && onView) {
+      onView(contextMenu.doc)
+    }
+    setContextMenu(null)
+  }
+
   const handleEdit = (): void => {
     if (contextMenu?.doc && onEdit) {
       onEdit(contextMenu.doc)
@@ -770,12 +847,12 @@ export default function TableView({
               <col key={col} style={{ width: columnWidths[col] || getDefaultColumnWidth(col, documents) }} />
             ))}
           </colgroup>
-          <thead className="bg-surface-secondary">
+          <thead className="bg-surface-hover select-none">
             <tr role="row">
               {/* Checkbox column header */}
               <th
                 scope="col"
-                className={`px-3 py-2 text-left border-b border-border bg-surface-secondary ${hasFrozenColumns ? 'sticky left-0 z-30' : ''}`}
+                className={`px-3 py-2 text-left border-b border-border bg-surface-hover ${hasFrozenColumns ? 'sticky left-0 z-30' : ''}`}
                 style={{ width: 52, minWidth: 52 }}
               >
                 <input
@@ -801,12 +878,17 @@ export default function TableView({
                 <th
                   key={col}
                   scope="col"
-                  className={`px-3 py-2 text-left font-medium text-text-secondary border-b border-border whitespace-nowrap relative group bg-surface-secondary ${isSub ? 'bg-surface/30' : ''} ${isFrozen ? 'sticky z-30' : ''} ${isFrozen ? 'border-r-2 border-r-border-light' : ''}`}
+                  className={`px-3 py-2 text-left font-medium text-text-secondary border-b border-border whitespace-nowrap relative group bg-surface-hover cursor-grab ${isSub ? 'bg-surface/30' : ''} ${isFrozen ? 'sticky z-30' : ''} ${isFrozen ? 'border-r-2 border-r-border-light' : ''} ${dragColumn === col ? 'opacity-50' : ''} ${dropTarget === col ? 'border-l-2 border-l-primary' : ''}`}
                   style={{
                     width: columnWidths[col] || getDefaultColumnWidth(col, documents),
                     minWidth: 60,
                     left: frozenOffset,
                   }}
+                  draggable
+                  onDragStart={(e) => handleColumnDragStart(e, col)}
+                  onDragOver={(e) => handleColumnDragOver(e, col)}
+                  onDrop={(e) => handleColumnDrop(e, col)}
+                  onDragEnd={handleColumnDragEnd}
                   onContextMenu={(e) => handleHeaderContextMenu(e, col)}
                 >
                   <div className="flex items-center gap-1">
@@ -873,28 +955,56 @@ export default function TableView({
                       key={docId || actualIndex}
                       className={`table-row border-b border-surface ${
                         isSelected
-                          ? 'bg-primary/10 hover:bg-primary/20'
+                          ? 'row-selected'
                           : isCompareSource
-                          ? 'bg-info-dark/20 hover:bg-info-dark/30'
-                          : 'hover:bg-surface/50'
+                          ? 'row-compare-source'
+                          : ''
                       }`}
                       style={{ height: ROW_HEIGHT }}
                       onContextMenu={(e) => handleContextMenu(e, doc)}
+                      onDoubleClick={() => { if (onView) onView(doc) }}
                       tabIndex={0}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault()
-                          if (onEdit && !readOnly) onEdit(doc)
+                          if (onView) onView(doc)
                         } else if (e.key === ' ') {
                           e.preventDefault()
                           if (docId) toggleSelection(docId)
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault()
+                          const next = (e.currentTarget as HTMLElement).nextElementSibling as HTMLElement | null
+                          if (next) {
+                            next.focus()
+                            const container = containerRef.current
+                            if (container) {
+                              const rowBottom = (actualIndex + 3) * ROW_HEIGHT
+                              if (rowBottom > container.scrollTop + container.clientHeight) {
+                                container.scrollTop = rowBottom - container.clientHeight
+                              }
+                            }
+                          }
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault()
+                          const prev = (e.currentTarget as HTMLElement).previousElementSibling as HTMLElement | null
+                          if (prev) {
+                            prev.focus()
+                            const container = containerRef.current
+                            if (container) {
+                              const rowTop = actualIndex * ROW_HEIGHT
+                              if (rowTop < container.scrollTop + ROW_HEIGHT) {
+                                container.scrollTop = Math.max(0, rowTop - ROW_HEIGHT)
+                              }
+                            }
+                          }
                         }
                       }}
                     >
                       {/* Row checkbox */}
                       <td
-                        className={`px-3 py-2 ${hasFrozenColumns ? 'sticky left-0 z-10 bg-surface' : ''}`}
+                        className={`px-3 py-2 ${hasFrozenColumns ? 'sticky left-0 z-10 frozen-cell' : ''}`}
                         style={{ width: 52, minWidth: 52 }}
+                        onDoubleClick={(e) => e.stopPropagation()}
                       >
                         <input
                           type="checkbox"
@@ -913,7 +1023,7 @@ export default function TableView({
                         return (
                         <td
                           key={col}
-                          className={`px-3 py-2 whitespace-nowrap truncate cursor-context-menu text-text ${isSub ? 'bg-surface/20' : ''} ${isFrozen ? 'sticky z-10 bg-surface' : ''} ${isSelected && isFrozen ? '!bg-primary/10' : ''} ${isFrozen ? 'border-r-2 border-r-border-light' : ''}`}
+                          className={`px-3 py-2 whitespace-nowrap truncate cursor-context-menu text-text ${isSub && !isFrozen ? 'bg-surface/20' : ''} ${isFrozen ? 'sticky z-10 frozen-cell border-r-2 border-r-border-light' : ''}`}
                           style={{
                             width: columnWidths[col] || getDefaultColumnWidth(col, documents),
                             maxWidth: columnWidths[col] || getDefaultColumnWidth(col, documents),
@@ -1040,13 +1150,22 @@ export default function TableView({
           {/* Document actions */}
           <button
             role="menuitem"
-            className={`context-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${readOnly ? 'text-text-dim cursor-not-allowed' : 'text-text-light hover:bg-surface-hover'}`}
-            onClick={handleEdit}
-            disabled={readOnly}
+            className="context-menu-item w-full px-3 py-2 text-left text-sm text-text-light hover:bg-surface-hover flex items-center gap-2"
+            onClick={handleView}
           >
-            <EditIcon className="w-4 h-4 text-text-muted" />
-            {readOnly ? 'View Document' : 'Edit Document'}
+            <EyeIcon className="w-4 h-4 text-info" />
+            View Document
           </button>
+          {!readOnly && (
+            <button
+              role="menuitem"
+              className="context-menu-item w-full px-3 py-2 text-left text-sm text-text-light hover:bg-surface-hover flex items-center gap-2"
+              onClick={handleEdit}
+            >
+              <EditIcon className="w-4 h-4 text-text-muted" />
+              Edit Document
+            </button>
+          )}
           <button
             role="menuitem"
             className={`context-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${readOnly ? 'text-text-dim cursor-not-allowed' : 'text-error hover:bg-surface-hover'}`}

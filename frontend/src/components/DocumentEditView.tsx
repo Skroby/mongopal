@@ -39,8 +39,8 @@ export interface DocumentEditViewProps {
   documentId?: MongoDocumentId | null
   /** Callback after successful save */
   onSave?: () => void
-  /** View mode: 'edit' or 'insert' */
-  mode?: 'edit' | 'insert'
+  /** View mode: 'edit', 'insert', or 'view' */
+  mode?: 'edit' | 'insert' | 'view'
   /** Callback after successful insert with new document and ID */
   onInsertComplete?: (document: Record<string, unknown>, documentId: string) => void
   /** Tab ID for dirty state tracking */
@@ -316,6 +316,7 @@ export default function DocumentEditView({
   const isConnecting = connectingIds.has(connectionId)
 
   const isInsertMode = mode === 'insert'
+  const isViewMode = mode === 'view'
   const [content, setContent] = useState<string>('')
   const [saving, setSaving] = useState<boolean>(false)
   const [saved, setSaved] = useState<boolean>(false)
@@ -522,15 +523,16 @@ export default function DocumentEditView({
     }
   }, [effectiveDocument, isInsertMode])
 
-  // Track changes and update tab dirty state
+  // Track changes and update tab dirty state (skip in view mode)
   useEffect(() => {
+    if (isViewMode) return
     const isDirty = content !== originalContent
     setHasChanges(isDirty)
     // Update tab dirty indicator if tabId is provided
     if (tabId && setTabDirty) {
       setTabDirty(tabId, isDirty)
     }
-  }, [content, originalContent, tabId, setTabDirty])
+  }, [content, originalContent, tabId, setTabDirty, isViewMode])
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
@@ -557,7 +559,7 @@ export default function DocumentEditView({
         monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
         () => handleInsert()
       )
-    } else {
+    } else if (!isViewMode) {
       // Add Cmd+S save shortcut
       editor.addCommand(
         monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
@@ -698,8 +700,11 @@ export default function DocumentEditView({
           <span className="text-text-muted truncate max-w-[150px]" title={collection}>{collection}</span>
           <span className="text-text-dim flex-shrink-0">&gt;</span>
           <span className="text-text-light font-mono truncate max-w-[200px]" title={displayId}>{displayId}</span>
-          {hasChanges && (
+          {hasChanges && !isViewMode && (
             <span className="text-warning text-xs flex-shrink-0">(modified)</span>
+          )}
+          {isViewMode && (
+            <span className="text-info text-xs flex-shrink-0">(view only)</span>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -724,7 +729,7 @@ export default function DocumentEditView({
           >
             <FormatIcon className="w-4 h-4" />
           </button>
-          {!isInsertMode && (
+          {!isInsertMode && !isViewMode && (
             <>
               <div className="relative" ref={historyDropdownRef}>
                 <button
@@ -891,7 +896,7 @@ export default function DocumentEditView({
               <PlusIcon className="w-3.5 h-3.5" />
               {inserting ? 'Inserting...' : 'Insert'}
             </button>
-          ) : (
+          ) : !isViewMode ? (
             <button
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded font-medium transition-colors ${
                 readOnly
@@ -918,7 +923,7 @@ export default function DocumentEditView({
                 </>
               )}
             </button>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -973,13 +978,13 @@ export default function DocumentEditView({
             </button>
           </div>
         ) : (
-          <MonacoErrorBoundary value={content} onChange={(value: string) => setContent(value || '')} readOnly={isInsertMode && saving}>
+          <MonacoErrorBoundary value={content} onChange={(value: string) => setContent(value || '')} readOnly={(isInsertMode && saving) || isViewMode}>
             <Editor
               height="100%"
               language="json"
               theme="mongopal-dark"
               value={content}
-              onChange={(value: string | undefined) => setContent(value || '')}
+              onChange={(value: string | undefined) => { if (!isViewMode) setContent(value || '') }}
               onMount={handleEditorDidMount}
               options={{
                 minimap: { enabled: false },
@@ -993,6 +998,7 @@ export default function DocumentEditView({
                 tabSize: 2,
                 insertSpaces: true,
                 formatOnPaste: true,
+                readOnly: isViewMode,
               }}
             />
           </MonacoErrorBoundary>

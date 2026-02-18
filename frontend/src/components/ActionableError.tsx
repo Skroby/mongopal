@@ -144,7 +144,7 @@ export default function ActionableError({
   if (compact) {
     // Compact layout for inline display
     return (
-      <div className={`bg-red-900/30 border border-red-800 rounded px-3 py-2 ${className}`}>
+      <div className={`bg-red-900/30 border border-red-800 rounded px-3 py-2 select-text ${className}`}>
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="text-sm text-red-300 font-medium">{parsed.friendlyMessage}</div>
@@ -193,7 +193,7 @@ export default function ActionableError({
 
   // Full layout (default)
   return (
-    <div className={`bg-red-900/30 border border-red-800 rounded-lg ${className}`}>
+    <div className={`bg-red-900/30 border border-red-800 rounded-lg select-text ${className}`}>
       {/* Header with friendly message */}
       <div className="px-4 py-3 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">

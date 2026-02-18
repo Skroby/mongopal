@@ -50,7 +50,6 @@ export interface UseQueryExecutionReturn {
   loading: boolean
   error: string | null
   setError: (error: string | null) => void
-  rawOutput: string
   totalCount: number
   queryTime: number | null
 
@@ -169,7 +168,6 @@ export function useQueryExecution({
   const [documents, setDocuments] = useState<MongoDocument[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
-  const [rawOutput, setRawOutput] = useState<string>('')
   const queryIdRef = useRef<number>(0)
 
   // Query history (lives here because executeQuery updates it directly)
@@ -516,7 +514,7 @@ export function useQueryExecution({
             setDocuments([])
             setTotal(0)
             setQueryTime(null)
-            setRawOutput('')
+
             return
           }
           const docCount = result.documents.length
@@ -533,7 +531,6 @@ export function useQueryExecution({
           setDocuments(parsedDocs)
           setTotal(result.total || 0)
           setQueryTime(result.queryTimeMs ?? null)
-          setRawOutput('')
 
           // Update available columns list from query results
           const columnsFromDocs = new Set<string>()
@@ -570,7 +567,6 @@ export function useQueryExecution({
             throw new Error(result.error || result.output || 'Script execution failed')
           }
           const output = result.output.trim()
-          setRawOutput(output)
           const duration = Math.round(performance.now() - startTime)
           if (!output) {
             logQuery(`Mongosh query completed (${duration}ms, no output)`, {
@@ -716,7 +712,6 @@ export function useQueryExecution({
     loading,
     error,
     setError,
-    rawOutput,
     totalCount: total,
     queryTime,
 

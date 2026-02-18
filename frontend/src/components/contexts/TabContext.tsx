@@ -39,6 +39,8 @@ export interface Tab {
   restored?: boolean
   /** Whether the tab has unsaved changes */
   dirty?: boolean
+  /** Whether this is a view-only document tab */
+  viewOnly?: boolean
 }
 
 /**
@@ -55,6 +57,7 @@ interface SessionData {
     color: string
     pinned: boolean
     documentId?: string | null
+    viewOnly?: boolean
   }>
   activeTab: string | null
   connectedIds: string[]
@@ -76,6 +79,7 @@ export interface TabContextValue {
   openTab: (connectionId: string, database: string, collection: string) => void
   openNewQueryTab: () => void
   openDocumentTab: (connectionId: string, database: string, collection: string, document: unknown, documentId: string) => void
+  openViewDocumentTab: (connectionId: string, database: string, collection: string, document: unknown, documentId: string) => void
   openInsertTab: (connectionId: string, database: string, collection: string) => void
   openSchemaTab: (connectionId: string, database: string, collection: string) => void
   openIndexTab: (connectionId: string, database: string, collection: string) => void
@@ -171,6 +175,7 @@ export function TabProvider({ children }: TabProviderProps): React.JSX.Element {
         document: null, // Don't restore document content
         documentId: tab.documentId || null,
         restored: true, // Flag for restored tabs - don't auto-execute
+        viewOnly: tab.viewOnly || false,
       }))
     }
     return []
@@ -199,6 +204,7 @@ export function TabProvider({ children }: TabProviderProps): React.JSX.Element {
         color: tab.color,
         pinned: tab.pinned,
         documentId: tab.documentId || null,
+        viewOnly: tab.viewOnly || undefined,
       })),
       activeTab,
       connectedIds: sessionConnections,
@@ -302,6 +308,39 @@ export function TabProvider({ children }: TabProviderProps): React.JSX.Element {
         label: `${shortId}...`,
         color: conn?.color || DEFAULT_ACCENT_COLOR,
         pinned: false,
+      }
+      setTabs(prev => [...prev, newTab])
+      setActiveTab(tabId)
+    }
+  }, [tabs, getConnectionById])
+
+  // Open document in view-only mode
+  const openViewDocumentTab = useCallback((connectionId: string, database: string, collection: string, document: unknown, documentId: string): void => {
+    const shortId = typeof documentId === 'string' ? documentId.slice(0, 8) : String(documentId).slice(0, 8)
+    const tabId = `view:${connectionId}.${database}.${collection}.${documentId}`
+    const existingTab = tabs.find(t => t.id === tabId)
+
+    if (existingTab) {
+      if (existingTab.restored) {
+        setTabs(prev => prev.map(t =>
+          t.id === tabId ? { ...t, restored: false } : t
+        ))
+      }
+      setActiveTab(tabId)
+    } else {
+      const conn = getConnectionById(connectionId)
+      const newTab: Tab = {
+        id: tabId,
+        type: 'document',
+        connectionId,
+        database,
+        collection,
+        document,
+        documentId,
+        label: `${shortId}...`,
+        color: conn?.color || DEFAULT_ACCENT_COLOR,
+        pinned: false,
+        viewOnly: true,
       }
       setTabs(prev => [...prev, newTab])
       setActiveTab(tabId)
@@ -580,6 +619,7 @@ export function TabProvider({ children }: TabProviderProps): React.JSX.Element {
     openTab,
     openNewQueryTab,
     openDocumentTab,
+    openViewDocumentTab,
     openInsertTab,
     openSchemaTab,
     openIndexTab,
@@ -611,7 +651,7 @@ export function TabProvider({ children }: TabProviderProps): React.JSX.Element {
     untrackConnection,
   }), [
     tabs, activeTab, currentTab,
-    openTab, openNewQueryTab, openDocumentTab, openInsertTab, openSchemaTab, openIndexTab,
+    openTab, openNewQueryTab, openDocumentTab, openViewDocumentTab, openInsertTab, openSchemaTab, openIndexTab,
     closeTab, pinTab, renameTab, reorderTabs, convertInsertToDocumentTab,
     setTabDirty, markTabActivated, updateTabDocument,
     closeTabsForConnection, closeTabsForDatabase, closeTabsForCollection,

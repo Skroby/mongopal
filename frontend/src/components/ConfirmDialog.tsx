@@ -68,7 +68,7 @@ export default function ConfirmDialog({
           <h2 className="text-lg font-medium text-text">{title}</h2>
         </div>
 
-        <div className="px-4 py-4 text-sm text-text-secondary">
+        <div className="px-4 py-4 text-sm text-text-secondary select-text">
           {typeof message === 'string' ? (
             <p className="whitespace-pre-line">{message}</p>
           ) : (

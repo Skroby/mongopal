@@ -63,6 +63,7 @@ body {
   font-family: var(--font-ui);
   background-color: var(--color-background);
   color: var(--color-text);
+  user-select: none;
 }
 
 /* Scrollbar styling */
@@ -127,10 +128,64 @@ select:focus-visible {
   --tw-ring-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
 }
 
-/* Table row focus styles */
-.table-row:focus-visible {
-  @apply ring-2 ring-inset;
-  --tw-ring-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
+/* Table row hover/focus/selected styles */
+.table-row {
+  outline: none;
+}
+.table-row:hover {
+  background-color: color-mix(in srgb, var(--color-surface-hover) 40%, transparent);
+}
+.table-row:focus {
+  background-color: color-mix(in srgb, var(--color-surface-hover) 70%, transparent);
+}
+.table-row.row-selected {
+  background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+.table-row.row-selected:hover {
+  background-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+.table-row.row-selected:focus {
+  background-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+.table-row.row-compare-source {
+  background-color: color-mix(in srgb, var(--color-info) 12%, transparent);
+}
+.table-row.row-compare-source:hover {
+  background-color: color-mix(in srgb, var(--color-info) 18%, transparent);
+}
+.table-row.row-compare-source:focus {
+  background-color: color-mix(in srgb, var(--color-info) 22%, transparent);
+}
+
+/* Frozen (sticky) cells need an opaque background so scrolled content
+   doesn't show through, but must still reflect the row's hover/focus/
+   selected state.  We layer the surface color underneath the row color. */
+.table-row .frozen-cell {
+  background-color: var(--color-surface);
+}
+.table-row:hover .frozen-cell {
+  background-color: color-mix(in srgb, var(--color-surface-hover) 40%, var(--color-surface));
+}
+.table-row:focus .frozen-cell {
+  background-color: color-mix(in srgb, var(--color-surface-hover) 70%, var(--color-surface));
+}
+.table-row.row-selected .frozen-cell {
+  background-color: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+}
+.table-row.row-selected:hover .frozen-cell {
+  background-color: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
+}
+.table-row.row-selected:focus .frozen-cell {
+  background-color: color-mix(in srgb, var(--color-primary) 22%, var(--color-surface));
+}
+.table-row.row-compare-source .frozen-cell {
+  background-color: color-mix(in srgb, var(--color-info) 12%, var(--color-surface));
+}
+.table-row.row-compare-source:hover .frozen-cell {
+  background-color: color-mix(in srgb, var(--color-info) 18%, var(--color-surface));
+}
+.table-row.row-compare-source:focus .frozen-cell {
+  background-color: color-mix(in srgb, var(--color-info) 22%, var(--color-surface));
 }
 
 /* Context menu item focus */
@@ -173,7 +228,6 @@ select:focus-visible {
 /* Draggable tree items */
 .tree-item[draggable="true"] {
   @apply cursor-grab;
-  user-select: none;
 }
 
 .tree-item[draggable="true"]:active {
@@ -202,7 +256,7 @@ select:focus-visible {
 
 /* Button styles */
 .btn {
-  @apply px-3 py-1.5 rounded text-sm font-medium transition-colors;
+  @apply inline-flex items-center justify-center px-3 py-1.5 rounded text-sm font-medium transition-colors;
   @apply focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
   @apply disabled:opacity-40 disabled:cursor-not-allowed;
 }

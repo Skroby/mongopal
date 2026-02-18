@@ -578,7 +578,7 @@ export function NotificationHistoryDrawer(): React.ReactElement | null {
       </div>
 
       {/* Notification list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto select-text">
         {notificationHistory.length === 0 ? (
           <div className="p-8 text-center text-text-dim">
             <svg className="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
