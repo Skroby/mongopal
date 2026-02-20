@@ -879,12 +879,12 @@ func TestStripURIDatabase(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "URI with database",
+			name:     "URI with database - adds authSource",
 			uri:      "mongodb://localhost:27017/admin",
-			expected: "mongodb://localhost:27017/",
+			expected: "mongodb://localhost:27017/?authSource=admin",
 		},
 		{
-			name:     "URI with database and query params",
+			name:     "URI with database and existing authSource - preserves it",
 			uri:      "mongodb://localhost:27017/mydb?authSource=admin&retryWrites=true",
 			expected: "mongodb://localhost:27017/?authSource=admin&retryWrites=true",
 		},
@@ -899,14 +899,14 @@ func TestStripURIDatabase(t *testing.T) {
 			expected: "mongodb://localhost:27017",
 		},
 		{
-			name:     "SRV URI with database",
+			name:     "SRV URI with database - adds authSource",
 			uri:      "mongodb+srv://user:pass@cluster.example.com/testdb?retryWrites=true",
-			expected: "mongodb+srv://user:pass@cluster.example.com/?retryWrites=true",
+			expected: "mongodb+srv://user:pass@cluster.example.com/?authSource=testdb&retryWrites=true",
 		},
 		{
-			name:     "URI with credentials and database",
+			name:     "URI with credentials and database - preserves encoding, adds authSource",
 			uri:      "mongodb://user:p%40ss@host:27017/admin",
-			expected: "mongodb://user:p%40ss@host:27017/",
+			expected: "mongodb://user:p%40ss@host:27017/?authSource=admin",
 		},
 	}
 
@@ -1147,6 +1147,49 @@ func TestReArchivePrelude(t *testing.T) {
 				if len(matches) > 0 {
 					t.Errorf("expected no match, got %v", matches)
 				}
+			}
+		})
+	}
+}
+
+func TestMaskURICredentials(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "masks password in mongodb URI",
+			in:   `Failed: can't create session: failed to connect to mongodb://root:s3cret@localhost:27017/?authMechanism=SCRAM-SHA-256`,
+			want: `Failed: can't create session: failed to connect to mongodb://root:***@localhost:27017/?authMechanism=SCRAM-SHA-256`,
+		},
+		{
+			name: "masks password in mongodb+srv URI",
+			in:   `failed to connect to mongodb+srv://admin:p%40ss@cluster0.abc.net/db`,
+			want: `failed to connect to mongodb+srv://admin:***@cluster0.abc.net/db`,
+		},
+		{
+			name: "no password - unchanged",
+			in:   `failed to connect to mongodb://localhost:27017/`,
+			want: `failed to connect to mongodb://localhost:27017/`,
+		},
+		{
+			name: "no URI - unchanged",
+			in:   `some random error message`,
+			want: `some random error message`,
+		},
+		{
+			name: "username only no password",
+			in:   `mongodb://user@localhost:27017/`,
+			want: `mongodb://user@localhost:27017/`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := maskURICredentials(tt.in)
+			if got != tt.want {
+				t.Errorf("maskURICredentials() =\n  %q\nwant:\n  %q", got, tt.want)
 			}
 		})
 	}

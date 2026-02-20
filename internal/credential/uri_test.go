@@ -352,7 +352,7 @@ func TestBuildURIFromFormData(t *testing.T) {
 				AuthDatabase:   "admin",
 				RetryWrites:    true,
 			},
-			want: "mongodb://CN%3Dclient@localhost/?authMechanism=MONGODB-X509&directConnection=true",
+			want: "mongodb://CN=client@localhost/?authMechanism=MONGODB-X509&directConnection=true",
 		},
 		{
 			name: "TLS enabled with insecure",
@@ -543,6 +543,64 @@ func TestStripVendorParams(t *testing.T) {
 			got := StripVendorParams(tt.uri)
 			if got != tt.want {
 				t.Errorf("StripVendorParams() =\n  %q\nwant:\n  %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripSCRAMAuthMechanism(t *testing.T) {
+	tests := []struct {
+		name string
+		uri  string
+		want string
+	}{
+		{
+			name: "strips SCRAM-SHA-1",
+			uri:  "mongodb://root:pass@localhost:27017/?authMechanism=SCRAM-SHA-1&directConnection=true",
+			want: "mongodb://root:pass@localhost:27017/?directConnection=true",
+		},
+		{
+			name: "strips SCRAM-SHA-256",
+			uri:  "mongodb://root:pass@localhost:27017/?authMechanism=SCRAM-SHA-256&directConnection=true",
+			want: "mongodb://root:pass@localhost:27017/?directConnection=true",
+		},
+		{
+			name: "preserves X509",
+			uri:  "mongodb://cn=client@localhost:27017/?authMechanism=MONGODB-X509&directConnection=true",
+			want: "mongodb://cn=client@localhost:27017/?authMechanism=MONGODB-X509&directConnection=true",
+		},
+		{
+			name: "preserves AWS",
+			uri:  "mongodb://localhost:27017/?authMechanism=MONGODB-AWS",
+			want: "mongodb://localhost:27017/?authMechanism=MONGODB-AWS",
+		},
+		{
+			name: "preserves GSSAPI",
+			uri:  "mongodb://user@localhost:27017/?authMechanism=GSSAPI",
+			want: "mongodb://user@localhost:27017/?authMechanism=GSSAPI",
+		},
+		{
+			name: "no authMechanism - returns unchanged",
+			uri:  "mongodb://root:pass@localhost:27017/?directConnection=true",
+			want: "mongodb://root:pass@localhost:27017/?directConnection=true",
+		},
+		{
+			name: "no query string - returns unchanged",
+			uri:  "mongodb://localhost:27017/mydb",
+			want: "mongodb://localhost:27017/mydb",
+		},
+		{
+			name: "SCRAM-SHA-1 only param - strips to base",
+			uri:  "mongodb://root:pass@localhost:27017/?authMechanism=SCRAM-SHA-1",
+			want: "mongodb://root:pass@localhost:27017/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := StripSCRAMAuthMechanism(tt.uri)
+			if got != tt.want {
+				t.Errorf("StripSCRAMAuthMechanism() =\n  %q\nwant:\n  %q", got, tt.want)
 			}
 		})
 	}

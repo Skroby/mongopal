@@ -13,24 +13,225 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/peternagy/mongopal/internal/types"
 )
 
 // stripURIDatabase removes the database path from a MongoDB URI to avoid
 // conflicts with --db flags. e.g. "mongodb://host:27017/admin?..." becomes
-// "mongodb://host:27017/?...". This is needed because mongodump/mongorestore
-// reject URIs that specify a database when --db is also provided.
+// "mongodb://host:27017/?authSource=admin&...".
+// Uses manual string ops to avoid url.Parse roundtrip that can alter credential
+// encoding. When a database is stripped and no explicit authSource exists in the
+// query, the stripped database is added as authSource to preserve auth behavior.
 func stripURIDatabase(uri string) string {
-	parsed, err := url.Parse(uri)
-	if err != nil {
+	// Find the first / after the host (skip scheme://)
+	schemeEnd := strings.Index(uri, "://")
+	if schemeEnd < 0 {
 		return uri
 	}
-	// mongodb+srv:// URIs also work with url.Parse
-	if parsed.Path != "" && parsed.Path != "/" {
-		parsed.Path = "/"
+	afterScheme := uri[schemeEnd+3:]
+
+	// Skip past userinfo@ if present
+	hostStart := 0
+	if atIdx := strings.Index(afterScheme, "@"); atIdx >= 0 {
+		hostStart = atIdx + 1
 	}
-	return parsed.String()
+
+	// Find / (path start) and ? (query start) in the host+path+query portion
+	hostAndRest := afterScheme[hostStart:]
+	slashIdx := strings.Index(hostAndRest, "/")
+	if slashIdx < 0 {
+		return uri // No path at all
+	}
+
+	qIdx := strings.Index(hostAndRest, "?")
+	var database string
+	if qIdx > slashIdx {
+		database = hostAndRest[slashIdx+1 : qIdx]
+	} else if qIdx < 0 {
+		database = hostAndRest[slashIdx+1:]
+	}
+
+	if database == "" {
+		return uri // No database to strip
+	}
+
+	// Position of the slash in the full URI
+	slashPos := schemeEnd + 3 + hostStart + slashIdx
+
+	// Build: everything up to and including the slash
+	base := uri[:slashPos+1]
+
+	// Query string (everything after the database)
+	var query string
+	if qIdx >= 0 {
+		query = hostAndRest[qIdx+1:]
+	}
+
+	// Add authSource if not already present
+	hasAuthSource := false
+	if query != "" {
+		for _, part := range strings.Split(query, "&") {
+			if strings.HasPrefix(strings.ToLower(part), "authsource=") {
+				hasAuthSource = true
+				break
+			}
+		}
+	}
+
+	if !hasAuthSource && database != "" {
+		if query != "" {
+			query = "authSource=" + database + "&" + query
+		} else {
+			query = "authSource=" + database
+		}
+	}
+
+	if query != "" {
+		return base + "?" + query
+	}
+	return base
+}
+
+// maskURICredentials replaces the password in a MongoDB URI with "***".
+// Used to sanitize error messages from external tools (mongodump/mongorestore)
+// so credentials are never exposed in UI error toasts or logs.
+func maskURICredentials(s string) string {
+	// Match mongodb:// or mongodb+srv:// URIs with user:pass@
+	// Replace just the password portion between : and @
+	idx := strings.Index(s, "://")
+	if idx < 0 {
+		return s
+	}
+	rest := s[idx+3:]
+	atIdx := strings.Index(rest, "@")
+	if atIdx < 0 {
+		return s
+	}
+	userinfo := rest[:atIdx]
+	colonIdx := strings.Index(userinfo, ":")
+	if colonIdx < 0 {
+		return s // No password
+	}
+	// Reconstruct: scheme://user:***@rest
+	return s[:idx+3] + userinfo[:colonIdx] + ":***@" + rest[atIdx+1:]
+}
+
+// maskStderrLines sanitizes a slice of stderr lines by masking any URI credentials.
+func maskStderrLines(lines []string) string {
+	masked := make([]string, len(lines))
+	for i, line := range lines {
+		masked[i] = maskURICredentials(line)
+	}
+	return strings.Join(masked, "\n")
+}
+
+// getExternalToolURI builds a MongoDB URI suitable for external CLI tools
+// (mongodump/mongorestore). When the URI has credentials but no explicit
+// authMechanism (user chose "auto"), queries the server for the user's
+// supported SASL mechanisms and adds the best one. This prevents older
+// mongodump versions from defaulting to the wrong SCRAM variant.
+// When the user explicitly configured a mechanism, it is preserved as-is.
+func (s *Service) getExternalToolURI(connID string) (string, error) {
+	uri, err := s.connStore.GetConnectionURI(connID)
+	if err != nil {
+		return "", err
+	}
+
+	// Only auto-detect when URI has credentials but NO explicit authMechanism
+	// (i.e. user chose "auto" / "none" in the connection form).
+	// If the user explicitly set a mechanism, respect their choice.
+	parsed, parseErr := url.Parse(uri)
+	if parseErr == nil && parsed.User != nil && parsed.User.Username() != "" {
+		hasExplicitMech := false
+		if qIdx := strings.Index(uri, "?"); qIdx >= 0 {
+			for _, part := range strings.Split(uri[qIdx+1:], "&") {
+				if strings.HasPrefix(strings.ToLower(part), "authmechanism=") {
+					hasExplicitMech = true
+					break
+				}
+			}
+		}
+
+		if !hasExplicitMech {
+			if mech := s.detectAuthMechanism(connID, parsed.User.Username(), uri); mech != "" {
+				if strings.Contains(uri, "?") {
+					uri += "&authMechanism=" + mech
+				} else {
+					uri += "?authMechanism=" + mech
+				}
+			}
+		}
+	}
+
+	return uri, nil
+}
+
+// detectAuthMechanism queries the server for the user's supported SASL auth
+// mechanisms using the active Go driver connection. Returns the preferred
+// mechanism (SCRAM-SHA-256 > SCRAM-SHA-1) or empty string on failure.
+func (s *Service) detectAuthMechanism(connID, username, uri string) string {
+	client, err := s.state.GetClient(connID)
+	if err != nil {
+		return ""
+	}
+
+	// Determine the auth database from the URI's authSource param, defaulting to "admin"
+	authDB := "admin"
+	if qIdx := strings.Index(uri, "?"); qIdx >= 0 {
+		for _, part := range strings.Split(uri[qIdx+1:], "&") {
+			if strings.HasPrefix(strings.ToLower(part), "authsource=") {
+				if eqIdx := strings.Index(part, "="); eqIdx >= 0 {
+					authDB = part[eqIdx+1:]
+				}
+			}
+		}
+	}
+
+	// Query server with hello + saslSupportedMechs
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	userNS := authDB + "." + username
+	var result bson.M
+	err = client.Database("admin").RunCommand(ctx, bson.D{
+		{Key: "hello", Value: 1},
+		{Key: "saslSupportedMechs", Value: userNS},
+	}).Decode(&result)
+	if err != nil {
+		return ""
+	}
+
+	mechs, ok := result["saslSupportedMechs"]
+	if !ok {
+		return ""
+	}
+	mechArr, ok := mechs.(bson.A)
+	if !ok {
+		return ""
+	}
+
+	// Prefer SCRAM-SHA-256 over SCRAM-SHA-1
+	hasSHA256 := false
+	hasSHA1 := false
+	for _, m := range mechArr {
+		if s, ok := m.(string); ok {
+			if s == "SCRAM-SHA-256" {
+				hasSHA256 = true
+			} else if s == "SCRAM-SHA-1" {
+				hasSHA1 = true
+			}
+		}
+	}
+
+	if hasSHA256 {
+		return "SCRAM-SHA-256"
+	}
+	if hasSHA1 {
+		return "SCRAM-SHA-1"
+	}
+	return ""
 }
 
 // mongodump/mongorestore progress line patterns.
@@ -139,7 +340,7 @@ func (s *Service) PreviewArchive(connID, archivePath string) (*types.ArchivePrev
 		return nil, fmt.Errorf("mongorestore not found. Install MongoDB Database Tools: %s", toolDownloadURL)
 	}
 
-	uri, err := s.connStore.GetConnectionURI(connID)
+	uri, err := s.getExternalToolURI(connID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get connection URI: %w", err)
 	}
@@ -214,7 +415,7 @@ func (s *Service) PreviewArchive(connID, archivePath string) (*types.ArchivePrev
 	// If mongorestore failed and we got no results, return the error
 	if waitErr != nil && len(dbOrder) == 0 {
 		if len(stderrLines) > 0 {
-			return nil, fmt.Errorf("mongorestore preview failed: %s", strings.Join(stderrLines, "\n"))
+			return nil, fmt.Errorf("mongorestore preview failed: %s", maskStderrLines(stderrLines))
 		}
 		return nil, fmt.Errorf("mongorestore preview failed: %w", waitErr)
 	}
@@ -241,7 +442,7 @@ func (s *Service) ExportWithMongodump(connID string, opts types.MongodumpOptions
 	}
 
 	// Get connection URI
-	uri, err := s.connStore.GetConnectionURI(connID)
+	uri, err := s.getExternalToolURI(connID)
 	if err != nil {
 		return err
 	}
@@ -367,6 +568,7 @@ func (s *Service) ExportWithMongodump(connID string, opts types.MongodumpOptions
 			"--uri=" + connURI,
 			"--archive=" + archivePath,
 			"--gzip",
+			"--numParallelCollections=1",
 		}
 		if job.db != "" {
 			args = append(args, "--db="+job.db)
@@ -440,7 +642,7 @@ func (s *Service) ExportWithMongodump(connID string, opts types.MongodumpOptions
 			default:
 			}
 			if len(stderrLines) > 0 {
-				return fmt.Errorf("mongodump failed: %s", strings.Join(stderrLines, "\n"))
+				return fmt.Errorf("mongodump failed: %s", maskStderrLines(stderrLines))
 			}
 			return fmt.Errorf("mongodump failed: %w", err)
 		}
@@ -465,7 +667,7 @@ func (s *Service) ImportWithMongorestore(connID string, opts types.MongorestoreO
 	}
 
 	// Get connection URI
-	uri, err := s.connStore.GetConnectionURI(connID)
+	uri, err := s.getExternalToolURI(connID)
 	if err != nil {
 		return nil, err
 	}
@@ -778,7 +980,7 @@ func (s *Service) runMongorestore(ctx context.Context, toolPath string, args []s
 		}
 		// Include stderr output for diagnosis
 		if len(stderrLines) > 0 {
-			return result, fmt.Errorf("mongorestore failed: %s", strings.Join(stderrLines, "\n"))
+			return result, fmt.Errorf("mongorestore failed: %s", maskStderrLines(stderrLines))
 		}
 		return result, fmt.Errorf("mongorestore failed: %w", waitErr)
 	}

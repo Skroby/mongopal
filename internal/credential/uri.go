@@ -74,12 +74,14 @@ func BuildURIFromFormData(fd *types.ConnectionFormData, password string) string 
 		b.WriteString("mongodb://")
 	}
 
-	// Credentials
+	// Credentials — use url.UserPassword().String() for proper RFC 3986
+	// userinfo encoding. url.QueryEscape encodes spaces as + which is wrong
+	// for URI userinfo and breaks external tools like mongodump.
 	if fd.Username != "" {
-		b.WriteString(url.QueryEscape(fd.Username))
 		if password != "" {
-			b.WriteByte(':')
-			b.WriteString(url.QueryEscape(password))
+			b.WriteString(url.UserPassword(fd.Username, password).String())
+		} else {
+			b.WriteString(url.User(fd.Username).String())
 		}
 		b.WriteByte('@')
 	}
@@ -123,7 +125,7 @@ func BuildURIFromFormData(fd *types.ConnectionFormData, password string) string 
 		}
 	}
 	if fd.AuthDatabase != "" && fd.AuthDatabase != "admin" {
-		addParam("authSource", url.QueryEscape(fd.AuthDatabase))
+		addParam("authSource", url.PathEscape(fd.AuthDatabase))
 	}
 
 	// Direct connection for standalone
@@ -180,7 +182,7 @@ func BuildURIFromFormData(fd *types.ConnectionFormData, password string) string 
 		addParam("readPreference", fd.ReadPreference)
 	}
 	if fd.AppName != "" && fd.AppName != "mongopal" {
-		addParam("appName", url.QueryEscape(fd.AppName))
+		addParam("appName", url.PathEscape(fd.AppName))
 	}
 	if len(fd.Compressors) > 0 {
 		addParam("compressors", strings.Join(fd.Compressors, ","))
@@ -217,6 +219,46 @@ func formatHost(host string, port int) string {
 		return host
 	}
 	return fmt.Sprintf("%s:%d", host, port)
+}
+
+// StripSCRAMAuthMechanism removes explicit SCRAM-SHA-1/256 authMechanism from a
+// MongoDB URI. SCRAM is auto-negotiated by all MongoDB tools, so forcing a
+// specific variant can cause auth failures with mongodump/mongorestore when the
+// server or tool version only supports the other variant. Non-SCRAM mechanisms
+// (X.509, AWS, Kerberos) are preserved since they require explicit specification.
+func StripSCRAMAuthMechanism(uri string) string {
+	qIdx := strings.Index(uri, "?")
+	if qIdx < 0 {
+		return uri
+	}
+
+	base := uri[:qIdx]
+	query := uri[qIdx+1:]
+
+	parts := strings.Split(query, "&")
+	var kept []string
+	for _, part := range parts {
+		key := part
+		if eqIdx := strings.Index(part, "="); eqIdx >= 0 {
+			key = part[:eqIdx]
+		}
+		if strings.EqualFold(key, "authMechanism") {
+			// Only strip SCRAM variants — keep X.509, AWS, Kerberos etc.
+			val := ""
+			if eqIdx := strings.Index(part, "="); eqIdx >= 0 {
+				val = part[eqIdx+1:]
+			}
+			if strings.HasPrefix(val, "SCRAM-SHA-") {
+				continue
+			}
+		}
+		kept = append(kept, part)
+	}
+
+	if len(kept) == 0 {
+		return base
+	}
+	return base + "?" + strings.Join(kept, "&")
 }
 
 // StripVendorParams removes mongopal.* and 3t.* query parameters from a MongoDB URI.
